@@ -38,6 +38,8 @@ Navidrome ──▶ stream URLs for each track
    docker compose up -d --build
    ```
 
+   **Unraid:** see [docs/UNRAID.md](docs/UNRAID.md) — pre-built images on GHCR + Compose Manager.
+
 3. **Create a station**
 
    Open [http://localhost:8080/admin.html](http://localhost:8080/admin.html) — you will be prompted for admin credentials after setting `ADMIN_PASSWORD` in `.env`.

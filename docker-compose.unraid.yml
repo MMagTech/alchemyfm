@@ -1,6 +1,13 @@
+# Unraid — use with the Compose Manager plugin (or `docker compose -f docker-compose.unraid.yml`).
+# Pulls pre-built images from GHCR (no build on the server).
+# See docs/UNRAID.md for setup.
+
+name: alchemyfm
+
 services:
   icecast:
-    image: infiniteproject/icecast:latest
+    image: ghcr.io/mmagtech/alchemyfm-icecast:latest
+    container_name: alchemyfm-icecast
     ports:
       - "${ICECAST_PORT:-8000}:8000"
     environment:
@@ -8,16 +15,12 @@ services:
       ICECAST_ADMIN_PASSWORD: ${ICECAST_SOURCE_PASSWORD:-hackme}
       ICECAST_RELAY_PASSWORD: ${ICECAST_SOURCE_PASSWORD:-hackme}
       ICECAST_MAX_CLIENTS: ${ICECAST_MAX_CLIENTS:-100}
-      # Default image limit is 2 — one mount per station needs more headroom.
       ICECAST_MAX_SOURCES: ${ICECAST_MAX_SOURCES:-20}
-    volumes:
-      - ./icecast/icecast.xml:/etc/icecast2/icecast.xml:ro
     restart: unless-stopped
 
   backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
+    image: ghcr.io/mmagtech/alchemyfm-backend:latest
+    container_name: alchemyfm-backend
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     environment:
@@ -41,16 +44,14 @@ services:
       RESTRICT_INTERNAL_ROUTES: ${RESTRICT_INTERNAL_ROUTES:-true}
       TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
       ICECAST_DOCKER_RESTART: ${ICECAST_DOCKER_RESTART:-true}
-      DOCKER_COMPOSE_PROJECT: ${DOCKER_COMPOSE_PROJECT:-}
+      DOCKER_COMPOSE_PROJECT: alchemyfm
       KNOWLEDGE_FEATURE: ${KNOWLEDGE_FEATURE:-false}
       KNOWLEDGE_DATABASE_URL: ${KNOWLEDGE_DATABASE_URL:-sqlite:////data/knowledge.db}
       SEARXNG_URL: ${SEARXNG_URL:-}
       OLLAMA_URL: ${OLLAMA_URL:-}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-}
     volumes:
-      - radio-data:/data
-      - ./web:/web:ro
-      - ./icecast/icecast.xml:/host-icecast/icecast.xml
+      - /mnt/user/appdata/alchemyfm/data:/data
       - /var/run/docker.sock:/var/run/docker.sock
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -59,16 +60,14 @@ services:
     restart: unless-stopped
 
   liquidsoap:
-    build: ./liquidsoap
+    image: ghcr.io/mmagtech/alchemyfm-liquidsoap:latest
+    container_name: alchemyfm-liquidsoap
     environment:
       DATA_DIR: /data
       SUPERVISOR_POLL_SEC: "3"
     volumes:
-      - radio-data:/data
+      - /mnt/user/appdata/alchemyfm/data:/data
     depends_on:
       - backend
       - icecast
     restart: unless-stopped
-
-volumes:
-  radio-data:
