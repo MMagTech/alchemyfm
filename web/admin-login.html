@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In — Alchemy FM</title>
+  <link rel="stylesheet" href="/static/style.css?v=10">
+  <style>
+    /* Keep login usable even if shared CSS fails or conflicts */
+    body.login-page .login-shell {
+      max-width: 420px;
+      width: 100%;
+      padding: 0;
+      margin: 0;
+    }
+
+    .login-field input {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      position: relative;
+      z-index: 2;
+      pointer-events: auto;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+
+    .login-card {
+      position: relative;
+      z-index: 1;
+    }
+  </style>
+</head>
+<body class="login-page">
+  <div class="login-shell">
+    <section class="login-card">
+      <div class="login-brand">
+        <p class="login-eyebrow">Alchemy FM</p>
+        <h1>Admin Sign In</h1>
+        <p class="login-lede">Manage stations, queues, and broadcast settings.</p>
+      </div>
+      <div id="login-message" class="message" hidden></div>
+      <form id="login-form" class="login-form" method="post" action="/api/admin/login" autocomplete="on">
+        <div class="login-field">
+          <label for="username">Username</label>
+          <input id="username" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+        </div>
+        <div class="login-field">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <button class="btn login-submit" type="submit">Sign In</button>
+      </form>
+      <p class="login-foot">
+        <a href="/">← Back to stations</a>
+      </p>
+    </section>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const next = params.get('next') || '/admin.html';
+    const usernameInput = document.getElementById('username');
+
+    function showMessage(text, type) {
+      const el = document.getElementById('login-message');
+      el.hidden = false;
+      el.className = `message ${type}`;
+      el.textContent = text;
+    }
+
+    // Focus after paint — autofocus is unreliable in private browsing.
+    window.requestAnimationFrame(() => {
+      try {
+        usernameInput.focus({ preventScroll: true });
+      } catch (_) {
+        usernameInput.focus();
+      }
+    });
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const submit = e.target.querySelector('button[type="submit"]');
+      submit.disabled = true;
+      submit.textContent = 'Signing in…';
+      try {
+        const res = await fetch('/api/admin/login', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: fd.get('username'),
+            password: fd.get('password'),
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const detail = data.detail;
+          const msg = typeof detail === 'string'
+            ? detail
+            : Array.isArray(detail)
+              ? detail.map((d) => d.msg || String(d)).join(', ')
+              : res.statusText;
+          throw new Error(msg || 'Sign in failed');
+        }
+        location.replace(next);
+      } catch (err) {
+        showMessage(err.message || 'Sign in failed', 'error');
+        submit.disabled = false;
+        submit.textContent = 'Sign In';
+        usernameInput.focus();
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#171f2c" media="(max-width: 640px)">
+  <title>Knowledge — Alchemy FM Admin</title>
+  <link rel="stylesheet" href="/static/style.css?v=64">
+  <link rel="stylesheet" href="/static/admin-mobile.css?v=3" media="(max-width: 640px)">
+</head>
+<body>
+  <header>
+    <h1><a href="/" style="color:inherit;text-decoration:none">Alchemy FM</a></h1>
+    <div class="header-end">
+      <div id="header-broadcast-stats" class="header-broadcast-stats" aria-live="polite">
+        <span class="header-stat is-loading">…</span>
+      </div>
+      <nav>
+      <a href="/">Tune In</a>
+      <a href="/admin.html">Admin</a>
+      <a href="/admin/knowledge.html" aria-current="page">Knowledge</a>
+      <button type="button" class="nav-link-btn" id="admin-help-btn">Help</button>
+      <button type="button" class="nav-link-btn" id="logout-btn">Log Out</button>
+      </nav>
+    </div>
+  </header>
+  <main class="admin-main">
+    <header class="admin-page-header">
+      <h2>Knowledge</h2>
+      <p class="admin-lede">Track trivia for on-air listeners and enrichment settings.</p>
+    </header>
+
+    <div id="knowledge-message" class="message" aria-live="polite"></div>
+
+    <div class="admin-knowledge-layout">
+      <div class="admin-knowledge-top">
+        <section class="admin-panel admin-knowledge-settings">
+          <div class="admin-panel-head">
+            <div>
+              <h2>Settings</h2>
+              <p class="admin-lede">Off hides facts from listeners. Cached only reads existing cache. Active enriches upcoming queue tracks in the background.</p>
+            </div>
+          </div>
+          <form id="knowledge-form">
+            <section class="admin-fieldset" aria-labelledby="k-mode-title">
+              <h3 class="admin-fieldset-title" id="k-mode-title">Mode</h3>
+              <fieldset class="knowledge-mode-fieldset">
+                <legend class="sr-only">Knowledge mode</legend>
+                <label class="knowledge-mode-option">
+                  <input type="radio" name="mode" value="off"> Off
+                </label>
+                <label class="knowledge-mode-option">
+                  <input type="radio" name="mode" value="cached_only"> Cached Only
+                </label>
+                <label class="knowledge-mode-option">
+                  <input type="radio" name="mode" value="active"> Active
+                </label>
+              </fieldset>
+            </section>
+
+            <div class="admin-knowledge-settings-grid">
+              <section class="admin-fieldset" aria-labelledby="k-enrich-title">
+                <h3 class="admin-fieldset-title" id="k-enrich-title">Enrichment</h3>
+                <div class="form-grid form-grid-2">
+                  <div>
+                    <label for="cache_ttl_days">Cache TTL (days)</label>
+                    <input id="cache_ttl_days" name="cache_ttl_days" type="number" min="1" max="3650" required>
+                  </div>
+                  <div>
+                    <label for="lookahead_count">Lookahead Tracks</label>
+                    <input id="lookahead_count" name="lookahead_count" type="number" min="1" max="20" required>
+                  </div>
+                  <div>
+                    <label for="max_facts_per_track">Max Facts Per Track</label>
+                    <input id="max_facts_per_track" name="max_facts_per_track" type="number" min="1" max="10" required>
+                  </div>
+                  <div>
+                    <label for="min_confidence">Min Confidence</label>
+                    <input id="min_confidence" name="min_confidence" type="number" min="0" max="1" step="0.05" required>
+                  </div>
+                </div>
+              </section>
+
+              <section class="admin-fieldset" aria-labelledby="k-air-title">
+                <h3 class="admin-fieldset-title" id="k-air-title">On Air</h3>
+                <div class="form-grid form-grid-2">
+                  <div>
+                    <label for="display_fact_count">Facts Shown (Rotation)</label>
+                    <input id="display_fact_count" name="display_fact_count" type="number" min="1" max="10" required>
+                  </div>
+                  <div>
+                    <label for="rotation_interval_sec">Rotation Interval (Sec)</label>
+                    <input id="rotation_interval_sec" name="rotation_interval_sec" type="number" min="5" max="120" required>
+                  </div>
+                  <div class="form-span-2">
+                    <label for="max_fact_chars">Max Fact Length (Chars)</label>
+                    <input id="max_fact_chars" name="max_fact_chars" type="number" min="50" max="500" required>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" class="btn">Save Settings</button>
+              <button type="button" class="btn btn-danger" id="purge-cache-btn">Clear Knowledge Cache</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="admin-panel admin-knowledge-status">
+          <h2>Status</h2>
+          <div class="admin-knowledge-status-body">
+            <div class="knowledge-stat-grid" id="knowledge-stats">
+              <div class="knowledge-stat-card">
+                <div class="knowledge-stat-value" id="stat-cache">—</div>
+                <div class="knowledge-stat-label">Cache Entries</div>
+              </div>
+              <div class="knowledge-stat-card">
+                <div class="knowledge-stat-value" id="stat-ready">—</div>
+                <div class="knowledge-stat-label">Ready Facts</div>
+              </div>
+              <div class="knowledge-stat-card">
+                <div class="knowledge-stat-value" id="stat-pending">—</div>
+                <div class="knowledge-stat-label">Jobs Pending</div>
+              </div>
+              <div class="knowledge-stat-card">
+                <div class="knowledge-stat-value" id="stat-running">—</div>
+                <div class="knowledge-stat-label">Jobs Running</div>
+              </div>
+              <div class="knowledge-stat-card">
+                <div class="knowledge-stat-value" id="stat-failed">—</div>
+                <div class="knowledge-stat-label">Jobs Failed</div>
+              </div>
+              <div class="knowledge-stat-card">
+                <div class="knowledge-stat-value" id="stat-cancelled">—</div>
+                <div class="knowledge-stat-label">Jobs Cancelled</div>
+              </div>
+            </div>
+            <div class="knowledge-error-box">
+              <span class="admin-group-title">Last Job Error</span>
+              <p id="stat-last-error" class="knowledge-last-error">—</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section class="admin-panel admin-knowledge-providers">
+        <div class="admin-panel-head">
+          <div>
+            <h2>Providers</h2>
+            <p class="admin-lede">Search uses free public APIs. Ollama and optional SearXNG are set in <code>.env</code> — restart the backend after changing those.</p>
+          </div>
+        </div>
+        <div class="knowledge-provider-grid">
+          <article class="knowledge-provider-card">
+            <div class="knowledge-provider-card-head">
+              <h3 class="knowledge-provider-name">Search Sources</h3>
+              <span class="knowledge-provider-badge">Free</span>
+            </div>
+            <p class="knowledge-provider-desc">MusicBrainz · Wikipedia · DuckDuckGo</p>
+            <div class="knowledge-provider-card-actions">
+              <button type="button" class="btn btn-sm" id="test-search-btn">Test Search</button>
+              <span class="hint" id="search-test-result"></span>
+            </div>
+          </article>
+
+          <article class="knowledge-provider-card">
+            <div class="knowledge-provider-card-head">
+              <h3 class="knowledge-provider-name">SearXNG Fallback</h3>
+              <span class="knowledge-provider-badge is-optional">Optional</span>
+            </div>
+            <code class="knowledge-provider-value" id="display-searxng-url">—</code>
+            <div class="knowledge-provider-card-actions">
+              <button type="button" class="btn btn-sm" id="test-searxng-btn">Test SearXNG</button>
+              <span class="hint" id="searxng-test-result"></span>
+            </div>
+          </article>
+
+          <article class="knowledge-provider-card">
+            <div class="knowledge-provider-card-head">
+              <h3 class="knowledge-provider-name">Ollama</h3>
+              <span class="knowledge-provider-badge is-required">Required</span>
+            </div>
+            <code class="knowledge-provider-value" id="display-ollama-url">—</code>
+            <p class="knowledge-provider-meta">Model: <code id="display-ollama-model">—</code></p>
+            <div class="knowledge-provider-card-actions">
+              <button type="button" class="btn btn-sm" id="test-ollama-btn">Test Ollama</button>
+              <span class="hint" id="ollama-test-result"></span>
+            </div>
+          </article>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div id="admin-help-dialog" class="admin-dialog admin-help-dialog" hidden>
+    <div class="admin-dialog-backdrop" data-help-dismiss></div>
+    <div
+      class="admin-help-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="admin-help-title"
+    >
+      <header class="admin-help-header">
+        <div>
+          <h2 id="admin-help-title">Admin Help</h2>
+          <p class="admin-help-lede">Operations for managing stations, queues, broadcast, and knowledge settings.</p>
+        </div>
+        <button type="button" class="admin-help-close" data-help-dismiss aria-label="Close help">×</button>
+      </header>
+      <div class="admin-help-body">
+        <section class="admin-help-section">
+          <h3>Stations Table</h3>
+          <dl class="admin-help-dl">
+            <dt>Edit</dt>
+            <dd>Open the station form with current settings. Slug cannot change after creation.</dd>
+            <dt>Queue</dt>
+            <dd>Manually refill the queue when it runs low. Normal operation refills automatically in the background.</dd>
+            <dt>On / Off</dt>
+            <dd>Disable stops Liquidsoap for that station (mount goes silent). Enable starts it again within a few seconds.</dd>
+            <dt>Rebuild</dt>
+            <dd><strong>Destructive.</strong> Clears the queue and pool, re-imports tracks from the programming source, and rewrites <code>queue.m3u</code>. Use when programming or source settings changed drastically.</dd>
+            <dt>Delete</dt>
+            <dd>Permanently removes the station, its queue files, and Liquidsoap process.</dd>
+          </dl>
+        </section>
+        <section class="admin-help-section">
+          <h3>Creating &amp; Editing Stations</h3>
+          <dl class="admin-help-dl">
+            <dt>Source Type</dt>
+            <dd>
+              <strong>Song Alchemy Anchor</strong> — pulls tracks from an AudioMuse anchor.<br>
+              <strong>Similar Seed</strong> — starts from one library track and plays similar titles.
+            </dd>
+            <dt>When Pool Runs Low</dt>
+            <dd>
+              <strong>Stay In Source</strong> — reuse imported pool (no drift).<br>
+              <strong>Similar To Seed</strong> — fetch more like the fixed seed.<br>
+              <strong>Similar To Last</strong> — follow whatever just played (can wander).
+            </dd>
+            <dt>Queue Target / Refresh Below</dt>
+            <dd>Target is how many tracks to keep queued. When pending drops below “refresh below,” the backend adds more.</dd>
+            <dt>Artist Separation</dt>
+            <dd>Minimum minutes before the same artist can play again on this station.</dd>
+            <dt>Station Artwork</dt>
+            <dd>Fallback image on the station page when the current track has no album art. Upload or URL.</dd>
+          </dl>
+        </section>
+        <section class="admin-help-section">
+          <h3>Broadcast (global)</h3>
+          <dl class="admin-help-dl">
+            <dt>Max Listeners</dt>
+            <dd>Icecast client limit across all mounts. Changing it requires <strong>Restart Icecast</strong> — live streams drop briefly.</dd>
+            <dt>Encoding</dt>
+            <dd>Format, bitrate, and sample rate for every station. Saving applies to Liquidsoap; stations restart individually.</dd>
+            <dt>Crossfade</dt>
+            <dd>Seconds to overlap between tracks. <code>0</code> = hard cut.</dd>
+          </dl>
+        </section>
+        <section class="admin-help-section" id="admin-help-knowledge">
+          <h3>Knowledge</h3>
+          <dl class="admin-help-dl">
+            <dt>What Listeners See</dt>
+            <dd>“Did you know?” trivia on the station page for the on-air track. Only cached facts are shown.</dd>
+            <dt>Mode</dt>
+            <dd>
+              <strong>Off</strong> — hidden.<br>
+              <strong>Cached Only</strong> — read cache, no new enrichment.<br>
+              <strong>Active</strong> — enrich upcoming queue tracks in the background.
+            </dd>
+            <dt>Providers</dt>
+            <dd>Search uses MusicBrainz, Wikipedia, and DuckDuckGo (free). Ollama is required (<code>OLLAMA_URL</code>, <code>OLLAMA_MODEL</code>). Optional SearXNG via <code>SEARXNG_URL</code>. Restart backend after <code>.env</code> changes.</dd>
+            <dt>Clear Cache</dt>
+            <dd>Removes all cached facts and cancels pending jobs. Use Active mode to rebuild.</dd>
+          </dl>
+        </section>
+        <section class="admin-help-section">
+          <h3>Troubleshooting</h3>
+          <ul class="admin-help-list">
+            <li><strong>Missing Album Art</strong> — Usually the on-air track could not be matched to a Navidrome ID. Try <em>Queue</em> or <em>Rebuild</em> if metadata looks wrong.</li>
+            <li><strong>Wrong Or Repeating Tracks</strong> — Long uptimes: <code>queue.m3u</code> can grow with old entries while the database moves on. Restart the backend or use Rebuild to resync (see <code>docs/TECH_DEBT.md</code> in the repo).</li>
+            <li><strong>Station Silent After Edit</strong> — Confirm the station is enabled and check Docker logs for Liquidsoap. Mount changes restart only that station (~1–2s gap).</li>
+            <li><strong>Seed Search Empty</strong> — AudioMuse must be running and reachable; hard-refresh admin after backend updates.</li>
+            <li><strong>Listeners Stuck After Icecast Restart</strong> — Stream epoch bumps automatically; tuned-in web players reconnect within a few seconds.</li>
+          </ul>
+        </section>
+        <section class="admin-help-section">
+          <h3>External Services</h3>
+          <p class="admin-help-p">Programming comes from <strong>AudioMuse</strong>. Stream URLs and cover art come from <strong>Navidrome</strong>. Both must be configured in <code>.env</code> and reachable from the backend container — listeners never connect to them directly.</p>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div id="knowledge-purge-dialog" class="admin-dialog" hidden>
+    <div class="admin-dialog-backdrop" data-purge-dismiss></div>
+    <div
+      class="admin-dialog-panel admin-dialog-panel-danger"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="knowledge-purge-title"
+      aria-describedby="knowledge-purge-desc"
+    >
+      <div class="admin-dialog-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.75">
+          <path d="M4 7h16M9 7V5h6v2M10 11v6M14 11v6"/>
+          <path d="M6 7l1 14h10l1-14"/>
+        </svg>
+      </div>
+      <h3 id="knowledge-purge-title" class="admin-dialog-title">Clear Knowledge Cache?</h3>
+      <p id="knowledge-purge-desc" class="admin-dialog-lede">
+        Deletes all cached facts and cancels pending enrichment jobs.
+        Settings and provider URLs are kept. You can re-enrich tracks after switching back to Active.
+      </p>
+      <div class="admin-dialog-actions">
+        <button type="button" class="btn btn-secondary" data-purge-dismiss>Cancel</button>
+        <button type="button" class="btn btn-danger" id="knowledge-purge-confirm">Clear Cache</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=23"></script>
+  <script>
+    const msgEl = document.getElementById('knowledge-message');
+    const form = document.getElementById('knowledge-form');
+
+    function showMsg(text, kind) {
+      if (!text) {
+        msgEl.textContent = '';
+        msgEl.className = 'message';
+        return;
+      }
+      msgEl.textContent = text;
+      msgEl.className = kind === 'error' ? 'message error' : kind === 'success' ? 'message success' : 'message';
+    }
+
+    async function adminFetchJSON(url, opts = {}) {
+      const res = await fetch(url, { credentials: 'same-origin', ...opts });
+      if (res.status === 401) {
+        location.href = '/admin/login.html?next=' + encodeURIComponent(location.pathname);
+        throw new Error('Not signed in');
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || res.statusText || 'Request failed');
+      return data;
+    }
+
+    function applySettings(s) {
+      form.querySelectorAll('input[name="mode"]').forEach(r => {
+        r.checked = r.value === s.mode;
+      });
+      for (const key of [
+        'cache_ttl_days', 'lookahead_count', 'display_fact_count',
+        'rotation_interval_sec', 'max_facts_per_track', 'max_fact_chars', 'min_confidence'
+      ]) {
+        form[key].value = s[key];
+      }
+      document.getElementById('display-searxng-url').textContent = s.searxng_url || 'Not set (optional)';
+      document.getElementById('display-ollama-url').textContent = s.ollama_url || 'Not set in .env';
+      document.getElementById('display-ollama-model').textContent = s.ollama_model || 'Not set in .env';
+      document.getElementById('stat-cache').textContent = s.cache_entries;
+      document.getElementById('stat-ready').textContent = s.cache_ready;
+      document.getElementById('stat-pending').textContent = s.jobs_pending;
+      document.getElementById('stat-running').textContent = s.jobs_running;
+      document.getElementById('stat-failed').textContent = s.jobs_failed;
+      document.getElementById('stat-cancelled').textContent = s.jobs_cancelled ?? 0;
+      document.getElementById('stat-last-error').textContent = s.last_job_error || '—';
+    }
+
+    async function loadSettings() {
+      const s = await adminFetchJSON('/api/admin/knowledge');
+      applySettings(s);
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const modeInput = form.querySelector('input[name="mode"]:checked');
+      const body = {
+        mode: modeInput ? modeInput.value : 'off',
+        cache_ttl_days: Number(fd.get('cache_ttl_days')),
+        lookahead_count: Number(fd.get('lookahead_count')),
+        display_fact_count: Number(fd.get('display_fact_count')),
+        rotation_interval_sec: Number(fd.get('rotation_interval_sec')),
+        max_facts_per_track: Number(fd.get('max_facts_per_track')),
+        max_fact_chars: Number(fd.get('max_fact_chars')),
+        min_confidence: Number(fd.get('min_confidence')),
+      };
+      try {
+        const s = await adminFetchJSON('/api/admin/knowledge', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        applySettings(s);
+        showMsg('Settings saved.', 'success');
+      } catch (err) {
+        showMsg(err.message, 'error');
+      }
+    });
+
+    document.getElementById('test-search-btn').addEventListener('click', async () => {
+      const el = document.getElementById('search-test-result');
+      el.textContent = 'Testing…';
+      try {
+        const s = await adminFetchJSON('/api/admin/knowledge?test=1');
+        el.textContent = s.search_ok ? `✓ ${s.search_message}` : `✗ ${s.search_message}`;
+      } catch (err) {
+        el.textContent = err.message;
+      }
+    });
+
+    document.getElementById('test-searxng-btn').addEventListener('click', async () => {
+      const el = document.getElementById('searxng-test-result');
+      el.textContent = 'Testing…';
+      try {
+        const s = await adminFetchJSON('/api/admin/knowledge?test=1');
+        if (!s.searxng_url) {
+          el.textContent = 'Not configured';
+          return;
+        }
+        el.textContent = s.searxng_ok ? `✓ ${s.searxng_message}` : `✗ ${s.searxng_message}`;
+      } catch (err) {
+        el.textContent = err.message;
+      }
+    });
+
+    document.getElementById('test-ollama-btn').addEventListener('click', async () => {
+      const el = document.getElementById('ollama-test-result');
+      el.textContent = 'Testing…';
+      try {
+        const s = await adminFetchJSON('/api/admin/knowledge?test=1');
+        el.textContent = s.ollama_ok ? `✓ ${s.ollama_message}` : `✗ ${s.ollama_message}`;
+      } catch (err) {
+        el.textContent = err.message;
+      }
+    });
+
+    let purgeDialogResolver = null;
+
+    function closePurgeDialog(confirmed = false) {
+      const dialog = document.getElementById('knowledge-purge-dialog');
+      dialog.hidden = true;
+      document.body.classList.remove('admin-dialog-open');
+      const resolve = purgeDialogResolver;
+      purgeDialogResolver = null;
+      resolve?.(confirmed);
+    }
+
+    function openPurgeDialog() {
+      const dialog = document.getElementById('knowledge-purge-dialog');
+      return new Promise((resolve) => {
+        purgeDialogResolver = resolve;
+        dialog.hidden = false;
+        document.body.classList.add('admin-dialog-open');
+        document.getElementById('knowledge-purge-confirm')?.focus();
+      });
+    }
+
+    document.getElementById('knowledge-purge-dialog')?.addEventListener('click', (e) => {
+      if (e.target.closest('[data-purge-dismiss]')) closePurgeDialog(false);
+    });
+    document.getElementById('knowledge-purge-confirm')?.addEventListener('click', () => {
+      closePurgeDialog(true);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !document.getElementById('knowledge-purge-dialog')?.hidden) {
+        closePurgeDialog(false);
+      }
+    });
+
+    document.getElementById('purge-cache-btn').addEventListener('click', async () => {
+      if (!await openPurgeDialog()) return;
+      try {
+        const r = await adminFetchJSON('/api/admin/knowledge/purge', { method: 'POST' });
+        showMsg(`Cleared ${r.deleted} cache entries.`, 'success');
+        loadSettings();
+      } catch (err) {
+        showMsg(err.message, 'error');
+      }
+    });
+
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      await fetch('/api/admin/logout', { method: 'POST', credentials: 'same-origin' });
+      location.href = '/admin/login.html';
+    });
+
+    const adminHelpDialog = document.getElementById('admin-help-dialog');
+    function openAdminHelp() {
+      adminHelpDialog.hidden = false;
+      document.body.classList.add('admin-dialog-open');
+      adminHelpDialog.querySelector('.admin-help-close')?.focus();
+      const knowledgeSection = document.getElementById('admin-help-knowledge');
+      const helpBody = adminHelpDialog.querySelector('.admin-help-body');
+      if (knowledgeSection && helpBody) {
+        helpBody.scrollTop = knowledgeSection.offsetTop - helpBody.offsetTop;
+      }
+    }
+    function closeAdminHelp() {
+      adminHelpDialog.hidden = true;
+      document.body.classList.remove('admin-dialog-open');
+    }
+    document.getElementById('admin-help-btn')?.addEventListener('click', openAdminHelp);
+    adminHelpDialog?.addEventListener('click', (e) => {
+      if (e.target.closest('[data-help-dismiss]')) closeAdminHelp();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && adminHelpDialog && !adminHelpDialog.hidden) {
+        closeAdminHelp();
+      }
+    });
+
+    loadSettings().catch(err => showMsg(err.message, 'error'));
+    setInterval(() => loadSettings().catch(() => {}), 15000);
+  </script>
+</body>
+</html>

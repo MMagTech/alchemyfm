@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#171f2c" media="(max-width: 640px)">
+  <title>Alchemy FM</title>
+  <link rel="stylesheet" href="/static/style.css?v=64">
+</head>
+<body>
+  <header>
+    <h1>Alchemy FM</h1>
+  </header>
+  <main>
+    <p class="subtitle">Curated stations on the air. Everyone tuned in hears the same track.</p>
+    <div id="stations" class="station-grid">
+      <p class="empty">Loading stations…</p>
+    </div>
+  </main>
+  <script src="/static/app.js"></script>
+  <script>
+    const cardState = new Map();
+
+    function ensureCard(s) {
+      let card = document.querySelector(`[data-slug="${CSS.escape(s.slug)}"]`);
+      if (card) return card;
+
+      card = document.createElement('article');
+      card.className = 'station-card';
+      card.dataset.slug = s.slug;
+      card.innerHTML = `
+        <div class="station-card-art-wrap" data-img-class="station-card-art"
+          data-placeholder='<div class="station-card-art station-card-art-placeholder">♪</div>'></div>
+        <div class="station-card-body">
+          <div class="station-card-head">
+            <h2></h2>
+            <span class="station-card-listeners" title="Live listeners"></span>
+          </div>
+          <p class="desc"></p>
+          <div class="station-card-now">
+            <span class="now-label">On Air</span>
+            <span class="now-track"></span>
+          </div>
+          <a class="btn" href="#">Tune In</a>
+        </div>`;
+      return card;
+    }
+
+    function syncTrackMarquee(trackEl) {
+      const inner = trackEl.querySelector('.now-track-inner');
+      if (!inner) return;
+      trackEl.classList.remove('is-scrolling');
+      trackEl.style.removeProperty('--scroll-distance');
+      trackEl.style.removeProperty('--scroll-duration');
+      requestAnimationFrame(() => {
+        const overflow = inner.scrollWidth - trackEl.clientWidth;
+        if (overflow > 4) {
+          trackEl.classList.add('is-scrolling');
+          trackEl.style.setProperty('--scroll-distance', `-${overflow}px`);
+          trackEl.style.setProperty('--scroll-duration', `${Math.max(8, overflow / 28)}s`);
+        }
+      });
+    }
+
+    function setNowPlayingTrack(trackEl, text) {
+      let inner = trackEl.querySelector('.now-track-inner');
+      if (!inner) {
+        trackEl.innerHTML = `<span class="now-track-inner"></span>`;
+        inner = trackEl.querySelector('.now-track-inner');
+      }
+      inner.textContent = text;
+      trackEl.title = text;
+      syncTrackMarquee(trackEl);
+    }
+
+    function updateCard(s) {
+      const card = ensureCard(s);
+      const np = s.now_playing;
+      const now = np ? `${np.artist} — ${np.title}` : 'Starting up…';
+      const trackKey = RadioApp.trackKey(np);
+      const coverUrl = (np && np.cover_url) ? np.cover_url : (s.artwork_url || '');
+
+      card.querySelector('h2').textContent = s.name;
+      const listenersEl = card.querySelector('.station-card-listeners');
+      const count = Number(s.listeners) || 0;
+      listenersEl.textContent = count === 1 ? '1 listening' : `${count} listening`;
+      listenersEl.classList.toggle('is-live', count > 0);
+      listenersEl.setAttribute('aria-label', `${count} live listeners`);
+      card.querySelector('.desc').textContent = s.description || 'Live radio';
+      const trackEl = card.querySelector('.now-track');
+      if (trackEl.dataset.trackKey !== trackKey) {
+        trackEl.dataset.trackKey = trackKey || '';
+        setNowPlayingTrack(trackEl, now);
+        trackEl.classList.add('track-switch');
+        requestAnimationFrame(() => trackEl.classList.remove('track-switch'));
+      } else {
+        setNowPlayingTrack(trackEl, now);
+      }
+      card.querySelector('a.btn').href = `/station.html?slug=${encodeURIComponent(s.slug)}`;
+
+      const artWrap = card.querySelector('.station-card-art-wrap');
+      if (!coverUrl) {
+        artWrap.dataset.trackKey = '';
+        artWrap.innerHTML = artWrap.dataset.placeholder;
+      } else {
+        RadioApp.setCoverImage(artWrap, coverUrl, trackKey);
+      }
+      return card;
+    }
+
+    async function loadStations() {
+      const root = document.getElementById('stations');
+      try {
+        const stations = await RadioApp.fetchJSON('/api/stations');
+        if (!stations.length) {
+          root.innerHTML = '<p class="empty">No stations on air yet.</p>';
+          cardState.clear();
+          return;
+        }
+        const seen = new Set();
+        root.querySelector('.empty')?.remove();
+        const frag = document.createDocumentFragment();
+        stations.forEach(s => {
+          seen.add(s.slug);
+          frag.appendChild(updateCard(s));
+        });
+        root.querySelectorAll('[data-slug]').forEach(el => {
+          if (!seen.has(el.dataset.slug)) el.remove();
+        });
+        root.appendChild(frag);
+      } catch (err) {
+        root.innerHTML = `<p class="empty">Could not load stations: ${RadioApp.escape(err.message)}</p>`;
+      }
+    }
+
+    loadStations();
+    setInterval(loadStations, 8000);
+    window.addEventListener('resize', () => {
+      document.querySelectorAll('.now-track').forEach(syncTrackMarquee);
+    });
+  </script>
+</body>
+</html>

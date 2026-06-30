@@ -1,0 +1,72 @@
+services:
+  icecast:
+    image: infiniteproject/icecast:latest
+    ports:
+      - "${ICECAST_PORT:-8000}:8000"
+    environment:
+      ICECAST_SOURCE_PASSWORD: ${ICECAST_SOURCE_PASSWORD:-hackme}
+      ICECAST_ADMIN_PASSWORD: ${ICECAST_SOURCE_PASSWORD:-hackme}
+      ICECAST_RELAY_PASSWORD: ${ICECAST_SOURCE_PASSWORD:-hackme}
+      ICECAST_MAX_CLIENTS: ${ICECAST_MAX_CLIENTS:-100}
+      # Default image limit is 2 — one mount per station needs more headroom.
+      ICECAST_MAX_SOURCES: ${ICECAST_MAX_SOURCES:-20}
+    volumes:
+      - ./icecast/icecast.xml:/etc/icecast2/icecast.xml:ro
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    environment:
+      DATABASE_URL: sqlite:////data/radio.db
+      DATA_DIR: /data
+      AUDIOMUSE_URL: ${AUDIOMUSE_URL:-http://host.docker.internal:8000}
+      AUDIOMUSE_API_TOKEN: ${AUDIOMUSE_API_TOKEN:-}
+      NAVIDROME_URL: ${NAVIDROME_URL:-http://host.docker.internal:4533}
+      NAVIDROME_USER: ${NAVIDROME_USER:-}
+      NAVIDROME_PASSWORD: ${NAVIDROME_PASSWORD:-}
+      ICECAST_HOST: icecast
+      ICECAST_PORT: 8000
+      ICECAST_PUBLIC_HOST: ${ICECAST_PUBLIC_HOST:-localhost}
+      ICECAST_PUBLIC_PORT: ${ICECAST_PUBLIC_PORT:-8000}
+      ICECAST_PUBLIC_SCHEME: ${ICECAST_PUBLIC_SCHEME:-}
+      ICECAST_SOURCE_PASSWORD: ${ICECAST_SOURCE_PASSWORD:-hackme}
+      LIQUIDSOAP_CALLBACK_SECRET: ${LIQUIDSOAP_CALLBACK_SECRET:-change-me}
+      QUEUE_REFRESH_INTERVAL_SEC: ${QUEUE_REFRESH_INTERVAL_SEC:-30}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      RESTRICT_INTERNAL_ROUTES: ${RESTRICT_INTERNAL_ROUTES:-true}
+      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
+      ICECAST_DOCKER_RESTART: ${ICECAST_DOCKER_RESTART:-true}
+      DOCKER_COMPOSE_PROJECT: ${DOCKER_COMPOSE_PROJECT:-}
+      KNOWLEDGE_FEATURE: ${KNOWLEDGE_FEATURE:-false}
+      KNOWLEDGE_DATABASE_URL: ${KNOWLEDGE_DATABASE_URL:-sqlite:////data/knowledge.db}
+      SEARXNG_URL: ${SEARXNG_URL:-}
+      OLLAMA_URL: ${OLLAMA_URL:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
+    volumes:
+      - radio-data:/data
+      - ./web:/web:ro
+      - ./icecast/icecast.xml:/host-icecast/icecast.xml
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - icecast
+    restart: unless-stopped
+
+  liquidsoap:
+    build: ./liquidsoap
+    environment:
+      DATA_DIR: /data
+      SUPERVISOR_POLL_SEC: "3"
+    volumes:
+      - radio-data:/data
+    depends_on:
+      - backend
+      - icecast
+    restart: unless-stopped
+
+volumes:
+  radio-data:

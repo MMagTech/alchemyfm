@@ -1,0 +1,240 @@
+/* Admin layout — mobile only (640px and below). Desktop rules stay in style.css. */
+
+header {
+  flex-direction: column;
+  align-items: stretch;
+  padding: calc(0.65rem + env(safe-area-inset-top, 0px)) 1rem 0.75rem;
+  gap: 0.5rem;
+}
+
+header h1 {
+  font-size: 1.1rem;
+  text-align: center;
+}
+
+.header-end {
+  flex: none;
+  width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.45rem;
+  margin-left: 0;
+}
+
+.header-broadcast-stats {
+  justify-content: center;
+  gap: 0.85rem 1.1rem;
+  font-size: 0.78rem;
+}
+
+header nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem 0.85rem;
+}
+
+header nav a,
+header nav .nav-link-btn {
+  margin-left: 0;
+  font-size: 0.82rem;
+  padding: 0.12rem 0.35rem;
+  border: none;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+}
+
+header nav a[aria-current="page"] {
+  background: none;
+  border: none;
+  border-bottom: 2px solid var(--accent);
+  border-radius: 0;
+}
+
+main {
+  padding: 0.85rem 1rem 1.25rem;
+}
+
+.admin-page-header {
+  display: none;
+}
+
+.admin-knowledge-status-body {
+  flex: none;
+}
+
+.admin-knowledge-status-body .knowledge-stat-grid {
+  flex: none;
+}
+
+.admin-main {
+  max-width: none;
+}
+
+.admin-panel {
+  padding: 1rem 1rem 1.1rem;
+}
+
+.admin-panel-head {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+}
+
+.admin-panel-head > .btn {
+  width: 100%;
+}
+
+.admin-table-wrap {
+  margin: 0;
+  overflow: visible;
+}
+
+.admin-table {
+  table-layout: auto;
+}
+
+.admin-table thead {
+  display: none;
+}
+
+.admin-table tbody tr {
+  display: block;
+  margin-bottom: 0.85rem;
+  padding: 0.85rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.admin-table tbody tr:last-child {
+  margin-bottom: 0;
+}
+
+.admin-table tbody td {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+  overflow: visible;
+  text-align: right;
+}
+
+.admin-table tbody td::before {
+  content: attr(data-label);
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  text-align: left;
+}
+
+.admin-table tbody td[colspan] {
+  display: block;
+  text-align: center;
+}
+
+.admin-table tbody td[colspan]::before {
+  display: none;
+}
+
+.admin-table tbody td.admin-name-cell {
+  display: block;
+  padding-top: 0;
+  padding-bottom: 0.55rem;
+  margin-bottom: 0.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  text-align: left;
+}
+
+.admin-table tbody td.admin-name-cell::before {
+  display: none;
+}
+
+.admin-table tbody td.admin-name-cell .admin-station-link {
+  font-size: 1rem;
+}
+
+.admin-table tbody td.actions {
+  flex-direction: column;
+  align-items: stretch;
+  padding-top: 0.65rem;
+  margin-top: 0.35rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  text-align: left;
+}
+
+.admin-table tbody td.actions::before {
+  align-self: flex-start;
+  margin-bottom: 0.15rem;
+}
+
+.admin-actions {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.admin-action-menu-panel {
+  left: 0;
+  right: auto;
+}
+
+.admin-table tbody td.admin-status-cell .admin-pill-row {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.programming-grid,
+.form-grid-2,
+.form-grid-3 {
+  grid-template-columns: 1fr;
+}
+
+.listeners-control {
+  flex-direction: column;
+}
+
+.listeners-control .btn {
+  width: 100%;
+}
+
+.form-actions {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.form-actions .btn {
+  width: 100%;
+}
+
+.knowledge-mode-fieldset {
+  grid-template-columns: 1fr;
+}
+
+.knowledge-mode-option {
+  justify-content: flex-start;
+  border-right: none;
+  border-bottom: 1px solid var(--border);
+}
+
+.knowledge-mode-option:last-child {
+  border-bottom: none;
+}
+
+.admin-help-dialog {
+  padding: 0.75rem;
+}
+
+.admin-help-panel {
+  width: 100%;
+  max-height: calc(100dvh - 1.5rem);
+}
+
+.admin-dialog {
+  padding: 0.75rem;
+}

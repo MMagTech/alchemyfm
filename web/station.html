@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#171f2c" media="(max-width: 640px)">
+  <title>Station — Alchemy FM</title>
+  <link rel="stylesheet" href="/static/style.css?v=66">
+  <link rel="stylesheet" href="/static/station-desktop.css?v=1" media="(min-width: 641px)">
+  <link rel="stylesheet" href="/static/station-mobile.css?v=4" media="(max-width: 640px)">
+</head>
+<body>
+  <header>
+    <h1><a href="/" style="color:inherit;text-decoration:none">Alchemy FM</a></h1>
+    <nav>
+      <a href="/">All Stations</a>
+    </nav>
+  </header>
+  <main id="content">
+    <p class="empty">Loading…</p>
+  </main>
+  <script src="/static/live-audio-graph.js?v=1"></script>
+  <script src="/static/strip-visualizer.js?v=1"></script>
+  <script src="/static/app.js?v=20"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const slug = params.get('slug');
+    let shellReady = false;
+
+    let knowledgeFeature = false;
+    let knowledgeFacts = [];
+    let knowledgeFactIndex = 0;
+    let knowledgeRotateTimer = null;
+    let knowledgeTipTimer = null;
+    let knowledgeTrackKey = '';
+    let stationDescription = '';
+    const KNOWLEDGE_TIP_AUTO_CLOSE_MS = 6000;
+
+    function clearKnowledgeRotation() {
+      clearInterval(knowledgeRotateTimer);
+      knowledgeRotateTimer = null;
+    }
+
+    function clearKnowledgeTipTimer() {
+      clearTimeout(knowledgeTipTimer);
+      knowledgeTipTimer = null;
+    }
+
+    function applyStationDescLine() {
+      const descEl = document.getElementById('station-desc');
+      if (!descEl) return;
+      const text = stationDescription || '';
+      descEl.textContent = text;
+      descEl.hidden = !text;
+    }
+
+    function closeKnowledgeTip(suppressHover = false) {
+      const tip = document.getElementById('knowledge-tip');
+      if (!tip) return;
+      clearKnowledgeTipTimer();
+      tip.classList.remove('is-open');
+      if (suppressHover) tip.classList.add('suppress-hover');
+      tip.querySelector('.knowledge-tip-btn')?.setAttribute('aria-expanded', 'false');
+    }
+
+    function openKnowledgeTip() {
+      const tip = document.getElementById('knowledge-tip');
+      const btn = tip?.querySelector('.knowledge-tip-btn');
+      if (!tip) return;
+      tip.classList.remove('suppress-hover');
+      tip.classList.add('is-open');
+      btn?.setAttribute('aria-expanded', 'true');
+      clearKnowledgeTipTimer();
+      knowledgeTipTimer = setTimeout(() => {
+        knowledgeTipTimer = null;
+        closeKnowledgeTip(true);
+      }, KNOWLEDGE_TIP_AUTO_CLOSE_MS);
+    }
+
+    function applyKnowledgeTip() {
+      const tip = document.getElementById('knowledge-tip');
+      if (!tip) return;
+      const textEl = document.getElementById('knowledge-fact-text');
+      const linkEl = document.getElementById('knowledge-fact-source');
+
+      if (!knowledgeFeature || !knowledgeFacts.length) {
+        tip.hidden = true;
+        closeKnowledgeTip();
+        return;
+      }
+
+      tip.hidden = false;
+      const fact = knowledgeFacts[knowledgeFactIndex % knowledgeFacts.length];
+      if (textEl) textEl.textContent = fact.text;
+      const src = (fact.sources && fact.sources[0]) || null;
+      if (linkEl) {
+        if (src && src.url) {
+          linkEl.href = src.url;
+          linkEl.textContent = src.title || 'Source';
+          linkEl.hidden = false;
+        } else {
+          linkEl.hidden = true;
+          linkEl.removeAttribute('href');
+        }
+      }
+    }
+
+    function wireKnowledgeTip() {
+      const tip = document.getElementById('knowledge-tip');
+      if (!tip || tip.dataset.wired === '1') return;
+      tip.dataset.wired = '1';
+      const btn = tip.querySelector('.knowledge-tip-btn');
+      btn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openKnowledgeTip();
+      });
+      tip.addEventListener('mouseleave', () => {
+        tip.classList.remove('suppress-hover');
+      });
+      document.addEventListener('click', (e) => {
+        if (!tip.hidden && !tip.contains(e.target)) {
+          closeKnowledgeTip(true);
+        }
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeKnowledgeTip(true);
+      });
+    }
+
+    function updateKnowledge(np, station) {
+      stationDescription = station.description || '';
+      if (!knowledgeFeature) {
+        clearKnowledgeRotation();
+        knowledgeFacts = [];
+        applyKnowledgeTip();
+        applyStationDescLine();
+        return;
+      }
+      const trackKey = RadioApp.trackKey(np);
+      const block = np && np.knowledge;
+      if (!block || !block.facts || !block.facts.length) {
+        clearKnowledgeRotation();
+        knowledgeFacts = [];
+        knowledgeTrackKey = trackKey || '';
+        closeKnowledgeTip();
+        applyKnowledgeTip();
+        applyStationDescLine();
+        return;
+      }
+      if (trackKey !== knowledgeTrackKey) {
+        knowledgeTrackKey = trackKey;
+        knowledgeFacts = block.facts;
+        knowledgeFactIndex = 0;
+        clearKnowledgeRotation();
+        closeKnowledgeTip();
+        applyKnowledgeTip();
+        applyStationDescLine();
+        const interval = (block.rotation_interval_sec || 15) * 1000;
+        knowledgeRotateTimer = setInterval(() => {
+          knowledgeFactIndex = (knowledgeFactIndex + 1) % knowledgeFacts.length;
+          applyKnowledgeTip();
+        }, interval);
+      }
+    }
+
+    function browserStreamUrl(stationSlug) {
+      return new URL(
+        `/api/stations/${encodeURIComponent(stationSlug)}/listen`,
+        location.origin
+      ).href;
+    }
+
+    function renderShell(s) {
+      document.title = `${s.name} — Alchemy FM`;
+      document.getElementById('content').innerHTML = `
+        <div class="panel station-tune-in">
+          <div class="tune-in-top">
+            <div class="tune-in-art-wrap">
+              <div id="hero-art" class="tune-in-art-mount"></div>
+              ${s.knowledge_feature ? `
+              <div id="knowledge-tip" class="knowledge-tip" hidden>
+                <button type="button" class="knowledge-tip-btn" aria-label="Track trivia" aria-expanded="false" aria-controls="knowledge-popover" title="Did you know?">✦</button>
+                <div id="knowledge-popover" class="knowledge-popover" role="tooltip">
+                  <p class="knowledge-popover-label">Did you know?</p>
+                  <p class="knowledge-popover-text" id="knowledge-fact-text"></p>
+                  <a class="knowledge-popover-source" id="knowledge-fact-source" href="#" target="_blank" rel="noopener noreferrer" hidden>Source</a>
+                </div>
+              </div>` : ''}
+            </div>
+            <div class="tune-in-meta">
+              <div class="tune-in-station-row">
+                <h2 id="station-name"></h2>
+              </div>
+              <div id="now-playing-body" class="tune-in-track"></div>
+              <p class="tune-in-desc hint" id="station-desc"></p>
+            </div>
+            <div class="tune-in-player">
+              <button type="button" class="live-play-btn" id="live-play-btn" aria-label="Play">
+                <span class="live-play-icon" aria-hidden="true"></span>
+              </button>
+              <div class="live-player-center">
+                <p class="live-status-line">
+                  <span class="live-status-dot" id="live-status-dot" aria-hidden="true"></span>
+                  <span id="live-status-text">Ready</span>
+                </p>
+                <p class="live-timer-wrap">
+                  <span class="live-timer" id="live-timer">0:00</span>
+                </p>
+              </div>
+              <div class="live-volume" title="Volume">
+                <input type="range" id="live-volume" class="live-volume-slider"
+                  min="0" max="1" step="0.05" value="1" aria-label="Volume">
+              </div>
+            </div>
+          </div>
+          <div class="tune-in-visualizer-wrap">
+            <canvas id="live-visualizer" class="tune-in-visualizer" aria-hidden="true"></canvas>
+          </div>
+          <audio id="live-audio" preload="none" playsinline></audio>
+          <div class="tune-in-foot">
+            <p class="hint tune-in-foot-links">
+              <button type="button" class="copy-link" id="copy-stream-url"
+                title="Copy stream URL"></button>
+              <span class="tune-in-foot-sep" aria-hidden="true">·</span>
+              <button type="button" class="copy-link" id="copy-m3u-url"
+                title="Copy playlist URL">listen.m3u</button>
+            </p>
+            <button type="button" class="viz-fullscreen-btn" id="viz-fullscreen-btn" hidden>
+              Fullscreen Visuals
+            </button>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Up Next</h3>
+          <ul class="track-list" id="up-next-list"></ul>
+        </div>
+        <div class="panel">
+          <h3>Recently Played</h3>
+          <ul class="track-list" id="recent-list"></ul>
+        </div>`;
+
+      const audio = document.getElementById('live-audio');
+      const listenUrl = browserStreamUrl(s.slug);
+      audio.dataset.streamSrc = listenUrl;
+      audio.src = listenUrl;
+      const streamUrl = s.stream_url;
+      const m3uUrl = new URL(
+        `/api/stations/${encodeURIComponent(s.slug)}/listen.m3u`,
+        location.origin
+      ).href;
+      const streamBtn = document.getElementById('copy-stream-url');
+      streamBtn.textContent = streamUrl;
+      streamBtn.onclick = () => RadioApp.copyText(streamUrl, streamBtn);
+      const m3uBtn = document.getElementById('copy-m3u-url');
+      m3uBtn.onclick = () => RadioApp.copyText(m3uUrl, m3uBtn);
+      document.getElementById('station-name').textContent = s.name;
+      stationDescription = s.description || '';
+      RadioApp.initLivePlayer(audio);
+      wireFullscreenViz(audio);
+      wireKnowledgeTip();
+      shellReady = true;
+    }
+
+    function updateHeroArt(s) {
+      const np = s.now_playing;
+      const coverSrc = (np && np.cover_url) || s.artwork_url;
+      const el = document.getElementById('hero-art');
+      el.dataset.imgClass = 'artwork tune-in-art';
+      el.dataset.placeholder = '<div class="artwork tune-in-art artwork-placeholder">📻</div>';
+      if (!coverSrc) {
+        el.dataset.trackKey = '';
+        el.innerHTML = el.dataset.placeholder;
+        return;
+      }
+      RadioApp.setCoverImage(el, coverSrc, RadioApp.trackKey(np));
+    }
+
+    function updateNowPlaying(np) {
+      const el = document.getElementById('now-playing-body');
+      if (!np) {
+        el.innerHTML = '<p class="now-playing-artist">Waiting for first track…</p>';
+        el.dataset.trackKey = '';
+        return;
+      }
+      const trackKey = RadioApp.trackKey(np);
+      if (el.dataset.trackKey === trackKey) {
+        el.querySelector('.now-playing-title').textContent = np.title;
+        el.querySelector('.now-playing-artist').textContent = np.artist;
+        return;
+      }
+      el.dataset.trackKey = trackKey;
+      el.innerHTML = `
+        <p class="now-playing-title track-switch">${RadioApp.escape(np.title)}</p>
+        <p class="now-playing-artist">${RadioApp.escape(np.artist)}</p>`;
+      requestAnimationFrame(() => {
+        el.querySelector('.track-switch')?.classList.remove('track-switch');
+      });
+    }
+
+    function updateTrackList(el, tracks, emptyMsg) {
+      el.innerHTML = tracks.length
+        ? tracks.map(t =>
+            `<li><span class="artist">${RadioApp.escape(t.artist)}</span> — ${RadioApp.escape(t.title)}</li>`
+          ).join('')
+        : `<li class="muted">${emptyMsg}</li>`;
+    }
+
+    let pollTimer = null;
+    let lastStreamEpoch = null;
+    let milkdropMod = null;
+
+    function stationVizMeta(s) {
+      const np = s.now_playing;
+      return {
+        stationName: s.name,
+        artist: np?.artist || '',
+        title: np?.title || 'Live',
+        artworkUrl: (np && np.cover_url) || s.artwork_url || '',
+        trackKey: RadioApp.trackKey(np) || '',
+      };
+    }
+
+    async function ensureMilkdropMod() {
+      if (!milkdropMod) {
+        milkdropMod = await RadioApp.loadMilkdropFullscreen();
+      }
+      return milkdropMod;
+    }
+
+    function syncFullscreenVizButton() {
+      const btn = document.getElementById('viz-fullscreen-btn');
+      if (btn) btn.hidden = !RadioApp.fullscreenVizAvailable();
+    }
+
+    function wireFullscreenViz(audio) {
+      const btn = document.getElementById('viz-fullscreen-btn');
+      if (!btn || btn.dataset.wired === '1') return;
+      btn.dataset.wired = '1';
+      syncFullscreenVizButton();
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          const mod = await ensureMilkdropMod();
+          if (mod.isActive()) {
+            mod.close();
+          } else {
+            await mod.open(audio, () => {
+              const nameEl = document.getElementById('station-name');
+              const npEl = document.getElementById('now-playing-body');
+              const artImg = document.querySelector('#hero-art .cover-img');
+              return {
+                stationName: nameEl?.textContent || '',
+                artist: npEl?.querySelector('.now-playing-artist')?.textContent || '',
+                title: npEl?.querySelector('.now-playing-title')?.textContent || 'Live',
+                artworkUrl: artImg?.src || '',
+                trackKey: npEl?.dataset.trackKey || '',
+              };
+            });
+          }
+        } catch (err) {
+          alert(err.message || 'Could not open fullscreen visuals');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    }
+
+    function schedulePoll(ms) {
+      clearInterval(pollTimer);
+      pollTimer = setInterval(refresh, ms);
+    }
+
+    function streamUrlsMatch(audioSrc, canonical) {
+      if (!audioSrc || !canonical) return audioSrc === canonical;
+      try {
+        const a = new URL(audioSrc, location.origin);
+        const b = new URL(canonical, location.origin);
+        return a.origin === b.origin && a.pathname === b.pathname;
+      } catch {
+        return audioSrc === canonical;
+      }
+    }
+
+    function updateMeta(s) {
+      if (!shellReady) {
+        renderShell(s);
+      }
+      const audio = document.getElementById('live-audio');
+      const listenUrl = browserStreamUrl(slug);
+      if (audio && !streamUrlsMatch(audio.src, listenUrl)) {
+        const wasPlaying = !audio.paused || audio.dataset.wantLive === '1';
+        audio.dataset.streamSrc = listenUrl;
+        if (wasPlaying) {
+          audio.dataset.wantLive = '1';
+          audio.reconnectLiveStream?.();
+        } else {
+          audio.src = listenUrl;
+        }
+      } else if (audio && audio.error && audio.dataset.wantLive === '1') {
+        audio.reconnectLiveStream?.();
+      }
+      if (audio && s.stream_epoch != null) {
+        const epochChanged = lastStreamEpoch != null && s.stream_epoch !== lastStreamEpoch;
+        lastStreamEpoch = s.stream_epoch;
+        if (epochChanged && audio.dataset.wantLive === '1') {
+          audio.forceStreamOffline?.('Off air');
+        }
+      }
+      if (audio?.setStreamLive) {
+        audio.setStreamLive(Boolean(s.on_air));
+      }
+      const listening = audio && audio.dataset.wantLive === '1';
+      schedulePoll(listening ? 750 : 5000);
+      updateHeroArt(s);
+      updateNowPlaying(s.now_playing);
+      knowledgeFeature = Boolean(s.knowledge_feature);
+      updateKnowledge(s.now_playing, s);
+      updateTrackList(
+        document.getElementById('up-next-list'),
+        s.up_next,
+        'Queue filling…'
+      );
+      updateTrackList(
+        document.getElementById('recent-list'),
+        s.recently_played,
+        'Nothing played yet'
+      );
+      if (audio) {
+        const np = s.now_playing;
+        RadioApp.updateMediaSession({
+          title: np?.title || s.name,
+          artist: np?.artist || s.name,
+          album: s.name,
+          artworkUrl: (np && np.cover_url) || s.artwork_url || '',
+          playing: !audio.paused && audio.dataset.wantLive === '1',
+        });
+      }
+      if (window.__milkdropActive && milkdropMod) {
+        milkdropMod.updateMeta(stationVizMeta(s));
+      }
+    }
+
+    async function refresh() {
+      if (!slug) {
+        document.getElementById('content').innerHTML =
+          '<p class="empty">No station selected. <a href="/">Pick a station</a>.</p>';
+        shellReady = false;
+        return;
+      }
+      try {
+        const s = await RadioApp.fetchJSON(`/api/stations/${encodeURIComponent(slug)}`);
+        updateMeta(s);
+      } catch (err) {
+        document.getElementById('content').innerHTML =
+          `<p class="empty">${RadioApp.escape(err.message)}</p>`;
+        shellReady = false;
+      }
+    }
+
+    refresh();
+    schedulePoll(5000);
+  </script>
+</body>
+</html>

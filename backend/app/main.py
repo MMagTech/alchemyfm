@@ -1,0 +1,232 @@
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
+
+from app.auth import admin_auth_enabled, admin_user_from_request
+from app.config import settings
+from app.database import SessionLocal, Station, init_db
+from app.schemas import BroadcastStatsRead
+from app.middleware import SecurityHeadersMiddleware
+from app.routers import admin, admin_auth, admin_broadcast, admin_knowledge, audiomuse_admin, internal, stations
+from app.knowledge.database import init_knowledge_db
+from app.knowledge.worker import start_knowledge_worker
+from app.services.broadcast_settings import apply_broadcast_settings, get_broadcast_settings
+from app.services.icecast import fetch_broadcast_totals
+from app.services.navidrome import navidrome_client
+from app.services.queue import ensure_queue_fresh, rebuild_all_station_m3u, sync_station_from_icecast
+from app.knowledge.database import KnowledgeSessionLocal
+from app.knowledge.scheduler import schedule_all_stations_lookahead, schedule_knowledge_lookahead
+from app.knowledge.settings import get_knowledge_settings, knowledge_feature_enabled, processing_enabled
+
+logger = logging.getLogger(__name__)
+
+WEB_ROOT = Path("/web") if Path("/web").exists() else Path(__file__).resolve().parent.parent.parent / "web"
+
+_HTML_NO_CACHE = {"Cache-Control": "no-cache, must-revalidate"}
+
+
+def _html_page(name: str) -> FileResponse:
+    path = WEB_ROOT / name
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(path, headers=_HTML_NO_CACHE)
+
+
+_icecast_last_track: dict[str, tuple[str, str] | None] = {}
+
+
+async def _queue_refresh_loop() -> None:
+    while True:
+        try:
+            db: Session = SessionLocal()
+            kdb = None
+            knowledge_active = False
+            if knowledge_feature_enabled():
+                kdb = KnowledgeSessionLocal()
+                try:
+                    knowledge_active = processing_enabled(get_knowledge_settings(kdb).mode)
+                except Exception:
+                    logger.exception("Knowledge settings read failed")
+            try:
+                enabled = db.query(Station).filter(Station.enabled.is_(True)).all()
+                for station in enabled:
+                    _icecast_last_track[station.slug] = sync_station_from_icecast(
+                        db, station, _icecast_last_track.get(station.slug)
+                    )
+                    await ensure_queue_fresh(db, station)
+                    if knowledge_active:
+                        schedule_knowledge_lookahead(station.id)
+            finally:
+                db.close()
+                if kdb:
+                    kdb.close()
+        except Exception:
+            logger.exception("Queue refresh loop error")
+        await asyncio.sleep(settings.queue_refresh_interval_sec)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logging.basicConfig(level=logging.INFO)
+    if not admin_auth_enabled():
+        logger.warning(
+            "ADMIN_PASSWORD is not set — admin UI and /api/admin are DISABLED. "
+            "Set ADMIN_PASSWORD before exposing this service publicly."
+        )
+    init_db()
+    init_knowledge_db()
+    schedule_all_stations_lookahead()
+    Path(settings.stations_root).mkdir(parents=True, exist_ok=True)
+    db = SessionLocal()
+    try:
+        bs = get_broadcast_settings(db)
+        apply_broadcast_settings(db, bs)
+        rebuild_all_station_m3u(db)
+    finally:
+        db.close()
+    task = asyncio.create_task(_queue_refresh_loop())
+    knowledge_task = start_knowledge_worker()
+    yield
+    task.cancel()
+    if knowledge_task:
+        knowledge_task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    if knowledge_task:
+        try:
+            await knowledge_task
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(
+    title="Alchemy FM",
+    description="Station management and queue orchestration for live internet radio.",
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+app.include_router(stations.router)
+app.include_router(admin_auth.router)
+app.include_router(admin.router)
+app.include_router(admin_broadcast.router)
+app.include_router(admin_knowledge.router)
+app.include_router(audiomuse_admin.router)
+app.include_router(internal.router)
+
+
+@app.get("/api/cover/{item_id}")
+async def cover_art(item_id: str, size: int = Query(default=300, ge=64, le=1000)):
+    """Proxy album art from Navidrome for the web UI."""
+    result = await navidrome_client.fetch_cover_art(item_id, size)
+    if not result:
+        raise HTTPException(status_code=404, detail="Cover art not found")
+    data, media_type = result
+    return Response(content=data, media_type=media_type, headers={"Cache-Control": "public, max-age=3600"})
+
+
+@app.get("/api/broadcast/stats", response_model=BroadcastStatsRead)
+def broadcast_stats():
+    db = SessionLocal()
+    try:
+        mounts = [
+            s.icecast_mount
+            for s in db.query(Station).filter(Station.enabled.is_(True)).all()
+        ]
+        bs = get_broadcast_settings(db)
+        stream_bitrate = (
+            bs.vorbis_bitrate if bs.encode_format == "vorbis" else bs.mp3_bitrate
+        )
+    finally:
+        db.close()
+    totals = fetch_broadcast_totals(mounts, stream_bitrate_kbps=stream_bitrate)
+    return BroadcastStatsRead(**totals)
+
+
+@app.get("/api/health")
+def health():
+    db = SessionLocal()
+    try:
+        count = db.query(Station).filter(Station.enabled.is_(True)).count()
+    finally:
+        db.close()
+    return {
+        "status": "ok",
+        "stations_enabled": count,
+        "knowledge_feature": settings.knowledge_feature,
+    }
+
+
+@app.get("/")
+def home():
+    index = WEB_ROOT / "index.html"
+    if index.exists():
+        return FileResponse(index, headers=_HTML_NO_CACHE)
+    return {"message": "Alchemy FM API"}
+
+
+@app.get("/station.html")
+def station_page():
+    try:
+        return _html_page("station.html")
+    except HTTPException:
+        return {"error": "not found"}
+
+
+@app.get("/admin/login.html")
+def admin_login_page():
+    try:
+        return _html_page("admin-login.html")
+    except HTTPException:
+        return {"error": "not found"}
+
+
+@app.get("/admin/knowledge.html")
+def admin_knowledge_page(request: Request):
+    if not settings.knowledge_feature:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not admin_auth_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Admin is disabled. Set ADMIN_PASSWORD in your environment.",
+        )
+    if not admin_user_from_request(request):
+        return RedirectResponse(
+            url="/admin/login.html?next=/admin/knowledge.html", status_code=302
+        )
+    try:
+        return _html_page("admin-knowledge.html")
+    except HTTPException:
+        return {"error": "not found"}
+
+
+@app.get("/admin.html")
+def admin_page(request: Request):
+    if not admin_auth_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Admin is disabled. Set ADMIN_PASSWORD in your environment.",
+        )
+    if not admin_user_from_request(request):
+        return RedirectResponse(url="/admin/login.html?next=/admin.html", status_code=302)
+    try:
+        return _html_page("admin.html")
+    except HTTPException:
+        return {"error": "not found"}
+
+
+static_dir = WEB_ROOT / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")

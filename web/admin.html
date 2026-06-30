@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#171f2c" media="(max-width: 640px)">
+  <title>Admin — Alchemy FM</title>
+  <link rel="stylesheet" href="/static/style.css?v=64">
+  <link rel="stylesheet" href="/static/admin-mobile.css?v=3" media="(max-width: 640px)">
+</head>
+<body>
+  <header>
+    <h1><a href="/" style="color:inherit;text-decoration:none">Alchemy FM</a></h1>
+    <div class="header-end">
+      <div id="header-broadcast-stats" class="header-broadcast-stats" aria-live="polite">
+        <span class="header-stat is-loading">…</span>
+      </div>
+      <nav>
+      <a href="/">Tune In</a>
+      <a href="/admin.html" aria-current="page">Admin</a>
+      <a href="/admin/knowledge.html" id="admin-knowledge-link" hidden>Knowledge</a>
+      <button type="button" class="nav-link-btn" id="admin-help-btn">Help</button>
+      <button type="button" class="nav-link-btn" id="logout-btn">Log Out</button>
+      </nav>
+    </div>
+  </header>
+  <main class="admin-main">
+    <header class="admin-page-header">
+      <h2>Admin</h2>
+      <p class="admin-lede">Manage stations, programming, and global broadcast settings.</p>
+    </header>
+
+    <section class="admin-panel admin-panel-primary">
+      <div class="admin-panel-head">
+        <div>
+          <h2>Stations</h2>
+          <p class="admin-lede">On-air channels. Changes apply within a few seconds.</p>
+        </div>
+        <button type="button" class="btn" id="show-create-station">Add Station</button>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <colgroup>
+            <col class="col-name">
+            <col class="col-mount">
+            <col class="col-source">
+            <col class="col-queue">
+            <col class="col-status">
+            <col class="col-actions">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Mount</th>
+              <th>Source</th>
+              <th>Queue</th>
+              <th>Status</th>
+              <th class="actions-col">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="stations-body">
+            <tr><td colspan="6">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="admin-panel" id="broadcast-section">
+      <div class="admin-panel-head">
+        <div>
+          <h2>Broadcast</h2>
+          <p class="admin-lede">Encoding and listener limits shared by all stations.</p>
+        </div>
+      </div>
+      <div id="broadcast-message" aria-live="polite"></div>
+      <form id="broadcast-form">
+        <div class="admin-broadcast-grid">
+          <div class="admin-broadcast-group">
+            <h3 class="admin-group-title">Listeners</h3>
+            <label for="max_listeners">Max Listeners (Total)</label>
+            <div class="listeners-control">
+              <input id="max_listeners" name="max_listeners" type="number" min="1" max="10000" value="100" required>
+              <button class="btn btn-danger btn-sm" type="button" id="restart-icecast-btn" hidden>Restart Icecast</button>
+            </div>
+            <p class="hint listeners-hint" id="restart-icecast-hint">Restart Icecast after changing this limit.</p>
+          </div>
+          <div class="admin-broadcast-group admin-broadcast-group-wide">
+            <h3 class="admin-group-title">Encoding</h3>
+            <div class="form-grid form-grid-2">
+              <div>
+                <label for="encode_format">Format</label>
+                <select id="encode_format" name="encode_format" required>
+                  <option value="mp3" selected>MP3</option>
+                  <option value="vorbis">Ogg Vorbis</option>
+                </select>
+              </div>
+              <div id="mp3-bitrate-field">
+                <label for="mp3_bitrate">MP3 Bitrate</label>
+                <select id="mp3_bitrate" name="mp3_bitrate" required>
+                  <option value="96">96 kbps</option>
+                  <option value="128">128 kbps</option>
+                  <option value="160">160 kbps</option>
+                  <option value="192" selected>192 kbps</option>
+                  <option value="256">256 kbps</option>
+                  <option value="320">320 kbps</option>
+                </select>
+              </div>
+              <div id="vorbis-bitrate-field" hidden>
+                <label for="vorbis_bitrate">Vorbis Bitrate</label>
+                <select id="vorbis_bitrate" name="vorbis_bitrate">
+                  <option value="96">96 kbps</option>
+                  <option value="128" selected>128 kbps</option>
+                  <option value="160">160 kbps</option>
+                  <option value="192">192 kbps</option>
+                  <option value="256">256 kbps</option>
+                  <option value="320">320 kbps</option>
+                </select>
+              </div>
+              <div>
+                <label for="sample_rate">Sample Rate</label>
+                <select id="sample_rate" name="sample_rate" required>
+                  <option value="44100" selected>44100 Hz</option>
+                  <option value="48000">48000 Hz</option>
+                </select>
+              </div>
+              <div>
+                <label for="genre">Genre Tag</label>
+                <input id="genre" name="genre" maxlength="100" placeholder="Radio">
+              </div>
+            </div>
+          </div>
+          <div class="admin-broadcast-group">
+            <h3 class="admin-group-title">Playback</h3>
+            <label for="crossfade_sec">Crossfade (seconds)</label>
+            <input id="crossfade_sec" name="crossfade_sec" type="number" min="0" max="8" value="0">
+            <p class="hint">0 = hard cut. 2–4s is typical for music radio.</p>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn" type="submit">Save Broadcast Settings</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="admin-panel admin-panel-compact" id="station-form-section">
+      <details class="admin-details" id="station-form-details">
+        <summary id="form-title">Create Station</summary>
+        <div id="form-message"></div>
+        <form id="station-form">
+          <input type="hidden" id="edit_id" name="edit_id" value="">
+          <section class="admin-fieldset" aria-labelledby="station-basics-title">
+            <h3 class="admin-fieldset-title" id="station-basics-title">Basics</h3>
+            <div class="form-grid form-grid-2">
+              <div>
+                <label for="name">Station Name</label>
+                <input id="name" name="name" required placeholder="Yacht Rock Radio">
+              </div>
+              <div id="slug-field">
+                <label for="slug">Slug (optional)</label>
+                <input id="slug" name="slug" placeholder="yachtrock">
+                <p class="hint">Auto-generated from name if blank.</p>
+              </div>
+              <div id="slug-readonly" class="source-picker" hidden>
+                <strong>Slug</strong>
+                <p class="hint" id="slug-readonly-value"></p>
+                <p class="hint">Cannot be changed after creation.</p>
+              </div>
+              <div>
+                <label for="icecast_mount">Icecast Mount</label>
+                <input id="icecast_mount" name="icecast_mount" required placeholder="/yachtrock">
+              </div>
+              <div class="form-span-2 artwork-upload">
+                <label>Station Artwork</label>
+                <div class="artwork-upload-row">
+                  <div class="artwork-preview" id="artwork-preview">
+                    <div class="artwork-preview-empty">No Artwork</div>
+                  </div>
+                  <div class="artwork-upload-side">
+                    <div class="artwork-upload-actions">
+                      <input id="artwork_file" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
+                      <button type="button" class="btn btn-secondary btn-sm" id="artwork-remove-btn" hidden>Remove</button>
+                    </div>
+                    <p class="hint">Fallback when no track cover is playing. JPEG, PNG, WebP, or GIF — max 2 MB.</p>
+                    <label for="artwork_url">Or Image URL</label>
+                    <input id="artwork_url" name="artwork_url" type="url" placeholder="https://…">
+                    <p class="hint">Upload wins if both are set.</p>
+                  </div>
+                </div>
+              </div>
+              <div class="form-span-2">
+                <label for="description">Description</label>
+                <textarea id="description" name="description" maxlength="120" placeholder="Smooth classics, 24/7"></textarea>
+                <p class="hint"><span id="description-count">0</span>/120 characters — keep it short; shown on station cards.</p>
+              </div>
+            </div>
+          </section>
+          <section class="admin-fieldset" aria-labelledby="station-programming-title">
+            <h3 class="admin-fieldset-title" id="station-programming-title">Programming</h3>
+            <div class="form-grid form-grid-2 programming-grid">
+              <div>
+                <label for="source_type">Source Type</label>
+                <select id="source_type" name="source_type" required>
+                  <option value="alchemy_anchor" selected>Song Alchemy Anchor</option>
+                  <option value="similar_seed">Similar Tracks (Seed Track)</option>
+                </select>
+              </div>
+              <div>
+                <label for="continuation_mode">When Pool Runs Low</label>
+                <select id="continuation_mode" name="continuation_mode" required>
+                  <option value="source_only" selected>Stay In Source (Allow Repeats)</option>
+                  <option value="similar_to_seed">Similar To Source Seed</option>
+                  <option value="similar_to_last">Similar To Last Played</option>
+                </select>
+              </div>
+              <div id="source-ref-field" class="form-span-2">
+                <div id="source-ref-anchor-field">
+                  <label for="anchor_select">Alchemy Anchor</label>
+                  <select id="anchor_select" required>
+                    <option value="">Loading anchors…</option>
+                  </select>
+                  <p class="hint">Saved anchors from AudioMuse → Song Alchemy.</p>
+                </div>
+                <div id="source-ref-seed-field" hidden>
+                  <label for="seed_search">Seed Track</label>
+                  <div id="seed_picker">
+                    <input id="seed_search" type="search" placeholder="Search artist or title…" autocomplete="off">
+                    <ul id="seed_search_results" class="track-search-results" hidden></ul>
+                  </div>
+                  <div id="seed_selected" class="track-selected">
+                    <span id="seed_selected_label"></span>
+                    <button class="track-selected-change" type="button" id="seed_clear">Change</button>
+                  </div>
+                  <input type="hidden" id="source_ref">
+                  <p class="hint seed-search-hint">Search your library — picks similar tracks from this seed.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="admin-fieldset" aria-labelledby="station-queue-title">
+            <h3 class="admin-fieldset-title" id="station-queue-title">Queue &amp; Refill</h3>
+            <div class="form-grid form-grid-3">
+              <div>
+                <label for="queue_target">Queue Target</label>
+                <input id="queue_target" name="queue_target" type="number" value="30" min="5" max="200">
+              </div>
+              <div>
+                <label for="refresh_threshold">Refresh Below</label>
+                <input id="refresh_threshold" name="refresh_threshold" type="number" value="10" min="1" max="100">
+              </div>
+              <div>
+                <label for="artist_separation_minutes">Artist Separation (Min)</label>
+                <input id="artist_separation_minutes" name="artist_separation_minutes" type="number" value="90" min="0">
+              </div>
+            </div>
+          </section>
+          <section class="admin-fieldset" id="station-advanced-section" hidden aria-labelledby="station-advanced-title">
+            <h3 class="admin-fieldset-title" id="station-advanced-title">Advanced</h3>
+            <p class="hint advanced-intro">Internal refill bookmarks — usually auto-filled when the station is created. Only change these if you know you need a fixed fallback for “When pool runs low.”</p>
+            <div class="form-grid form-grid-2">
+              <div>
+                <label for="identity_seed_item_id">Fallback Seed Track</label>
+                <input id="identity_seed_item_id" name="identity_seed_item_id" placeholder="Set automatically">
+                <p class="hint">Used when refills need “more like the seed.” Matches your seed track or a track from the first import.</p>
+              </div>
+              <div>
+                <label for="identity_anchor_id">Fallback Anchor</label>
+                <input id="identity_anchor_id" name="identity_anchor_id" placeholder="Set automatically">
+                <p class="hint">Used for extra refills on anchor-based stations. Matches your Song Alchemy anchor when the source is an anchor.</p>
+              </div>
+            </div>
+          </section>
+          <div class="admin-checks" id="enabled-field">
+            <label class="admin-check" for="enabled">
+              <input type="checkbox" id="enabled" name="enabled" checked>
+              <span>Start Station On Air After Creation</span>
+            </label>
+          </div>
+          <div class="form-actions">
+            <button class="btn" type="submit" id="submit-btn">Create Station</button>
+            <button class="btn btn-secondary" type="button" id="cancel-edit-btn" hidden>Cancel</button>
+          </div>
+        </form>
+      </details>
+    </section>
+  </main>
+
+  <div id="admin-help-dialog" class="admin-dialog admin-help-dialog" hidden>
+    <div class="admin-dialog-backdrop" data-help-dismiss></div>
+    <div
+      class="admin-help-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="admin-help-title"
+    >
+      <header class="admin-help-header">
+        <div>
+          <h2 id="admin-help-title">Admin Help</h2>
+          <p class="admin-help-lede">Operations for managing stations, queues, broadcast, and knowledge settings.</p>
+        </div>
+        <button type="button" class="admin-help-close" data-help-dismiss aria-label="Close help">×</button>
+      </header>
+      <div class="admin-help-body">
+        <section class="admin-help-section">
+          <h3>Stations Table</h3>
+          <dl class="admin-help-dl">
+            <dt>Edit</dt>
+            <dd>Open the station form with current settings. Slug cannot change after creation.</dd>
+            <dt>Queue</dt>
+            <dd>Manually refill the queue when it runs low. Normal operation refills automatically in the background.</dd>
+            <dt>On / Off</dt>
+            <dd>Disable stops Liquidsoap for that station (mount goes silent). Enable starts it again within a few seconds.</dd>
+            <dt>Rebuild</dt>
+            <dd><strong>Destructive.</strong> Clears the queue and pool, re-imports tracks from the programming source, and rewrites <code>queue.m3u</code>. Use when programming or source settings changed drastically.</dd>
+            <dt>Delete</dt>
+            <dd>Permanently removes the station, its queue files, and Liquidsoap process.</dd>
+          </dl>
+        </section>
+        <section class="admin-help-section">
+          <h3>Creating &amp; Editing Stations</h3>
+          <dl class="admin-help-dl">
+            <dt>Source Type</dt>
+            <dd>
+              <strong>Song Alchemy Anchor</strong> — pulls tracks from an AudioMuse anchor.<br>
+              <strong>Similar Seed</strong> — starts from one library track and plays similar titles.
+            </dd>
+            <dt>When Pool Runs Low</dt>
+            <dd>
+              <strong>Stay In Source</strong> — reuse imported pool (no drift).<br>
+              <strong>Similar To Seed</strong> — fetch more like the fixed seed.<br>
+              <strong>Similar To Last</strong> — follow whatever just played (can wander).
+            </dd>
+            <dt>Queue Target / Refresh Below</dt>
+            <dd>Target is how many tracks to keep queued. When pending drops below “refresh below,” the backend adds more.</dd>
+            <dt>Artist Separation</dt>
+            <dd>Minimum minutes before the same artist can play again on this station.</dd>
+            <dt>Station Artwork</dt>
+            <dd>Fallback image on the station page when the current track has no album art. Upload or URL.</dd>
+          </dl>
+        </section>
+        <section class="admin-help-section">
+          <h3>Broadcast (global)</h3>
+          <dl class="admin-help-dl">
+            <dt>Max Listeners</dt>
+            <dd>Icecast client limit across all mounts. Changing it requires <strong>Restart Icecast</strong> — live streams drop briefly.</dd>
+            <dt>Encoding</dt>
+            <dd>Format, bitrate, and sample rate for every station. Saving applies to Liquidsoap; stations restart individually.</dd>
+            <dt>Crossfade</dt>
+            <dd>Seconds to overlap between tracks. <code>0</code> = hard cut.</dd>
+          </dl>
+        </section>
+        <section class="admin-help-section" id="admin-help-knowledge">
+          <h3>Knowledge</h3>
+          <dl class="admin-help-dl">
+            <dt>What Listeners See</dt>
+            <dd>“Did you know?” trivia on the station page for the on-air track. Only cached facts are shown.</dd>
+            <dt>Mode</dt>
+            <dd>
+              <strong>Off</strong> — hidden.<br>
+              <strong>Cached Only</strong> — read cache, no new enrichment.<br>
+              <strong>Active</strong> — enrich upcoming queue tracks in the background.
+            </dd>
+            <dt>Providers</dt>
+            <dd>Search uses MusicBrainz, Wikipedia, and DuckDuckGo (free). Ollama is required (<code>OLLAMA_URL</code>, <code>OLLAMA_MODEL</code>). Optional SearXNG via <code>SEARXNG_URL</code>. Restart backend after <code>.env</code> changes.</dd>
+            <dt>Clear Cache</dt>
+            <dd>Removes all cached facts and cancels pending jobs. Use Active mode to rebuild.</dd>
+          </dl>
+        </section>
+        <section class="admin-help-section">
+          <h3>Troubleshooting</h3>
+          <ul class="admin-help-list">
+            <li><strong>Missing Album Art</strong> — Usually the on-air track could not be matched to a Navidrome ID. Try <em>Queue</em> or <em>Rebuild</em> if metadata looks wrong.</li>
+            <li><strong>Wrong Or Repeating Tracks</strong> — Long uptimes: <code>queue.m3u</code> can grow with old entries while the database moves on. Restart the backend or use Rebuild to resync (see <code>docs/TECH_DEBT.md</code> in the repo).</li>
+            <li><strong>Station Silent After Edit</strong> — Confirm the station is enabled and check Docker logs for Liquidsoap. Mount changes restart only that station (~1–2s gap).</li>
+            <li><strong>Seed Search Empty</strong> — AudioMuse must be running and reachable; hard-refresh admin after backend updates.</li>
+            <li><strong>Listeners Stuck After Icecast Restart</strong> — Stream epoch bumps automatically; tuned-in web players reconnect within a few seconds.</li>
+          </ul>
+        </section>
+        <section class="admin-help-section">
+          <h3>External Services</h3>
+          <p class="admin-help-p">Programming comes from <strong>AudioMuse</strong>. Stream URLs and cover art come from <strong>Navidrome</strong>. Both must be configured in <code>.env</code> and reachable from the backend container — listeners never connect to them directly.</p>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div id="icecast-restart-dialog" class="admin-dialog" hidden>
+    <div class="admin-dialog-backdrop" data-dialog-dismiss></div>
+    <div
+      class="admin-dialog-panel admin-dialog-panel-danger"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="icecast-restart-title"
+      aria-describedby="icecast-restart-desc"
+    >
+      <div class="admin-dialog-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.75">
+          <path d="M12 3v4M8.5 4.8 10.6 8.2M15.5 4.8 13.4 8.2M5 12H3M21 12h-2M7.2 16.2l-1.4 2.8M16.8 16.2l1.4 2.8M12 20v1"/>
+          <circle cx="12" cy="12" r="4"/>
+        </svg>
+      </div>
+      <h3 id="icecast-restart-title" class="admin-dialog-title">Restart Icecast?</h3>
+      <p id="icecast-restart-desc" class="admin-dialog-lede">
+        Live streams will drop for a few seconds while Icecast restarts.
+        Listeners should reconnect automatically once mounts are back.
+      </p>
+      <div class="admin-dialog-actions">
+        <button type="button" class="btn btn-secondary" data-dialog-dismiss>Cancel</button>
+        <button type="button" class="btn btn-danger" id="icecast-restart-confirm">Restart Icecast</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=23"></script>
+  <script>
+    const VALID_SOURCE_TYPES = ['alchemy_anchor', 'similar_seed'];
+    const SOURCE_LABELS = {
+      alchemy_anchor: 'Alchemy Anchor',
+      similar_seed: 'Similar Seed',
+    };
+    const SOURCE_SHORT = {
+      alchemy_anchor: 'Anchor',
+      similar_seed: 'Seed',
+    };
+
+    function getSourceRef() {
+      const sourceType = document.getElementById('source_type').value;
+      if (sourceType === 'alchemy_anchor') {
+        return document.getElementById('anchor_select').value.trim();
+      }
+      return document.getElementById('source_ref').value.trim();
+    }
+
+    function formatTrackLabel(track) {
+      const artist = track.artist || track.author || 'Unknown';
+      const title = track.title || 'Unknown';
+      const album = track.album && track.album !== 'unknown' ? ` · ${track.album}` : '';
+      return `${artist} — ${title}${album}`;
+    }
+
+    function enterSeedSearchMode() {
+      const field = document.getElementById('source-ref-seed-field');
+      field.classList.remove('has-selection');
+      document.getElementById('seed_search_results').hidden = true;
+      document.getElementById('seed_search_results').innerHTML = '';
+      document.getElementById('seed_search').required = true;
+    }
+
+    function clearSeedSelection() {
+      document.getElementById('source_ref').value = '';
+      document.getElementById('seed_search').value = '';
+      document.getElementById('seed_selected_label').textContent = '';
+      enterSeedSearchMode();
+    }
+
+    function selectSeedTrack(track) {
+      document.getElementById('source_ref').value = track.item_id;
+      document.getElementById('seed_selected_label').textContent = formatTrackLabel(track);
+      document.getElementById('seed_search_results').hidden = true;
+      document.getElementById('seed_search_results').innerHTML = '';
+      document.getElementById('seed_search').value = '';
+      document.getElementById('seed_search').required = false;
+      document.getElementById('source-ref-seed-field').classList.add('has-selection');
+    }
+
+    async function resolveSeedTrackLabel(itemId) {
+      if (!itemId) {
+        clearSeedSelection();
+        return;
+      }
+      try {
+        const track = await adminFetchJSON(`/api/admin/audiomuse/track?item_id=${encodeURIComponent(itemId)}`);
+        selectSeedTrack(track);
+      } catch (_) {
+        document.getElementById('source_ref').value = itemId;
+        document.getElementById('seed_selected_label').textContent = `Track id ${itemId}`;
+        document.getElementById('seed_search').required = false;
+        document.getElementById('source-ref-seed-field').classList.add('has-selection');
+      }
+    }
+
+    let seedSearchTimer = null;
+    let seedSearchRequest = 0;
+    let seedSearchResults = [];
+
+    async function runSeedSearch(query) {
+      const resultsEl = document.getElementById('seed_search_results');
+      const trimmed = query.trim();
+      if (trimmed.length < 2) {
+        resultsEl.hidden = true;
+        resultsEl.innerHTML = '';
+        return;
+      }
+      const requestId = ++seedSearchRequest;
+      resultsEl.innerHTML = '<li class="track-search-status">Searching…</li>';
+      resultsEl.hidden = false;
+      try {
+        const data = await adminFetchJSON(`/api/admin/audiomuse/search_tracks?q=${encodeURIComponent(trimmed)}`);
+        if (requestId !== seedSearchRequest) return;
+        const tracks = data.tracks || [];
+        seedSearchResults = tracks;
+        if (!tracks.length) {
+          resultsEl.innerHTML = '<li class="track-search-status">No matches — try artist and title.</li>';
+          return;
+        }
+        resultsEl.innerHTML = tracks.map((track, index) => {
+          const label = formatTrackLabel(track);
+          return `<li><button type="button" class="track-search-option" data-track-idx="${index}">${RadioApp.escape(label)}</button></li>`;
+        }).join('');
+      } catch (err) {
+        if (requestId !== seedSearchRequest) return;
+        const message = err.message === 'Not Found'
+          ? 'Track search is unavailable — rebuild/restart the backend, then hard-refresh this page.'
+          : err.message;
+        resultsEl.innerHTML = `<li class="track-search-status">${RadioApp.escape(message)}</li>`;
+      }
+    }
+
+    function updateSourceTypeUi(sourceType, sourceRef = '') {
+      const anchorField = document.getElementById('source-ref-anchor-field');
+      const seedField = document.getElementById('source-ref-seed-field');
+      const anchorSelect = document.getElementById('anchor_select');
+      const sourceRefInput = document.getElementById('source_ref');
+      const ref = sourceRef || sourceRefInput.value || '';
+
+      if (sourceType === 'alchemy_anchor') {
+        anchorField.hidden = false;
+        seedField.hidden = true;
+        anchorSelect.required = true;
+        document.getElementById('seed_search').required = false;
+        loadAnchors().then(() => {
+          if (ref) anchorSelect.value = ref;
+        });
+      } else {
+        anchorField.hidden = true;
+        seedField.hidden = false;
+        anchorSelect.required = false;
+        if (ref) {
+          resolveSeedTrackLabel(ref);
+        } else {
+          clearSeedSelection();
+        }
+      }
+    }
+
+    function redirectToLogin() {
+      const next = encodeURIComponent(location.pathname + location.search);
+      location.href = `/admin/login.html?next=${next}`;
+    }
+
+    async function adminFetchJSON(url, options = {}) {
+      const res = await fetch(url, { credentials: 'same-origin', ...options });
+      if (res.status === 401) {
+        redirectToLogin();
+        throw new Error('Session expired');
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.detail || data.error || res.statusText);
+      }
+      return data;
+    }
+
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      try {
+        await fetch('/api/admin/logout', { method: 'POST', credentials: 'same-origin' });
+      } catch (_) { /* still send user to login */ }
+      location.href = '/admin/login.html';
+    });
+
+    let anchorsLoaded = false;
+    let stationsCache = [];
+    let artworkObjectUrl = null;
+    const stationFormDetails = document.getElementById('station-form-details');
+    const formTitle = document.getElementById('form-title');
+
+    function clearArtworkObjectUrl() {
+      if (artworkObjectUrl) {
+        URL.revokeObjectURL(artworkObjectUrl);
+        artworkObjectUrl = null;
+      }
+    }
+
+    function setArtworkPreview(src) {
+      const el = document.getElementById('artwork-preview');
+      if (!src) {
+        el.innerHTML = '<div class="artwork-preview-empty">No Artwork</div>';
+        return;
+      }
+      el.innerHTML = `<img src="${RadioApp.escapeAttr(src)}" alt="">`;
+    }
+
+    function stationArtworkPreviewSrc(station) {
+      if (!station) return '';
+      if (station.has_uploaded_artwork) {
+        return `/api/stations/${encodeURIComponent(station.slug)}/artwork?t=${Date.now()}`;
+      }
+      return station.external_artwork_url || '';
+    }
+
+    function syncArtworkRemoveButton(station) {
+      const btn = document.getElementById('artwork-remove-btn');
+      const hasUpload = station && station.has_uploaded_artwork;
+      const hasUrl = Boolean(document.getElementById('artwork_url').value.trim());
+      const hasFile = Boolean(document.getElementById('artwork_file').files.length);
+      btn.hidden = !(hasUpload || hasUrl || hasFile);
+    }
+
+    function resetArtworkField() {
+      clearArtworkObjectUrl();
+      document.getElementById('artwork_file').value = '';
+      document.getElementById('artwork_url').value = '';
+      setArtworkPreview('');
+      document.getElementById('artwork-remove-btn').hidden = true;
+    }
+
+    async function uploadStationArtwork(stationId, file) {
+      const body = new FormData();
+      body.append('file', file);
+      const res = await fetch(`/api/admin/stations/${stationId}/artwork`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        body,
+      });
+      if (res.status === 401) {
+        redirectToLogin();
+        throw new Error('Session expired');
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.detail || res.statusText);
+      }
+      return data;
+    }
+
+    async function removeStationArtwork(stationId) {
+      if (stationId) {
+        await adminFetchJSON(`/api/admin/stations/${stationId}/artwork`, { method: 'DELETE' });
+      }
+      resetArtworkField();
+    }
+
+    document.getElementById('artwork_file').addEventListener('change', (e) => {
+      clearArtworkObjectUrl();
+      const file = e.target.files[0];
+      if (!file) {
+        syncArtworkRemoveButton(null);
+        return;
+      }
+      artworkObjectUrl = URL.createObjectURL(file);
+      setArtworkPreview(artworkObjectUrl);
+      syncArtworkRemoveButton({ has_uploaded_artwork: true });
+    });
+
+    document.getElementById('artwork_url').addEventListener('input', () => {
+      const url = document.getElementById('artwork_url').value.trim();
+      if (url && !document.getElementById('artwork_file').files.length) {
+        setArtworkPreview(url);
+      } else if (!url && !document.getElementById('artwork_file').files.length) {
+        setArtworkPreview('');
+      }
+      syncArtworkRemoveButton(null);
+    });
+
+    document.getElementById('artwork-remove-btn').addEventListener('click', async () => {
+      const editId = document.getElementById('edit_id').value;
+      try {
+        if (editId) {
+          await removeStationArtwork(editId);
+          showMessage('Artwork removed.', 'success');
+          loadAdminStations();
+        } else {
+          resetArtworkField();
+        }
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    });
+
+    function syncDescriptionCount() {
+      const el = document.getElementById('description');
+      const count = document.getElementById('description-count');
+      if (el && count) count.textContent = String(el.value.length);
+    }
+
+    document.getElementById('description').addEventListener('input', syncDescriptionCount);
+
+    function openStationForm() {
+      stationFormDetails.open = true;
+    }
+
+    function resetFormToCreate() {
+      document.getElementById('station-form').reset();
+      document.getElementById('edit_id').value = '';
+      document.getElementById('source_ref').value = '';
+      document.getElementById('anchor_select').value = '';
+      clearSeedSelection();
+      resetArtworkField();
+      formTitle.textContent = 'Create Station';
+      document.getElementById('submit-btn').textContent = 'Create Station';
+      document.getElementById('slug-field').hidden = false;
+      document.getElementById('slug-readonly').hidden = true;
+      document.getElementById('cancel-edit-btn').hidden = true;
+      document.getElementById('enabled-field').hidden = false;
+      document.getElementById('enabled').checked = true;
+      document.getElementById('station-form-section').classList.remove('is-editing');
+      document.getElementById('station-advanced-section').hidden = true;
+      updateSourceTypeUi(document.getElementById('source_type').value);
+      syncDescriptionCount();
+    }
+
+    function startEditStation(station) {
+      openStationForm();
+      document.getElementById('edit_id').value = String(station.id);
+      formTitle.textContent = `Edit — ${station.name}`;
+      document.getElementById('submit-btn').textContent = 'Save Changes';
+      document.getElementById('name').value = station.name;
+      document.getElementById('description').value = (station.description || '').slice(0, 120);
+      syncDescriptionCount();
+      document.getElementById('icecast_mount').value = station.icecast_mount;
+      document.getElementById('artwork_url').value = station.external_artwork_url || '';
+      document.getElementById('artwork_file').value = '';
+      clearArtworkObjectUrl();
+      setArtworkPreview(stationArtworkPreviewSrc(station));
+      syncArtworkRemoveButton(station);
+      document.getElementById('source_type').value = VALID_SOURCE_TYPES.includes(station.source_type)
+        ? station.source_type
+        : 'alchemy_anchor';
+      document.getElementById('continuation_mode').value = station.continuation_mode || 'source_only';
+      document.getElementById('identity_seed_item_id').value = station.identity_seed_item_id || '';
+      document.getElementById('identity_anchor_id').value = station.identity_anchor_id || '';
+      document.getElementById('queue_target').value = station.queue_target;
+      document.getElementById('refresh_threshold').value = station.refresh_threshold;
+      document.getElementById('artist_separation_minutes').value = station.artist_separation_minutes;
+      document.getElementById('slug-field').hidden = true;
+      document.getElementById('slug-readonly').hidden = false;
+      document.getElementById('slug-readonly-value').textContent = station.slug;
+      document.getElementById('enabled-field').hidden = true;
+      document.getElementById('cancel-edit-btn').hidden = false;
+      document.getElementById('station-form-section').classList.add('is-editing');
+      document.getElementById('station-advanced-section').hidden = false;
+      document.getElementById('station-form-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      updateSourceTypeUi(document.getElementById('source_type').value, station.source_ref);
+      if (!VALID_SOURCE_TYPES.includes(station.source_type)) {
+        showMessage(
+          `This station used a removed source type "${station.source_type}". Choose an Alchemy anchor or similar seed, then click Rebuild in the table.`,
+          'error'
+        );
+      } else {
+        showMessage(`Editing "${station.name}".`, 'success');
+      }
+    }
+
+    async function loadAnchors() {
+      const select = document.getElementById('anchor_select');
+      if (anchorsLoaded) return Promise.resolve();
+      select.innerHTML = '<option value="">Loading…</option>';
+      try {
+        const data = await adminFetchJSON('/api/admin/audiomuse/anchors');
+        const anchors = data.anchors || [];
+        if (!anchors.length) {
+          select.innerHTML = '<option value="">No saved anchors — create one in AudioMuse Song Alchemy</option>';
+        } else {
+          select.innerHTML = '<option value="">Choose an anchor…</option>' + anchors.map(a =>
+            `<option value="${RadioApp.escapeAttr(String(a.id))}">${RadioApp.escape(a.name)} (id ${a.id})</option>`
+          ).join('');
+        }
+        anchorsLoaded = true;
+      } catch (err) {
+        select.innerHTML = `<option value="">Could not load anchors: ${RadioApp.escape(err.message)}</option>`;
+      }
+    }
+
+    document.getElementById('show-create-station').addEventListener('click', () => {
+      resetFormToCreate();
+      openStationForm();
+      document.getElementById('station-form-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.getElementById('name').focus();
+    });
+
+    document.getElementById('source_type').addEventListener('change', (e) => {
+      updateSourceTypeUi(e.target.value);
+    });
+
+    document.getElementById('seed_search').addEventListener('input', (e) => {
+      enterSeedSearchMode();
+      clearTimeout(seedSearchTimer);
+      const query = e.target.value;
+      seedSearchTimer = setTimeout(() => runSeedSearch(query), 280);
+    });
+
+    document.getElementById('seed_search_results').addEventListener('click', (e) => {
+      const btn = e.target.closest('.track-search-option');
+      if (!btn) return;
+      const track = seedSearchResults[Number(btn.dataset.trackIdx)];
+      if (track) selectSeedTrack(track);
+    });
+
+    document.getElementById('seed_clear').addEventListener('click', () => {
+      clearSeedSelection();
+      document.getElementById('seed_search').focus();
+    });
+
+    document.addEventListener('click', (e) => {
+      const field = document.getElementById('source-ref-seed-field');
+      const picker = document.getElementById('seed_picker');
+      if (!picker || field.classList.contains('has-selection')) return;
+      if (!picker.contains(e.target)) {
+        document.getElementById('seed_search_results').hidden = true;
+      }
+    });
+
+    document.getElementById('cancel-edit-btn').addEventListener('click', () => {
+      resetFormToCreate();
+      stationFormDetails.open = false;
+      showMessage('Edit cancelled.', 'success');
+    });
+
+    function showMessage(text, type) {
+      const el = document.getElementById('form-message');
+      el.className = `message ${type}`;
+      el.textContent = text;
+    }
+
+    let broadcastMessageTimer = null;
+
+    function clearBroadcastMessage() {
+      if (broadcastMessageTimer) {
+        clearTimeout(broadcastMessageTimer);
+        broadcastMessageTimer = null;
+      }
+      const el = document.getElementById('broadcast-message');
+      el.replaceChildren();
+      el.className = 'broadcast-toast-host';
+      el.hidden = true;
+    }
+
+    function showBroadcastMessage(text, type, autoDismissMs = 0, variant = '') {
+      if (broadcastMessageTimer) {
+        clearTimeout(broadcastMessageTimer);
+        broadcastMessageTimer = null;
+      }
+      const el = document.getElementById('broadcast-message');
+      el.hidden = false;
+      el.className = `broadcast-toast-host is-visible toast-${type}${variant ? ` toast-${variant}` : ''}`;
+
+      const icon = type === 'error'
+        ? '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>'
+        : '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>';
+
+      let title = type === 'error' ? 'Something went wrong' : 'Saved';
+      let body = text;
+      if (variant === 'icecast' && type === 'success') {
+        title = 'Icecast restarted';
+        body = 'Streams should reconnect in a few seconds.';
+      } else if (variant === 'icecast' && type === 'error') {
+        title = 'Icecast restart failed';
+      } else if (type === 'success' && text === 'Broadcast settings saved.') {
+        title = 'Broadcast settings saved';
+        body = 'Encoding and listener limits are updated.';
+      }
+
+      el.innerHTML = `
+        <div class="broadcast-toast" role="status">
+          <div class="broadcast-toast-icon" aria-hidden="true">${icon}</div>
+          <div class="broadcast-toast-copy">
+            <strong class="broadcast-toast-title">${RadioApp.escape(title)}</strong>
+            <span class="broadcast-toast-body">${RadioApp.escape(body)}</span>
+          </div>
+          <button type="button" class="broadcast-toast-close" aria-label="Dismiss">&times;</button>
+          ${autoDismissMs > 0 ? `<span class="broadcast-toast-progress" style="animation-duration:${autoDismissMs}ms"></span>` : ''}
+        </div>`;
+
+      el.querySelector('.broadcast-toast-close')?.addEventListener('click', clearBroadcastMessage, { once: true });
+
+      if (autoDismissMs > 0) {
+        broadcastMessageTimer = setTimeout(clearBroadcastMessage, autoDismissMs);
+      }
+    }
+
+    let icecastRestartDialogResolver = null;
+
+    function closeIcecastRestartDialog(confirmed = false) {
+      const dialog = document.getElementById('icecast-restart-dialog');
+      dialog.hidden = true;
+      document.body.classList.remove('admin-dialog-open');
+      const resolve = icecastRestartDialogResolver;
+      icecastRestartDialogResolver = null;
+      resolve?.(confirmed);
+    }
+
+    function openIcecastRestartDialog() {
+      const dialog = document.getElementById('icecast-restart-dialog');
+      return new Promise((resolve) => {
+        icecastRestartDialogResolver = resolve;
+        dialog.hidden = false;
+        document.body.classList.add('admin-dialog-open');
+        document.getElementById('icecast-restart-confirm')?.focus();
+      });
+    }
+
+    document.getElementById('icecast-restart-dialog')?.addEventListener('click', (e) => {
+      if (e.target.closest('[data-dialog-dismiss]')) closeIcecastRestartDialog(false);
+    });
+    document.getElementById('icecast-restart-confirm')?.addEventListener('click', () => {
+      closeIcecastRestartDialog(true);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !document.getElementById('icecast-restart-dialog')?.hidden) {
+        closeIcecastRestartDialog(false);
+      }
+    });
+
+    function updateEncodeFormatUi() {
+      const fmt = document.getElementById('encode_format').value;
+      document.getElementById('mp3-bitrate-field').hidden = fmt !== 'mp3';
+      document.getElementById('vorbis-bitrate-field').hidden = fmt !== 'vorbis';
+    }
+
+    async function loadBroadcastSettings() {
+      try {
+        const s = await adminFetchJSON('/api/admin/broadcast');
+        document.getElementById('max_listeners').value = s.max_listeners;
+        document.getElementById('encode_format').value = s.encode_format || 'mp3';
+        document.getElementById('mp3_bitrate').value = String(s.mp3_bitrate);
+        document.getElementById('vorbis_bitrate').value = String(s.vorbis_bitrate || 128);
+        document.getElementById('sample_rate').value = String(s.sample_rate);
+        document.getElementById('genre').value = s.genre || 'Radio';
+        document.getElementById('crossfade_sec').value = s.crossfade_sec;
+        updateEncodeFormatUi();
+        syncIcecastRestartUi(s.icecast_restart_available);
+      } catch (err) {
+        showBroadcastMessage(err.message, 'error');
+      }
+    }
+
+    function syncIcecastRestartUi(available) {
+      const btn = document.getElementById('restart-icecast-btn');
+      const hint = document.getElementById('restart-icecast-hint');
+      btn.hidden = !available;
+      hint.textContent = available
+        ? 'Restart Icecast after changing this limit.'
+        : 'Restart manually: docker compose restart icecast';
+    }
+
+    document.getElementById('restart-icecast-btn').addEventListener('click', async () => {
+      const confirmed = await openIcecastRestartDialog();
+      if (!confirmed) return;
+      const btn = document.getElementById('restart-icecast-btn');
+      btn.disabled = true;
+      try {
+        await adminFetchJSON('/api/admin/broadcast/restart-icecast', { method: 'POST' });
+        showBroadcastMessage('', 'success', 6000, 'icecast');
+      } catch (err) {
+        showBroadcastMessage(err.message, 'error', 8000, 'icecast');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById('encode_format').addEventListener('change', updateEncodeFormatUi);
+
+    document.getElementById('broadcast-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const payload = {
+        max_listeners: Number(fd.get('max_listeners')),
+        encode_format: fd.get('encode_format'),
+        mp3_bitrate: Number(fd.get('mp3_bitrate')),
+        vorbis_bitrate: Number(fd.get('vorbis_bitrate')),
+        sample_rate: Number(fd.get('sample_rate')),
+        genre: fd.get('genre') || 'Radio',
+        crossfade_sec: Number(fd.get('crossfade_sec')),
+      };
+      try {
+        await adminFetchJSON('/api/admin/broadcast', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        showBroadcastMessage('Broadcast settings saved.', 'success', 5000);
+      } catch (err) {
+        showBroadcastMessage(err.message, 'error');
+      }
+    });
+
+    async function loadAdminStations() {
+      const body = document.getElementById('stations-body');
+      try {
+        const stations = await adminFetchJSON('/api/admin/stations');
+        stationsCache = stations;
+        if (!stations.length) {
+          body.innerHTML = '<tr><td colspan="6" class="admin-empty">No stations yet. Click <strong>Add Station</strong> to create one.</td></tr>';
+          return;
+        }
+        body.innerHTML = stations.map(s => {
+          let healthClass = 'admin-pill-ok';
+          let healthLabel = 'OK';
+          if (s.pool_count === 0) {
+            healthClass = 'admin-pill-bad';
+            healthLabel = 'No pool';
+          } else if (!s.source_healthy) {
+            healthClass = 'admin-pill-warn';
+            healthLabel = 'Refill';
+          }
+          const onAir = s.enabled
+            ? '<span class="admin-pill admin-pill-live">Live</span>'
+            : '<span class="admin-pill admin-pill-off">Off</span>';
+          const health = s.enabled
+            ? `<span class="admin-pill ${healthClass}">${healthLabel}</span>`
+            : '<span class="admin-pill admin-pill-standby">—</span>';
+          const queueTitle = `${s.queued_count} tracks queued · ~${s.buffer_minutes} min buffer` +
+            (s.pool_count > 0 ? ` · ${s.pool_count} in pool` : '');
+          const queueLine = `<span class="admin-queue-compact" title="${RadioApp.escapeAttr(queueTitle)}">` +
+            `<span>${s.queued_count}</span><span class="admin-queue-dot">·</span>` +
+            `<span>~${s.buffer_minutes}m</span>` +
+            (s.pool_count > 0 ? `<span class="admin-queue-dot">·</span><span class="admin-queue-pool">${s.pool_count}p</span>` : '') +
+            `</span>`;
+          const sourceTitle = `${SOURCE_LABELS[s.source_type] || s.source_type} · ref ${s.source_ref}`;
+          const toggleClass = s.enabled ? 'btn-admin-disable' : 'btn-admin-enable';
+          const toggleLabel = s.enabled ? 'Off' : 'On';
+          return `
+          <tr class="${s.enabled ? 'admin-row-live' : 'admin-row-off'}">
+            <td class="admin-name-cell">
+              <a class="admin-station-link" href="/station.html?slug=${encodeURIComponent(s.slug)}">${RadioApp.escape(s.name)}</a>
+            </td>
+            <td class="admin-cell-mount" data-label="Mount">
+              <span class="admin-chip admin-chip-mount" title="${RadioApp.escapeAttr(s.icecast_mount)}">${RadioApp.escape(s.icecast_mount)}</span>
+            </td>
+            <td class="admin-source-cell" data-label="Source">
+              <span class="admin-chip admin-chip-source" title="${RadioApp.escapeAttr(sourceTitle)}">${RadioApp.escape(SOURCE_SHORT[s.source_type] || s.source_type)}</span>
+            </td>
+            <td class="admin-queue-cell" data-label="Queue">${queueLine}</td>
+            <td class="admin-status-cell" data-label="Status"><span class="admin-pill-row">${onAir}${health}</span></td>
+            <td class="actions" data-label="Actions">
+              <div class="admin-actions">
+                <button class="btn btn-admin btn-sm" data-action="edit" data-id="${s.id}">Edit</button>
+                <button class="btn btn-admin btn-sm" data-action="refresh" data-id="${s.id}" title="Add tracks to the queue">Queue</button>
+                <button class="btn btn-sm ${toggleClass}" data-action="toggle" data-id="${s.id}" data-enabled="${s.enabled}" title="${s.enabled ? 'Take station off air' : 'Put station on air'}">${toggleLabel}</button>
+                <details class="admin-action-menu">
+                  <summary class="btn btn-admin btn-sm admin-action-more" title="More actions">⋯</summary>
+                  <div class="admin-action-menu-panel">
+                    <button type="button" class="btn btn-admin-rebuild btn-sm" data-action="rebuild" data-id="${s.id}">Rebuild</button>
+                    <button type="button" class="btn btn-danger btn-sm" data-action="delete" data-id="${s.id}">Delete</button>
+                  </div>
+                </details>
+              </div>
+            </td>
+          </tr>`;
+        }).join('');
+      } catch (err) {
+        body.innerHTML = `<tr><td colspan="6">${RadioApp.escape(err.message)}</td></tr>`;
+      }
+    }
+
+    document.getElementById('stations-body').addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      const action = btn.dataset.action;
+      try {
+        if (action === 'edit') {
+          const station = stationsCache.find(s => String(s.id) === String(id));
+          if (station) startEditStation(station);
+          return;
+        } else if (action === 'delete') {
+          btn.closest('details')?.removeAttribute('open');
+          if (!confirm('Delete this station?')) return;
+          const delRes = await fetch(`/api/admin/stations/${id}`, { method: 'DELETE', credentials: 'same-origin' });
+          if (delRes.status === 401) { redirectToLogin(); return; }
+          if (!delRes.ok) throw new Error('Delete failed');
+          showMessage('Station deleted.', 'success');
+        } else if (action === 'refresh') {
+          await adminFetchJSON(`/api/admin/stations/${id}/refresh-queue`, { method: 'POST' });
+          showMessage('Queue topped up.', 'success');
+        } else if (action === 'rebuild') {
+          btn.closest('details')?.removeAttribute('open');
+          if (!confirm('Rebuild this station? This wipes the queue and pool, then refills from the current source.')) return;
+          await adminFetchJSON(`/api/admin/stations/${id}/bootstrap`, { method: 'POST' });
+          showMessage('Station rebuilt from source.', 'success');
+        } else if (action === 'toggle') {
+          const enabled = btn.dataset.enabled !== 'true';
+          await adminFetchJSON(`/api/admin/stations/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled }),
+          });
+          showMessage(enabled ? 'Station enabled.' : 'Station disabled.', 'success');
+        }
+        loadAdminStations();
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    });
+
+    document.getElementById('station-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const editId = fd.get('edit_id');
+      const artworkFile = document.getElementById('artwork_file').files[0];
+      const sourceRef = getSourceRef();
+      if (!sourceRef) {
+        const sourceType = fd.get('source_type');
+        showMessage(
+          sourceType === 'alchemy_anchor' ? 'Choose an alchemy anchor.' : 'Search and pick a seed track.',
+          'error'
+        );
+        return;
+      }
+      const payload = {
+        name: fd.get('name'),
+        description: fd.get('description') || '',
+        artwork_url: fd.get('artwork_url') || '',
+        icecast_mount: fd.get('icecast_mount'),
+        source_type: fd.get('source_type'),
+        source_ref: sourceRef,
+        queue_target: Number(fd.get('queue_target')),
+        refresh_threshold: Number(fd.get('refresh_threshold')),
+        artist_separation_minutes: Number(fd.get('artist_separation_minutes')),
+        continuation_mode: fd.get('continuation_mode'),
+        identity_seed_item_id: fd.get('identity_seed_item_id') || '',
+        identity_anchor_id: fd.get('identity_anchor_id') || '',
+      };
+      try {
+        if (editId) {
+          await adminFetchJSON(`/api/admin/stations/${editId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          if (artworkFile) {
+            await uploadStationArtwork(editId, artworkFile);
+          }
+          showMessage('Station updated.', 'success');
+          resetFormToCreate();
+          stationFormDetails.open = false;
+        } else {
+          const created = await adminFetchJSON('/api/admin/stations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...payload,
+              slug: fd.get('slug') || null,
+              enabled: fd.get('enabled') === 'on',
+              bootstrap_queue: true,
+            }),
+          });
+          if (artworkFile) {
+            await uploadStationArtwork(created.id, artworkFile);
+          }
+          showMessage('Station created.', 'success');
+          resetFormToCreate();
+          stationFormDetails.open = false;
+        }
+        loadAdminStations();
+      } catch (err) {
+        showMessage(err.message, 'error');
+      }
+    });
+
+    loadBroadcastSettings();
+    loadAdminStations();
+    fetch('/api/health').then(r => r.json()).then(h => {
+      const link = document.getElementById('admin-knowledge-link');
+      if (link && h.knowledge_feature) link.hidden = false;
+    }).catch(() => {});
+    updateSourceTypeUi(document.getElementById('source_type').value);
+    syncDescriptionCount();
+
+    const adminHelpDialog = document.getElementById('admin-help-dialog');
+    function openAdminHelp() {
+      adminHelpDialog.hidden = false;
+      document.body.classList.add('admin-dialog-open');
+      adminHelpDialog.querySelector('.admin-help-close')?.focus();
+    }
+    function closeAdminHelp() {
+      adminHelpDialog.hidden = true;
+      document.body.classList.remove('admin-dialog-open');
+    }
+    document.getElementById('admin-help-btn')?.addEventListener('click', openAdminHelp);
+    adminHelpDialog?.addEventListener('click', (e) => {
+      if (e.target.closest('[data-help-dismiss]')) closeAdminHelp();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && adminHelpDialog && !adminHelpDialog.hidden) {
+        closeAdminHelp();
+      }
+    });
+  </script>
+</body>
+</html>

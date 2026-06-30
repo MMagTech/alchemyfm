@@ -1,0 +1,224 @@
+/* Station tune-in layout — mobile only (640px and below). Independent from desktop. */
+
+.station-tune-in {
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+}
+
+.tune-in-top {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1rem;
+}
+
+.tune-in-art-wrap {
+  position: relative;
+  align-self: center;
+  flex-shrink: 0;
+  width: min(72vw, 240px);
+  height: min(72vw, 240px);
+  overflow: visible;
+}
+
+.tune-in-art-mount,
+.tune-in-art-mount .artwork,
+.tune-in-art-mount .cover-frame.tune-in-art,
+.tune-in-art,
+.tune-in-art-wrap .artwork,
+.tune-in-art-wrap .cover-frame.tune-in-art {
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+}
+
+.tune-in-meta {
+  flex: none;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0;
+}
+
+.tune-in-station-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.tune-in-station-row h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.tune-in-station-row .live-badge {
+  margin: 0;
+}
+
+.tune-in-track {
+  width: 100%;
+}
+
+.tune-in-track .now-playing-title {
+  font-size: 1.35rem;
+  line-height: 1.25;
+}
+
+.tune-in-track .now-playing-artist {
+  margin: 0.2rem 0 0;
+}
+
+.tune-in-desc {
+  margin: 0.5rem 0 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  text-align: center;
+}
+
+.tune-in-player {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+  margin-left: 0;
+  margin-top: 0.15rem;
+  padding: 0.85rem 0 0;
+  border-left: none;
+  border-top: 1px solid var(--border);
+  align-self: stretch;
+  overflow: visible;
+}
+
+.tune-in-player .live-player-center {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  line-height: 1.2;
+}
+
+.tune-in-player .live-timer {
+  font-size: 1.1rem;
+}
+
+.tune-in-player .live-volume {
+  flex-shrink: 0;
+  width: auto;
+  min-height: auto;
+  height: auto;
+  align-self: center;
+  padding: 0;
+  border-left: none;
+}
+
+.tune-in-player .live-volume-slider {
+  transform: none;
+  width: 4.5rem;
+}
+
+.tune-in-art-wrap .knowledge-tip {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 10;
+  margin: 0;
+  pointer-events: none;
+}
+
+.tune-in-art-wrap .knowledge-tip:not([hidden]) {
+  pointer-events: auto;
+}
+
+.tune-in-art-wrap .knowledge-popover {
+  position: fixed;
+  z-index: 1000;
+  top: 50%;
+  left: 1rem;
+  right: 1rem;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 0.85rem 1rem;
+  max-height: min(70dvh, 22rem);
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  transform: translate(-50%, calc(-50% - 6px));
+  left: 50%;
+  right: auto;
+  width: calc(100vw - 2rem);
+}
+
+.tune-in-art-wrap .knowledge-popover::before {
+  display: none;
+}
+
+.tune-in-art-wrap .knowledge-popover-text {
+  white-space: normal;
+  overflow: visible;
+}
+
+.tune-in-art-wrap .knowledge-popover-source {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  word-break: break-word;
+}
+
+.tune-in-art-wrap .knowledge-tip:hover:not(.suppress-hover) .knowledge-popover,
+.tune-in-art-wrap .knowledge-tip:focus-within:not(.suppress-hover) .knowledge-popover,
+.tune-in-art-wrap .knowledge-tip.is-open .knowledge-popover {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+
+.tune-in-visualizer-wrap {
+  display: none;
+}
+
+.tune-in-visualizer {
+  display: block;
+  width: 100%;
+  height: 48px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.28) 100%);
+  border: 1px solid var(--border);
+}
+
+.tune-in-foot {
+  margin: 0.75rem 0 0;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.65rem;
+}
+
+.tune-in-foot-links {
+  margin: 0;
+  font-size: 0.72rem;
+  min-width: 0;
+  text-align: center;
+  word-break: break-all;
+}
+
+.tune-in-foot-sep {
+  margin: 0 0.35rem;
+  color: var(--muted);
+}
+
+.tune-in-foot .viz-fullscreen-btn {
+  display: none !important;
+}

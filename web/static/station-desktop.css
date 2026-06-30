@@ -1,0 +1,193 @@
+/* Station tune-in layout — desktop only (641px+). Do not edit for mobile. */
+
+.station-tune-in {
+  margin-bottom: 1.5rem;
+  padding: 1.35rem;
+}
+
+.tune-in-top {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.tune-in-art-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 132px;
+  height: 132px;
+  overflow: visible;
+}
+
+.tune-in-art-mount,
+.tune-in-art-mount .artwork,
+.tune-in-art-mount .cover-frame.tune-in-art {
+  width: 132px;
+  height: 132px;
+  border-radius: 10px;
+}
+
+.tune-in-art,
+.tune-in-art-wrap .artwork,
+.tune-in-art-wrap .cover-frame.tune-in-art {
+  width: 132px;
+  height: 132px;
+  border-radius: 10px;
+}
+
+.tune-in-player {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 0.85rem;
+  border-left: 1px solid var(--border);
+  align-self: stretch;
+  overflow: visible;
+}
+
+.tune-in-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-right: 0.5rem;
+}
+
+.tune-in-station-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  margin-bottom: 0.35rem;
+}
+
+.tune-in-station-row h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.tune-in-station-row .live-badge {
+  margin: 0;
+}
+
+.tune-in-station-row h2:only-child {
+  margin: 0;
+}
+
+.tune-in-track .now-playing-title {
+  font-size: 1.5rem;
+  line-height: 1.25;
+}
+
+.tune-in-track .now-playing-artist {
+  margin: 0.2rem 0 0;
+}
+
+.tune-in-art-wrap .knowledge-tip {
+  position: absolute;
+  top: 0.45rem;
+  left: 0.45rem;
+  z-index: 10;
+  margin: 0;
+  pointer-events: none;
+}
+
+.tune-in-art-wrap .knowledge-tip:not([hidden]) {
+  pointer-events: auto;
+}
+
+.tune-in-art-wrap .knowledge-popover {
+  top: -0.1rem;
+  left: 100%;
+  right: auto;
+  width: min(15.5rem, calc(100vw - 11rem));
+  margin: 0;
+  padding: 0.65rem 0.75rem 0.65rem 0.85rem;
+  transform: translateX(-4px);
+}
+
+.tune-in-art-wrap .knowledge-popover::before {
+  content: "";
+  position: absolute;
+  top: 0.7rem;
+  left: 0.2rem;
+  right: auto;
+  width: 10px;
+  height: 10px;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  border-top: none;
+  transform: rotate(45deg);
+}
+
+.tune-in-art-wrap .knowledge-tip:hover:not(.suppress-hover) .knowledge-popover,
+.tune-in-art-wrap .knowledge-tip:focus-within:not(.suppress-hover) .knowledge-popover,
+.tune-in-art-wrap .knowledge-tip.is-open .knowledge-popover {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.tune-in-desc {
+  margin: 0.5rem 0 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.tune-in-visualizer-wrap {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.tune-in-visualizer {
+  display: block;
+  width: 100%;
+  height: 56px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.28) 100%);
+  border: 1px solid var(--border);
+}
+
+.tune-in-foot {
+  margin: 0.75rem 0 0;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.tune-in-foot-links {
+  margin: 0;
+  font-size: 0.75rem;
+  min-width: 0;
+}
+
+.tune-in-foot-sep {
+  margin: 0 0.35rem;
+  color: var(--muted);
+}
+
+.tune-in-player .live-player-center {
+  line-height: 1.2;
+}
+
+.tune-in-player .live-timer {
+  font-size: 1.15rem;
+}
+
+.tune-in-player .live-volume {
+  height: auto;
+}
