@@ -7,8 +7,10 @@
   <title>Alchemy FM</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="/static/style.css?v=101">
+  <link rel="stylesheet" href="/static/style.css?v=109">
   <link rel="stylesheet" href="/static/themes.css?v=2">
+  <link rel="stylesheet" href="/static/home-desktop.css?v=14" media="(min-width: 641px)">
+  <link rel="stylesheet" href="/static/home-mobile.css?v=9" media="(max-width: 640px)">
   <script src="/static/themes.js?v=14"></script>
 </head>
 <body>
@@ -56,13 +58,15 @@
         <div class="station-card-body">
           <div class="station-card-head">
             <h2></h2>
+          </div>
+          <div class="station-card-actions">
             <span class="station-card-listeners" title="Live listeners"></span>
+            <a class="btn station-card-tune-in" href="#">Open</a>
           </div>
-          <div class="station-card-now">
-            <span class="now-label">On Air</span>
-            <span class="now-track"></span>
-          </div>
-          <a class="btn station-card-tune-in" href="#">Tune In</a>
+        </div>
+        <div class="station-card-now">
+          <span class="now-label">On Air</span>
+          <span class="now-track"></span>
         </div>`;
       return card;
     }
@@ -128,6 +132,7 @@
         setNowPlayingTrack(trackEl, np);
       }
       card.querySelector('.station-card-tune-in').href = `/station.html?slug=${encodeURIComponent(s.slug)}`;
+      card.querySelector('.station-card-tune-in').textContent = 'Open';
 
       const artWrap = card.querySelector('.station-card-art-wrap');
       if (!coverUrl) {

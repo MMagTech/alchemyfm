@@ -407,42 +407,90 @@ main {
 
 .station-card-head h2 {
   margin: 0;
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   line-height: 1.2;
   min-width: 0;
+  color: var(--muted);
 }
 
 .station-card-listeners {
   flex-shrink: 0;
-  font-size: 0.68rem;
-  font-weight: 500;
-  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 2.35rem;
+  padding: 0.52rem 0.85rem;
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
   white-space: nowrap;
-  padding-top: 0.15rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--field) 72%, var(--surface));
+  color: var(--muted);
 }
 
 .station-card-listeners.is-live {
   color: var(--accent-text);
   background: var(--accent-subtle);
-  padding: 0.18rem 0.5rem;
-  border-radius: var(--radius-pill);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  padding-top: 0.18rem;
+  border-color: var(--accent-border);
 }
 
 .station-card-listeners.is-live::before {
   content: "";
   display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-right: 0.35rem;
+  width: 7px;
+  height: 7px;
+  margin-right: 0.4rem;
   border-radius: 50%;
   background: var(--live);
+  flex-shrink: 0;
   vertical-align: middle;
   box-shadow: 0 0 4px color-mix(in srgb, var(--live) 45%, transparent);
+}
+
+.station-card-listeners:not(.is-live)::before {
+  display: none;
+}
+
+.station-card-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+  width: 100%;
+}
+
+.station-card-actions .station-card-tune-in {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  margin-top: 0;
+  width: 100%;
+  min-height: 2.35rem;
+  padding: 0.52rem 0.85rem;
+  font-size: 0.84rem;
+  line-height: 1.2;
+  background: color-mix(in srgb, var(--accent) 78%, var(--surface-raised));
+  color: #fff;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: none;
+}
+
+.station-card-actions .station-card-tune-in:hover {
+  background: color-mix(in srgb, var(--accent) 88%, var(--surface-raised));
+  color: #fff;
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.station-card-actions .station-card-tune-in:active {
+  opacity: 0.92;
 }
 
 .station-card-now {
@@ -501,7 +549,7 @@ main {
 }
 
 .station-card-now .now-track-title {
-  color: color-mix(in srgb, var(--accent-text) 35%, var(--text));
+  color: color-mix(in srgb, var(--muted) 26%, var(--text));
   font-weight: 600;
 }
 

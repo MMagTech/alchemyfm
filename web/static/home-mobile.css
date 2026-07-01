@@ -1,0 +1,130 @@
+/* Home station cards — mobile only (640px and below). */
+
+.station-grid {
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+.station-card {
+  --station-card-art: min(52vw, 200px);
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "art"
+    "head"
+    "now"
+    "actions";
+  align-items: center;
+  padding: 1.1rem 1rem 1rem;
+  gap: 0.85rem;
+}
+
+.station-card-art-wrap {
+  grid-area: art;
+  width: var(--station-card-art);
+  height: var(--station-card-art);
+  justify-self: center;
+}
+
+.station-card-body {
+  display: contents;
+}
+
+.station-card-head {
+  grid-area: head;
+  width: 100%;
+  text-align: center;
+  margin-bottom: -0.35rem;
+}
+
+.station-card-now {
+  grid-area: now;
+  width: 100%;
+  margin-top: -0.1rem;
+  margin-bottom: 0.35rem;
+  padding: 0;
+  background: none;
+  border: none;
+}
+
+.station-card-actions {
+  grid-area: actions;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+  width: 100%;
+}
+
+.station-card-art,
+.station-card-art-wrap .cover-frame.station-card-art {
+  width: var(--station-card-art);
+  height: var(--station-card-art);
+  border-radius: var(--radius-lg);
+}
+
+.station-card-head h2 {
+  width: 100%;
+  font-size: 0.95rem;
+  letter-spacing: 0.07em;
+}
+
+.station-card-now .now-label {
+  display: none;
+}
+
+.station-card-now .now-track {
+  white-space: normal;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  min-height: 0;
+  text-align: center;
+}
+
+.station-card-now .now-track .now-track-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  max-width: 100%;
+}
+
+.station-card-now .now-track-sep {
+  display: none;
+}
+
+.station-card-now .now-track-title {
+  order: 1;
+  font-size: 1.08rem;
+  font-weight: 600;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+}
+
+.station-card-now .now-track-artist {
+  order: 2;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.station-card-now .now-track.is-scrolling {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.station-card-now .now-track.is-scrolling .now-track-inner {
+  animation: none;
+  transform: none;
+}
+
+.station-card-tune-in {
+  width: 100%;
+  max-width: none;
+  align-self: stretch;
+  margin-top: 0;
+  padding: 0.62rem 1rem;
+  font-size: 0.88rem;
+}

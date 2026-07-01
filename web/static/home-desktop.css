@@ -1,0 +1,154 @@
+/* Home station cards — desktop only (641px+). Flatter horizontal card, stacked text. */
+
+.station-grid {
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+
+.station-card {
+  --station-card-art: 112px;
+  display: grid;
+  grid-template-columns: var(--station-card-art) 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 1rem;
+  row-gap: 0.7rem;
+  align-items: start;
+  padding: 1.1rem 1.2rem;
+}
+
+.station-card-art-wrap {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.station-card-body {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+  min-width: 0;
+  min-height: var(--station-card-art);
+}
+
+.station-card-head {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.station-card-head h2 {
+  margin: 0;
+  font-size: 0.86rem;
+  letter-spacing: 0.07em;
+}
+
+.station-card-actions {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: auto;
+}
+
+.station-card-now {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  width: 100%;
+  margin: 0;
+  padding: 0.55rem 0 0;
+  border-top: 1px solid var(--border-subtle);
+  background: none;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  text-align: center;
+}
+
+.station-card-art,
+.station-card-art-wrap .cover-frame.station-card-art {
+  border-radius: 10px;
+}
+
+.station-card-now .now-label {
+  display: none;
+}
+
+.station-card-now .now-track {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.92rem;
+  line-height: 1.35;
+  min-height: 0;
+  text-align: center;
+  padding: 0.52rem 0.8rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--field) 58%, var(--surface-raised));
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent);
+  box-sizing: border-box;
+}
+
+.station-card-now .now-track .now-track-inner {
+  display: inline;
+  white-space: nowrap;
+}
+
+.station-card-now .now-track-sep {
+  display: inline;
+  margin: 0 0.35rem;
+  color: color-mix(in srgb, var(--muted) 70%, var(--border));
+}
+
+.station-card-now .now-track-artist {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 500;
+}
+
+.station-card-now .now-track-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.station-card-now .now-track.is-waiting .now-track-inner {
+  font-size: 0.88rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.station-card-now .now-track.is-scrolling {
+  text-align: left;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 0,
+    #000 calc(100% - 1.1rem),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    #000 0,
+    #000 calc(100% - 1.1rem),
+    transparent 100%
+  );
+}
+
+.station-card-now .now-track.is-scrolling .now-track-inner {
+  display: inline-block;
+  animation: now-track-scroll var(--scroll-duration, 10s) ease-in-out infinite;
+}
+
+.station-card-now .now-track.is-scrolling:hover .now-track-inner {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .station-card-now .now-track.is-scrolling {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .station-card-now .now-track.is-scrolling .now-track-inner {
+    animation: none;
+  }
+}

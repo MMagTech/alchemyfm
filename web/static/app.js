@@ -244,7 +244,8 @@ const RadioApp = {
     let stallTimer = null;
     let connectInFlight = false;
     let lastProgressAt = 0;
-    const graph = typeof LiveAudioGraph !== 'undefined'
+    const useWebAudio = this.useStripWebAudio();
+    const graph = useWebAudio && typeof LiveAudioGraph !== 'undefined'
       ? LiveAudioGraph.attach(audio)
       : null;
     if (graph) {
@@ -335,6 +336,7 @@ const RadioApp = {
       }
       audio.src = src;
       audio.load();
+      this.configurePlaybackSession();
       return audio.play().finally(() => {
         connectInFlight = false;
       });
@@ -482,6 +484,7 @@ const RadioApp = {
       lastProgressAt = Date.now();
       setPlayingUi(true);
       armStallWatch();
+      this.configurePlaybackSession();
       if ('mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'playing';
       }
@@ -585,6 +588,19 @@ const RadioApp = {
   isMobileStation() {
     if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) return true;
     return window.matchMedia('(max-width: 640px)').matches;
+  },
+
+  /** Desktop strip visualizer needs Web Audio; mobile/iOS uses direct audio element output (CarPlay-safe). */
+  useStripWebAudio() {
+    return !this.isMobileStation();
+  },
+
+  configurePlaybackSession() {
+    try {
+      if (navigator.audioSession) {
+        navigator.audioSession.type = 'playback';
+      }
+    } catch (_) {}
   },
 
   fullscreenVizAvailable() {
