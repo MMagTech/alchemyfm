@@ -1,36 +1,46 @@
 # Alchemy FM
 
-Lightweight radio automation: AudioMuse supplies programming (Song Alchemy anchors and similarity), this app orchestrates station queues, Liquidsoap plays continuously, and Icecast broadcasts live streams. Navidrome provides stream URLs and cover art only.
+Turn [AudioMuse](https://github.com/NeptuneHub/AudioMuse-AI) programming into **live internet radio stations**. This app manages stations and queues, [Liquidsoap](https://www.liquidsoap.info/) plays continuously, and [Icecast](https://icecast.org/) broadcasts one shared stream per station. [Navidrome](https://www.navidrome.org/) supplies stream URLs and cover art for tracks already in the queue.
 
-**This is not a music player.** Listeners pick a station and tune in to a shared live broadcast.
+**This is not a music player.** Everyone hears the same live broadcast — no skip, no personal queue, no per-user playback.
 
-## Architecture
+### Who this is for
+
+- You already run **AudioMuse** (Song Alchemy anchors or similarity) and **Navidrome** for your library
+- You want **24/7 radio-style channels** on Icecast, not a Spotify-like UI
+- You're comfortable with **Docker Compose** (or Unraid / a reverse proxy for production)
+
+### Who this is not for
+
+- Standalone music hosting without AudioMuse and Navidrome
+- On-demand or per-listener playback
+
+### What you get
+
+**Listeners** — station picker, tune-in page with now playing / up next / recently played, and a listen button.
+
+**Operators** — admin UI to create stations, set mounts and programming sources, manage broadcast settings, and optional track trivia (Knowledge feature).
 
 ```
-AudioMuse ──▶ Radio Backend ──▶ queue.m3u (per station)
-                    │                    │
-                    │                    ▼
-                    │              Liquidsoap ──▶ Icecast ──▶ Listeners
-                    └── Web UI (status only)
-Navidrome ──▶ stream URLs for each track
+AudioMuse ──▶ Backend ──▶ queue.m3u (per station) ──▶ Liquidsoap ──▶ Icecast ──▶ Listeners
+                  │                                              ▲
+                  └── Web UI (status + admin)                    │
+Navidrome ──▶ stream URLs & cover art for queued tracks ─────────┘
 ```
 
-## Prerequisites
+## Quick start (local Docker)
 
-- Docker & Docker Compose
-- [AudioMuse-AI](https://github.com/NeptuneHub/AudioMuse-AI) running (default `http://localhost:8000`)
-- [Navidrome](https://www.navidrome.org/) running (default `http://localhost:4533`)
-- Library analyzed in AudioMuse (for Song Alchemy anchors and similarity)
+**Prerequisites:** Docker & Docker Compose, [AudioMuse-AI](https://github.com/NeptuneHub/AudioMuse-AI) and [Navidrome](https://www.navidrome.org/) running and reachable from Docker (see [troubleshooting](#troubleshooting) below). Your library should be analyzed in AudioMuse so anchors or similarity seeds exist.
 
-## Quick start
-
-1. **Copy environment file**
+1. **Clone and configure**
 
    ```bash
+   git clone https://github.com/MMagTech/alchemyfm.git
+   cd alchemyfm
    cp .env.example .env
    ```
 
-   Edit `.env` with your AudioMuse URL/token and Navidrome credentials.
+   Edit `.env` — at minimum set `AUDIOMUSE_URL`, `AUDIOMUSE_API_TOKEN`, `NAVIDROME_URL`, `NAVIDROME_USER`, `NAVIDROME_PASSWORD`, and `ADMIN_PASSWORD`.
 
 2. **Start the stack**
 
@@ -38,57 +48,77 @@ Navidrome ──▶ stream URLs for each track
    docker compose up -d --build
    ```
 
-   For **Compose Manager** (recommended), see [docs/UNRAID.md](docs/UNRAID.md).
-
-**Behind Traefik:** use [docker-compose.traefik.yml](docker-compose.traefik.yml) and [docs/TRAEFIK.md](docs/TRAEFIK.md) — one hostname for the site and streams.
-
-**Docker Man templates (local CA):** copy XML files from [unraid/templates-user/](unraid/templates-user/) to `/boot/config/plugins/dockerMan/templates-user/` on your server. Install order: icecast → backend → liquidsoap.
-
 3. **Create a station**
 
-   Open [http://localhost:8080/admin.html](http://localhost:8080/admin.html) — you will be prompted for admin credentials after setting `ADMIN_PASSWORD` in `.env`.
+   Open [http://localhost:8080/admin.html](http://localhost:8080/admin.html) and sign in with `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
 
    Example:
    - **Name:** Yacht Rock Radio
    - **Mount:** `/yachtrock`
    - **Source type:** Song Alchemy anchor
-   - **Source ref:** anchor id from AudioMuse (pick from the dropdown in admin)
+   - **Source ref:** pick an anchor from the admin dropdown
 
-4. **Tune in** — the new station appears on Icecast within a few seconds; other stations are unaffected.
+4. **Tune in**
 
    - Station list: [http://localhost:8080](http://localhost:8080)
    - Live stream: [http://localhost:8000/yachtrock](http://localhost:8000/yachtrock)
 
-## Source types
+New stations go live within a few seconds — no manual Liquidsoap restart.
+
+## Other deployments
+
+| Guide | Use when |
+|-------|----------|
+| [docs/UNRAID.md](docs/UNRAID.md) | Unraid server, Compose Manager, GHCR images |
+| [docs/TRAEFIK.md](docs/TRAEFIK.md) | One HTTPS hostname for the site and streams |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Public internet, reverse proxy, security checklist |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Backend-only dev, project layout, contributing |
+
+## How it works
+
+1. Admin creates a station → backend **bootstraps a track pool** from AudioMuse.
+2. Backend writes a per-station Liquidsoap script; the **supervisor** starts one process per enabled station.
+3. Liquidsoap reads `queue.m3u`; Icecast broadcasts; now playing syncs from the stream.
+4. When the queue runs low, **tiered refill**: new batch → pool reuse → anchor → similar seed/last (per station settings).
+
+### Source types
 
 | Type | `source_ref` | Fetched from |
 |------|--------------|--------------|
 | `alchemy_anchor` | Anchor id | AudioMuse `POST /api/alchemy` |
 | `similar_seed` | Track item_id | AudioMuse `GET /api/similar_tracks` |
 
-Navidrome is **not** a programming source — it resolves stream URLs and album art for tracks already in the queue.
+Navidrome is **not** a programming source — it resolves audio and artwork for tracks already queued.
 
-## Continuation mode (`continuation_mode`)
+### Continuation mode (`continuation_mode`)
 
 When a station exhausts fresh tracks from its primary source:
 
 | Mode | Behavior |
 |------|----------|
 | `source_only` (default) | Reuse tracks from the imported pool. No drift. |
-| `similar_to_seed` | Pull similar tracks from a fixed seed in the source pool. |
-| `similar_to_last` | Pull similar tracks from whatever just played (can wander over time). |
+| `similar_to_seed` | Pull similar tracks from a fixed seed in the pool. |
+| `similar_to_last` | Pull similar tracks from whatever just played (can wander). |
 
-Existing stations default to `source_only` after backend restart.
+## Troubleshooting
 
-## How it works
+| Problem | Things to check |
+|---------|-----------------|
+| Admin shows **503** | Set `ADMIN_PASSWORD` in `.env` and restart the backend container |
+| Station has **no tracks** / empty queue | AudioMuse URL/token in `.env`; anchor or seed exists; backend logs for AudioMuse errors |
+| Backend **can't reach** AudioMuse/Navidrome on the host | On Docker Desktop use `host.docker.internal`; on Linux add `extra_hosts` or use the host LAN IP in `.env` |
+| Stream **won't play** | Icecast on port `8000`; mount matches admin (e.g. `/yachtrock`); station is **On** in admin |
+| **Wrong stream URL** behind a proxy | See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — set `TRUST_PROXY_HEADERS=true` and route mount paths to Icecast |
 
-1. Admin creates a station; **bootstrap imports tracks into a persistent station pool**.
-2. The backend writes a per-station Liquidsoap script and updates a manifest.
-3. The **Liquidsoap supervisor** starts one process per enabled station (polls every ~3s).
-4. Each process reads `queue.m3u`; Icecast broadcasts; now playing syncs from the live stream title.
-5. When the queue runs low, **tiered refill**: new programming batch (best effort) → pool reuse → anchor → similar seed → similar last (if allowed).
+## Security (public internet)
 
-## API
+**Set `ADMIN_PASSWORD` before exposing the site.** Without it, admin is disabled; with an empty password on a reachable host, you risk an open admin panel once a password is added without locking down access.
+
+Full checklist, reverse proxy examples, and stream URL rules: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
+
+Report vulnerabilities privately: **[SECURITY.md](SECURITY.md)** (not public issues).
+
+## API (summary)
 
 | Endpoint | Description |
 |----------|-------------|
@@ -98,116 +128,16 @@ Existing stations default to `source_only` after backend restart.
 | `POST /api/admin/stations` | Create station |
 | `POST /api/admin/stations/{id}/refresh-queue` | Manual queue refresh |
 
-## Development
-
-```bash
-cd backend
-python -m venv .venv
-.venv\Scripts\activate   # Windows
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8080
-```
-
-Set env vars from `.env.example`. SQLite DB defaults to `./data/radio.db` when `DATA_DIR=./data`.
-
-See **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** for project layout, backend-only mode, and contributor notes.
-
 ## Contributing
 
-Contributions are welcome. Please read:
-
-- [CONTRIBUTING.md](CONTRIBUTING.md) — how to open PRs
-- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — local setup
-- [SECURITY.md](SECURITY.md) — report vulnerabilities privately (no public issues)
-- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
-
-Use [GitHub Issues](https://github.com/MMagTech/alchemyfm/issues) for bugs and feature ideas.
-
-## Security (public deployment)
-
-**Right now, anyone who can reach your backend can use admin unless you set a password.**
-
-Before sharing stations on the internet:
-
-1. **Set `ADMIN_PASSWORD`** in `.env` (and rebuild/restart backend). Admin UI (`/admin.html`) and all `/api/admin/*` routes require HTTP Basic auth (`ADMIN_USERNAME` / `ADMIN_PASSWORD`).
-2. **Do not publish port 8080 directly** — put the web UI behind a reverse proxy with HTTPS (Caddy, nginx, Traefik).
-3. **Block internal webhooks at the proxy** — never expose `/internal/*` to the internet. Liquidsoap calls these from the Docker network only.
-4. **Change default Icecast passwords** in `.env` and `icecast/icecast.xml` (default `hackme`).
-5. **Use a strong `LIQUIDSOAP_CALLBACK_SECRET`** — it protects track-started webhooks.
-6. **Keep AudioMuse and Navidrome on your LAN** — only the radio backend needs to reach them; listeners never should.
-
-### What is public vs protected
-
-| Path | Access |
-|------|--------|
-| `/`, `/station.html`, `/api/stations`, `/api/cover/*` | Public (listeners) |
-| `/admin.html`, `/api/admin/*` | HTTP Basic auth (`ADMIN_PASSWORD` required) |
-| `/internal/*` | Docker/LAN only + shared secret on webhooks |
-| `/api/health` | Public (minimal status) |
-
-If `ADMIN_PASSWORD` is empty, admin is **disabled** (503) so you cannot accidentally run an open admin panel.
-
-### Reverse proxy example (Caddy)
-
-Expose only the listener site; block admin from the public hostname if you use a separate admin subdomain, or rely on app-level Basic auth:
-
-```caddy
-radio.example.com {
-    reverse_proxy backend:8080
-
-    # Defense in depth — do not forward Liquidsoap webhooks publicly
-    @internal path /internal/*
-    respond @internal 404
-}
-```
-
-For admin on a private hostname:
-
-```caddy
-radio-admin.example.com {
-    reverse_proxy backend:8080
-}
-```
-
-Set `TRUST_PROXY_HEADERS=true` on the backend when the proxy sets `X-Forwarded-For` (needed for internal-route IP filtering to see real client IPs).
-
-### Public stream URLs (copy link / external players)
-
-**Stream URLs follow how you opened the site** — no separate “public hostname” to configure for normal use.
-
-| How you open the web UI | Stream URL you get |
-|-------------------------|-------------------|
-| `http://192.168.1.10:8080` (LAN) | `http://192.168.1.10:8000/hip_hop` |
-| `http://10.0.0.5:8080` (WireGuard) | `http://10.0.0.5:8000/hip_hop` |
-| `https://radio.example.com` (Traefik) | `https://radio.example.com/hip_hop` |
-
-Rules:
-
-1. **LAN / VPN / direct Docker ports** — same IP or hostname as the page, Icecast on `ICECAST_PUBLIC_PORT` (default `8000`).
-2. **Reverse proxy** — set `TRUST_PROXY_HEADERS=true` and forward **both** the web UI and Icecast mount paths on the **same hostname**. URLs use that host + `https` automatically.
-3. **`ICECAST_PUBLIC_HOST` / `ICECAST_PUBLIC_SCHEME`** — fallback only (e.g. admin API without a browser). Listeners using the website never need these.
-
-Traefik must route mount paths (e.g. `/hip_hop`, `/melodic`) to Icecast as well as the web UI to the backend.
-
-### Checklist
-
-- [ ] `ADMIN_PASSWORD` set to a long random value
-- [ ] `LIQUIDSOAP_CALLBACK_SECRET` and `ICECAST_SOURCE_PASSWORD` changed from defaults
-- [ ] `TRUST_PROXY_HEADERS=true` when behind Traefik/Caddy/nginx
-- [ ] Ports 8080/8000 not exposed on your router (proxy handles 443)
-- [ ] AudioMuse / Navidrome credentials not committed to git
+Contributions welcome — [CONTRIBUTING.md](CONTRIBUTING.md), [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Notes
 
-- New stations go live automatically; no manual Liquidsoap restart needed.
-- Editing a station's mount or Icecast settings restarts **only that station** (~1–2s gap on that mount).
+- Editing a station mount or Icecast settings restarts **only that station** (~1–2s gap on that mount).
 - Icecast source password in `.env` must match `icecast/icecast.xml` (default `hackme`).
 - `LIQUIDSOAP_CALLBACK_SECRET` must match between backend and Liquidsoap containers.
-- On Windows Docker, `host.docker.internal` reaches AudioMuse/Navidrome on the host.
-
-### Queue file (`queue.m3u`)
-
-The backend **rewrites** each station’s `queue.m3u` from the database on refill and when a track starts, so the file stays in sync with pending queue rows. After upgrading an older install, use admin **Rebuild M3U** once per station to trim any bloated files from before this fix. See **[docs/TECH_DEBT.md](docs/TECH_DEBT.md)**.
+- Queue files: the backend rewrites each `queue.m3u` from the database; after upgrading an old install, use admin **Rebuild M3U** once per station. See [docs/TECH_DEBT.md](docs/TECH_DEBT.md).
 
 ## License
 

@@ -32,4 +32,4 @@ Operators are responsible for:
 - Changing default Icecast and Liquidsoap secrets
 - Keeping AudioMuse and Navidrome on a trusted network
 
-See the [Security section in README](README.md#security-public-deployment) for the full checklist.
+Full deployment and public-exposure checklist: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
