@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>alchemyfm-icecast</Name>
+  <Repository>ghcr.io/mmagtech/alchemyfm-icecast:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Network>alchemyfm</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/MMagTech/alchemyfm/issues</Support>
+  <Project>https://github.com/MMagTech/alchemyfm</Project>
+  <ReadMe>https://github.com/MMagTech/alchemyfm/blob/master/docs/UNRAID.md</ReadMe>
+  <Overview>Alchemy FM — Icecast broadcast server. Install this container first, then alchemyfm-backend, then alchemyfm-liquidsoap. Requires `docker login ghcr.io` (private GHCR images). All three containers must use network `alchemyfm`.</Overview>
+  <Category>MediaServer:Music</Category>
+  <WebUI>http://[IP]:[PORT:8000]/</WebUI>
+  <TemplateURL/>
+  <ExtraParams>--label com.docker.compose.project=alchemyfm --label com.docker.compose.service=icecast</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Install before alchemyfm-backend and alchemyfm-liquidsoap. Create network `alchemyfm` on first install if prompted.</Requires>
+  <Config Name="Stream Port" Target="8000" Default="8000" Mode="tcp" Description="Listener port for live streams." Type="Port" Display="always" Required="true" Mask="false">8000</Config>
+  <Config Name="ICECAST_SOURCE_PASSWORD" Target="ICECAST_SOURCE_PASSWORD" Default="hackme" Mode="" Description="Source password (Liquidsoap connects with this). Change from default." Type="Variable" Display="always" Required="true" Mask="true">hackme</Config>
+  <Config Name="ICECAST_ADMIN_PASSWORD" Target="ICECAST_ADMIN_PASSWORD" Default="hackme" Mode="" Description="Usually same as source password." Type="Variable" Display="always" Required="true" Mask="true">hackme</Config>
+  <Config Name="ICECAST_RELAY_PASSWORD" Target="ICECAST_RELAY_PASSWORD" Default="hackme" Mode="" Description="Relay password." Type="Variable" Display="advanced" Required="false" Mask="true">hackme</Config>
+  <Config Name="ICECAST_MAX_CLIENTS" Target="ICECAST_MAX_CLIENTS" Default="100" Mode="" Description="Max simultaneous listeners." Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="ICECAST_MAX_SOURCES" Target="ICECAST_MAX_SOURCES" Default="20" Mode="" Description="Max source mounts (one per station)." Type="Variable" Display="advanced" Required="false" Mask="false">20</Config>
+</Container>

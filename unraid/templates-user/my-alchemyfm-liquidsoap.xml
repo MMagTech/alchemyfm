@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>alchemyfm-liquidsoap</Name>
+  <Repository>ghcr.io/mmagtech/alchemyfm-liquidsoap:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Network>alchemyfm</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/MMagTech/alchemyfm/issues</Support>
+  <Project>https://github.com/MMagTech/alchemyfm</Project>
+  <ReadMe>https://github.com/MMagTech/alchemyfm/blob/master/docs/UNRAID.md</ReadMe>
+  <Overview>Alchemy FM — Liquidsoap playback engine (one process per station). Install last, after alchemyfm-icecast and alchemyfm-backend. No web UI. Shares data volume with backend.</Overview>
+  <Category>MediaServer:Music</Category>
+  <WebUI/>
+  <TemplateURL/>
+  <ExtraParams>--label com.docker.compose.project=alchemyfm --label com.docker.compose.service=liquidsoap</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Requires alchemyfm-icecast and alchemyfm-backend. Same Data Path as backend.</Requires>
+  <Config Name="Data Path" Target="/data" Default="/mnt/user/appdata/alchemyfm/data" Mode="rw" Description="Must match alchemyfm-backend data path." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/alchemyfm/data</Config>
+  <Config Name="DATA_DIR" Target="DATA_DIR" Default="/data" Mode="" Description="Data directory inside container." Type="Variable" Display="advanced-hide" Required="true" Mask="false">/data</Config>
+  <Config Name="SUPERVISOR_POLL_SEC" Target="SUPERVISOR_POLL_SEC" Default="3" Mode="" Description="How often to check for station script changes." Type="Variable" Display="advanced" Required="false" Mask="false">3</Config>
+</Container>

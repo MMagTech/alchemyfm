@@ -68,15 +68,19 @@ docker compose --env-file .env -f docker-compose.unraid.yml up -d
 
 ## 5. Open the UI
 
-- Station list: `http://YOUR_UNRAID_IP:8080`
-- Admin: `http://YOUR_UNRAID_IP:8080/admin.html`
+**Direct ports** (`docker-compose.unraid.yml`):
+
+- Station list: `http://YOUR_UNRAID_IP:9752`
+- Admin: `http://YOUR_UNRAID_IP:9752/admin.html`
 - Streams: `http://YOUR_UNRAID_IP:8000/yourmount`
+
+**Behind Traefik** (`docker-compose.traefik.yml`): see [TRAEFIK.md](TRAEFIK.md) — e.g. `https://radio.example.com` and `https://radio.example.com/yourmount`.
 
 ## Ports
 
 | Port | Service |
 |------|---------|
-| 8080 | Web UI + API (`BACKEND_PORT`) |
+| 9752 | Web UI + API (`BACKEND_PORT`, default on Unraid) |
 | 8000 | Icecast streams (`ICECAST_PORT`) |
 
 ## Updates
@@ -110,4 +114,4 @@ Use the root `docker-compose.yml` for local builds (bind-mounts `./web` for live
 
 ## Community Applications template (optional)
 
-A single-container CA template does not fit this stack. Use **Compose Manager** or add a custom template repo entry pointing at `docker-compose.unraid.yml` (see [MMagTech/unraid-templates](https://github.com/MMagTech/unraid-templates)).
+A single-container CA template does not fit this stack. Use **Compose Manager** or add the local XML templates from [unraid/templates-user/](../unraid/templates-user/) to `/boot/config/plugins/dockerMan/templates-user/` on your server (see that folder’s README).

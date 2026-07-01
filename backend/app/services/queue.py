@@ -37,18 +37,6 @@ def _format_m3u_line(track: TrackInfo) -> str:
     return f"#EXTINF:{duration},{label}\n{navidrome_client.stream_url(track.item_id)}"
 
 
-def append_to_m3u(slug: str, tracks: list[TrackInfo]) -> None:
-    # TECH DEBT (P1): append-only — played tracks are never removed here. M3U grows until
-    # rebuild_m3u_from_db runs (startup / admin only). Causes replays & DB/M3U drift.
-    # See docs/TECH_DEBT.md — fix: rebuild or trim on track consumption, not just append.
-    m3u = queue_m3u_path(slug)
-    if not m3u.exists():
-        m3u.write_text("#EXTM3U\n", encoding="utf-8")
-    with m3u.open("a", encoding="utf-8") as fh:
-        for track in tracks:
-            fh.write(_format_m3u_line(track) + "\n")
-
-
 def rebuild_m3u_from_db(db: Session, station: Station) -> None:
     """Rewrite queue.m3u from pending queue items with fresh Navidrome stream URLs."""
     items = (
@@ -167,7 +155,7 @@ async def extend_queue(db: Session, station: Station, count: int | None = None) 
             )
         )
     db.commit()
-    append_to_m3u(station.slug, enriched)
+    rebuild_m3u_from_db(db, station)
     logger.info("Added %s tracks to station %s", len(enriched), station.slug)
     from app.knowledge.scheduler import schedule_knowledge_lookahead
 
@@ -590,6 +578,7 @@ def mark_track_started(db: Session, station: Station, artist: str, title: str) -
             )
         )
     db.commit()
+    rebuild_m3u_from_db(db, station)
     if knowledge_item_id:
         from app.knowledge.scheduler import schedule_now_playing_knowledge
 
@@ -636,7 +625,7 @@ async def bootstrap_station(db: Session, station: Station) -> None:
             )
         )
     db.commit()
-    append_to_m3u(station.slug, enriched)
+    rebuild_m3u_from_db(db, station)
     logger.info(
         "Bootstrapped station %s: pool=%s tracks, queue=%s",
         station.slug,

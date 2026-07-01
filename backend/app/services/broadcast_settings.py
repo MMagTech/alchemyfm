@@ -10,6 +10,7 @@ DEFAULTS = {
     "genre": "Radio",
     "crossfade_sec": 0,
     "max_listeners": 100,
+    "default_theme": "violet",
 }
 
 

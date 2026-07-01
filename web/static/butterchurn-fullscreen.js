@@ -669,7 +669,7 @@ export async function open(audio, getMeta) {
   wireChromeIdleHide(session);
   wireMobileWebGLRecovery(session);
   analyserNode.smoothingTimeConstant = 0.08;
-  stripViz.suspend();
+  stripViz?.suspend();
   const initialMeta = getMeta?.() || {};
   session.lastTrackKey = initialMeta.trackKey || '';
   session.overlayShown = true;
@@ -813,9 +813,11 @@ export function close() {
   window.__milkdropActive = false;
   s.root.remove();
 
-  if (!s.audio.paused && s.audio.dataset.wantLive === '1') {
-    s.stripViz.resume();
-  } else {
-    s.stripViz.suspendIdle();
+  if (s.stripViz) {
+    if (!s.audio.paused && s.audio.dataset.wantLive === '1') {
+      s.stripViz.resume();
+    } else {
+      s.stripViz.suspendIdle();
+    }
   }
 }

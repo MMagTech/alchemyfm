@@ -38,7 +38,11 @@ Navidrome ──▶ stream URLs for each track
    docker compose up -d --build
    ```
 
-   **Unraid:** see [docs/UNRAID.md](docs/UNRAID.md) — pre-built images on GHCR + Compose Manager.
+   For **Compose Manager** (recommended), see [docs/UNRAID.md](docs/UNRAID.md).
+
+**Behind Traefik:** use [docker-compose.traefik.yml](docker-compose.traefik.yml) and [docs/TRAEFIK.md](docs/TRAEFIK.md) — one hostname for the site and streams.
+
+**Docker Man templates (local CA):** copy XML files from [unraid/templates-user/](unraid/templates-user/) to `/boot/config/plugins/dockerMan/templates-user/` on your server. Install order: icecast → backend → liquidsoap.
 
 3. **Create a station**
 
@@ -188,13 +192,9 @@ Traefik must route mount paths (e.g. `/hip_hop`, `/melodic`) to Icecast as well 
 - `LIQUIDSOAP_CALLBACK_SECRET` must match between backend and Liquidsoap containers.
 - On Windows Docker, `host.docker.internal` reaches AudioMuse/Navidrome on the host.
 
-### Known issue: growing `queue.m3u` (address later)
+### Queue file (`queue.m3u`)
 
-**Routine queue refills append to `queue.m3u` but never remove played tracks.** Only a backend restart or admin **Rebuild M3U** rewrites the file to match the current queue. Over time Liquidsoap replays old entries, which can desync now-playing metadata and album art from the database.
-
-Full write-up, symptoms, and proposed fixes: **[docs/TECH_DEBT.md](docs/TECH_DEBT.md)** (P1 item).
-
-**Short-term workaround:** restart the backend container periodically, or rebuild M3U from admin after long uptimes.
+The backend **rewrites** each station’s `queue.m3u` from the database on refill and when a track starts, so the file stays in sync with pending queue rows. After upgrading an older install, use admin **Rebuild M3U** once per station to trim any bloated files from before this fix. See **[docs/TECH_DEBT.md](docs/TECH_DEBT.md)**.
 
 ## License
 

@@ -1,0 +1,117 @@
+# Alchemy FM behind Traefik (Unraid or any Docker host with Traefik).
+# Same public hostname for the web UI and Icecast mounts (e.g. https://radio.example.com/rock).
+#
+# Prerequisites:
+#   - Traefik running with an external Docker network (default name: proxy)
+#   - DNS for ALCHEMYFM_HOST pointing at Traefik
+#   - .env with ALCHEMYFM_HOST, TRUST_PROXY_HEADERS=true, and your usual secrets
+#
+# Deploy (Compose Manager or terminal):
+#   docker compose --env-file .env -f docker-compose.traefik.yml up -d
+#
+# See docs/TRAEFIK.md for routing details and mount-name caveats.
+
+name: alchemyfm
+
+services:
+  icecast:
+    image: ghcr.io/mmagtech/alchemyfm-icecast:latest
+    container_name: alchemyfm-icecast
+    environment:
+      ICECAST_SOURCE_PASSWORD: ${ICECAST_SOURCE_PASSWORD:-hackme}
+      ICECAST_ADMIN_PASSWORD: ${ICECAST_SOURCE_PASSWORD:-hackme}
+      ICECAST_RELAY_PASSWORD: ${ICECAST_SOURCE_PASSWORD:-hackme}
+      ICECAST_MAX_CLIENTS: ${ICECAST_MAX_CLIENTS:-100}
+      ICECAST_MAX_SOURCES: ${ICECAST_MAX_SOURCES:-20}
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.alchemyfm-streams.rule=Host(`${ALCHEMYFM_HOST}`) && PathRegexp(`^/[a-zA-Z0-9_-]+(\\.xspf)?$`)"
+      - "traefik.http.routers.alchemyfm-streams.entrypoints=websecure"
+      - "traefik.http.routers.alchemyfm-streams.tls=true"
+      - "traefik.http.routers.alchemyfm-streams.tls.certresolver=cloudflare"
+      - "traefik.http.routers.alchemyfm-streams.middlewares=noindex@file,crowdsec@file"
+      - "traefik.http.routers.alchemyfm-streams.priority=100"
+      - "traefik.http.services.alchemyfm-streams.loadbalancer.server.port=8000"
+      - "traefik.http.services.alchemyfm-streams.loadbalancer.responseForwarding.flushInterval=1s"
+      - "com.docker.compose.project=alchemyfm"
+      - "com.docker.compose.service=icecast"
+    restart: unless-stopped
+
+  backend:
+    image: ghcr.io/mmagtech/alchemyfm-backend:latest
+    container_name: alchemyfm-backend
+    environment:
+      DATABASE_URL: sqlite:////data/radio.db
+      DATA_DIR: /data
+      AUDIOMUSE_URL: ${AUDIOMUSE_URL:-http://host.docker.internal:8000}
+      AUDIOMUSE_API_TOKEN: ${AUDIOMUSE_API_TOKEN:-}
+      NAVIDROME_URL: ${NAVIDROME_URL:-http://host.docker.internal:4533}
+      NAVIDROME_USER: ${NAVIDROME_USER:-}
+      NAVIDROME_PASSWORD: ${NAVIDROME_PASSWORD:-}
+      ICECAST_HOST: icecast
+      ICECAST_PORT: 8000
+      ICECAST_PUBLIC_HOST: ${ICECAST_PUBLIC_HOST:-}
+      ICECAST_PUBLIC_PORT: ${ICECAST_PUBLIC_PORT:-443}
+      ICECAST_PUBLIC_SCHEME: ${ICECAST_PUBLIC_SCHEME:-https}
+      ICECAST_SOURCE_PASSWORD: ${ICECAST_SOURCE_PASSWORD:-hackme}
+      LIQUIDSOAP_CALLBACK_SECRET: ${LIQUIDSOAP_CALLBACK_SECRET:-change-me}
+      QUEUE_REFRESH_INTERVAL_SEC: ${QUEUE_REFRESH_INTERVAL_SEC:-30}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      RESTRICT_INTERNAL_ROUTES: ${RESTRICT_INTERNAL_ROUTES:-true}
+      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-true}
+      ICECAST_DOCKER_RESTART: ${ICECAST_DOCKER_RESTART:-true}
+      DOCKER_COMPOSE_PROJECT: alchemyfm
+      KNOWLEDGE_FEATURE: ${KNOWLEDGE_FEATURE:-false}
+      KNOWLEDGE_DATABASE_URL: ${KNOWLEDGE_DATABASE_URL:-sqlite:////data/knowledge.db}
+      SEARXNG_URL: ${SEARXNG_URL:-}
+      OLLAMA_URL: ${OLLAMA_URL:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
+    volumes:
+      - /mnt/user/appdata/alchemyfm/data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - icecast
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.alchemyfm-web.rule=Host(`${ALCHEMYFM_HOST}`)"
+      - "traefik.http.routers.alchemyfm-web.entrypoints=websecure"
+      - "traefik.http.routers.alchemyfm-web.tls=true"
+      - "traefik.http.routers.alchemyfm-web.tls.certresolver=cloudflare"
+      - "traefik.http.routers.alchemyfm-web.middlewares=noindex@file,crowdsec@file"
+      - "traefik.http.routers.alchemyfm-web.priority=10"
+      - "traefik.http.services.alchemyfm-web.loadbalancer.server.port=8080"
+      - "com.docker.compose.project=alchemyfm"
+      - "com.docker.compose.service=backend"
+    restart: unless-stopped
+
+  liquidsoap:
+    image: ghcr.io/mmagtech/alchemyfm-liquidsoap:latest
+    container_name: alchemyfm-liquidsoap
+    environment:
+      DATA_DIR: /data
+      SUPERVISOR_POLL_SEC: "3"
+    volumes:
+      - /mnt/user/appdata/alchemyfm/data:/data
+    depends_on:
+      - backend
+      - icecast
+    networks:
+      - proxy
+    labels:
+      - com.docker.compose.project=alchemyfm
+      - com.docker.compose.service=liquidsoap
+    restart: unless-stopped
+
+networks:
+  proxy:
+    external: true
+    name: proxy

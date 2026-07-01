@@ -7,9 +7,12 @@ header {
   gap: 0.5rem;
 }
 
-header h1 {
-  font-size: 1.1rem;
+header h1.site-wordmark {
   text-align: center;
+}
+
+header h1.site-wordmark .site-wordmark-text {
+  font-size: 1.05rem;
 }
 
 .header-end {
@@ -50,6 +53,7 @@ header nav a[aria-current="page"] {
   border: none;
   border-bottom: 2px solid var(--accent);
   border-radius: 0;
+  color: var(--accent-text);
 }
 
 main {
@@ -74,6 +78,7 @@ main {
 
 .admin-panel {
   padding: 1rem 1rem 1.1rem;
+  border-radius: var(--radius-lg);
 }
 
 .admin-panel-head {
@@ -102,10 +107,11 @@ main {
 .admin-table tbody tr {
   display: block;
   margin-bottom: 0.85rem;
-  padding: 0.85rem 0.75rem;
+  padding: 0.9rem 0.8rem;
   border: 1px solid var(--border);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.02);
+  border-radius: var(--radius-lg);
+  background: var(--field);
+  box-shadow: var(--shadow-card);
 }
 
 .admin-table tbody tr:last-child {
@@ -147,7 +153,7 @@ main {
   padding-top: 0;
   padding-bottom: 0.55rem;
   margin-bottom: 0.25rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--border-subtle);
   text-align: left;
 }
 
@@ -157,6 +163,7 @@ main {
 
 .admin-table tbody td.admin-name-cell .admin-station-link {
   font-size: 1rem;
+  font-weight: 700;
 }
 
 .admin-table tbody td.actions {
@@ -164,7 +171,7 @@ main {
   align-items: stretch;
   padding-top: 0.65rem;
   margin-top: 0.35rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--border-subtle);
   text-align: left;
 }
 
@@ -214,12 +221,13 @@ main {
 
 .knowledge-mode-fieldset {
   grid-template-columns: 1fr;
+  border-radius: var(--radius);
 }
 
 .knowledge-mode-option {
   justify-content: flex-start;
   border-right: none;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .knowledge-mode-option:last-child {
@@ -233,8 +241,13 @@ main {
 .admin-help-panel {
   width: 100%;
   max-height: calc(100dvh - 1.5rem);
+  border-radius: var(--radius-lg);
 }
 
 .admin-dialog {
   padding: 0.75rem;
+}
+
+.admin-dialog-panel {
+  border-radius: var(--radius-lg);
 }

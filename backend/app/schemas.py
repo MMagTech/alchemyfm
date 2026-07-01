@@ -130,6 +130,7 @@ class HealthResponse(BaseModel):
     status: Literal["ok"]
     stations_enabled: int
     knowledge_feature: bool = False
+    default_theme: str = "violet"
 
 
 class BroadcastStatsRead(BaseModel):
@@ -145,6 +146,7 @@ class BroadcastSettingsRead(BaseModel):
     genre: str
     crossfade_sec: int
     max_listeners: int
+    default_theme: str = "violet"
     icecast_restart_available: bool = False
 
     model_config = {"from_attributes": True}
@@ -155,6 +157,23 @@ class IcecastRestartResponse(BaseModel):
     container: str
 
 
+class AppearanceSettingsRead(BaseModel):
+    default_theme: str = "violet"
+
+
+class AppearanceSettingsUpdate(BaseModel):
+    default_theme: str
+
+    @field_validator("default_theme")
+    @classmethod
+    def validate_default_theme(cls, v: str) -> str:
+        from app.themes import VALID_THEMES
+
+        if v not in VALID_THEMES:
+            raise ValueError(f"default_theme must be one of: {', '.join(sorted(VALID_THEMES))}")
+        return v
+
+
 class BroadcastSettingsUpdate(BaseModel):
     mp3_bitrate: int | None = Field(default=None, ge=64, le=320)
     vorbis_bitrate: int | None = Field(default=None, ge=64, le=320)
@@ -163,6 +182,17 @@ class BroadcastSettingsUpdate(BaseModel):
     genre: str | None = Field(default=None, max_length=100)
     crossfade_sec: int | None = Field(default=None, ge=0, le=8)
     max_listeners: int | None = Field(default=None, ge=1, le=10000)
+    default_theme: str | None = None
+
+    @field_validator("default_theme")
+    @classmethod
+    def validate_default_theme(cls, v: str | None) -> str | None:
+        if v is not None:
+            from app.themes import VALID_THEMES
+
+            if v not in VALID_THEMES:
+                raise ValueError(f"default_theme must be one of: {', '.join(sorted(VALID_THEMES))}")
+        return v
 
     @field_validator("encode_format")
     @classmethod

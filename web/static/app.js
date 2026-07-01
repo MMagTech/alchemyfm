@@ -381,12 +381,19 @@ const RadioApp = {
       }
     };
 
+    const primeAudioGraph = () => {
+      graph?.ensureGraph?.();
+      if (graph?.audioContext?.state === 'suspended') {
+        graph.audioContext.resume();
+      }
+    };
+
     btn.addEventListener('click', () => {
       if (audio.paused) {
         setWantLive(true);
         reconnectAttempt = 0;
         clearTimeout(reconnectTimer);
-        if (viz?.ensureGraph) viz.ensureGraph();
+        primeAudioGraph();
         connectStream(true).catch(() => scheduleReconnect());
       } else {
         setWantLive(false);
@@ -561,7 +568,7 @@ const RadioApp = {
       el.innerHTML = `
         <span class="header-stat" title="Live listeners across enabled stations">
           <span class="header-stat-value">${listeners}</span>
-          <span class="header-stat-label">listening</span>
+          <span class="header-stat-label">Listening</span>
         </span>${bandwidth}`;
     };
 
@@ -581,7 +588,7 @@ const RadioApp = {
         el.innerHTML = `
           <span class="header-stat" title="Could not load listener count">
             <span class="header-stat-value">—</span>
-            <span class="header-stat-label">listening</span>
+            <span class="header-stat-label">Listening</span>
           </span>`;
       }
     };

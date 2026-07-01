@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>alchemyfm-backend</Name>
+  <Repository>ghcr.io/mmagtech/alchemyfm-backend:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Network>alchemyfm</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/MMagTech/alchemyfm/issues</Support>
+  <Project>https://github.com/MMagTech/alchemyfm</Project>
+  <ReadMe>https://github.com/MMagTech/alchemyfm/blob/master/docs/UNRAID.md</ReadMe>
+  <Overview>Alchemy FM — Web UI, admin, and station orchestration. Install after alchemyfm-icecast, before alchemyfm-liquidsoap. Network `alchemyfm`. Set ADMIN_PASSWORD before exposing to the internet.</Overview>
+  <Category>MediaServer:Music</Category>
+  <WebUI>http://[IP]:[PORT:9752]/</WebUI>
+  <TemplateURL/>
+  <ExtraParams>--add-host=host.docker.internal:host-gateway --label com.docker.compose.project=alchemyfm --label com.docker.compose.service=backend</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Requires alchemyfm-icecast on network `alchemyfm`. Install alchemyfm-liquidsoap after this.</Requires>
+  <Config Name="Web Port" Target="8080" Default="9752" Mode="tcp" Description="Host port for web UI (container stays on 8080)." Type="Port" Display="always" Required="true" Mask="false">9752</Config>
+  <Config Name="Data Path" Target="/data" Default="/mnt/user/appdata/alchemyfm/data" Mode="rw" Description="SQLite DB, queues, station artwork. Shared with liquidsoap." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/alchemyfm/data</Config>
+  <Config Name="Docker Socket" Target="/var/run/docker.sock" Default="/var/run/docker.sock" Mode="rw" Description="Needed for Restart Icecast in admin." Type="Path" Display="always" Required="true" Mask="false">/var/run/docker.sock</Config>
+  <Config Name="ADMIN_USERNAME" Target="ADMIN_USERNAME" Default="admin" Mode="" Description="Admin login username." Type="Variable" Display="always" Required="true" Mask="false">admin</Config>
+  <Config Name="ADMIN_PASSWORD" Target="ADMIN_PASSWORD" Default="" Mode="" Description="Admin login password (required)." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="AUDIOMUSE_URL" Target="AUDIOMUSE_URL" Default="http://host.docker.internal:8000" Mode="" Description="AudioMuse base URL (Song Alchemy / similarity)." Type="Variable" Display="always" Required="true" Mask="false">http://host.docker.internal:8000</Config>
+  <Config Name="AUDIOMUSE_API_TOKEN" Target="AUDIOMUSE_API_TOKEN" Default="" Mode="" Description="AudioMuse API token." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="NAVIDROME_URL" Target="NAVIDROME_URL" Default="http://host.docker.internal:4533" Mode="" Description="Navidrome URL (streams and cover art)." Type="Variable" Display="always" Required="true" Mask="false">http://host.docker.internal:4533</Config>
+  <Config Name="NAVIDROME_USER" Target="NAVIDROME_USER" Default="" Mode="" Description="Navidrome username." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="NAVIDROME_PASSWORD" Target="NAVIDROME_PASSWORD" Default="" Mode="" Description="Navidrome password." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="ICECAST_HOST" Target="ICECAST_HOST" Default="alchemyfm-icecast" Mode="" Description="Icecast container name on network alchemyfm." Type="Variable" Display="advanced" Required="true" Mask="false">alchemyfm-icecast</Config>
+  <Config Name="ICECAST_PORT" Target="ICECAST_PORT" Default="8000" Mode="" Description="Internal Icecast port." Type="Variable" Display="advanced" Required="true" Mask="false">8000</Config>
+  <Config Name="ICECAST_PUBLIC_HOST" Target="ICECAST_PUBLIC_HOST" Default="" Mode="" Description="Hostname or IP listeners use for stream URLs." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="ICECAST_PUBLIC_PORT" Target="ICECAST_PUBLIC_PORT" Default="8000" Mode="" Description="Port listeners use for streams." Type="Variable" Display="always" Required="true" Mask="false">8000</Config>
+  <Config Name="ICECAST_PUBLIC_SCHEME" Target="ICECAST_PUBLIC_SCHEME" Default="" Mode="" Description="Optional: https if behind TLS proxy." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="ICECAST_SOURCE_PASSWORD" Target="ICECAST_SOURCE_PASSWORD" Default="hackme" Mode="" Description="Must match alchemyfm-icecast." Type="Variable" Display="always" Required="true" Mask="true">hackme</Config>
+  <Config Name="LIQUIDSOAP_CALLBACK_SECRET" Target="LIQUIDSOAP_CALLBACK_SECRET" Default="" Mode="" Description="Random secret for track webhooks." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="DATABASE_URL" Target="DATABASE_URL" Default="sqlite:////data/radio.db" Mode="" Description="Leave default unless you know otherwise." Type="Variable" Display="advanced-hide" Required="true" Mask="false">sqlite:////data/radio.db</Config>
+  <Config Name="DATA_DIR" Target="DATA_DIR" Default="/data" Mode="" Description="Data directory inside container." Type="Variable" Display="advanced-hide" Required="true" Mask="false">/data</Config>
+  <Config Name="ICECAST_DOCKER_RESTART" Target="ICECAST_DOCKER_RESTART" Default="true" Mode="" Description="Enable Restart Icecast button in admin." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="DOCKER_COMPOSE_PROJECT" Target="DOCKER_COMPOSE_PROJECT" Default="alchemyfm" Mode="" Description="Used to find Icecast container for restart." Type="Variable" Display="advanced-hide" Required="true" Mask="false">alchemyfm</Config>
+  <Config Name="QUEUE_REFRESH_INTERVAL_SEC" Target="QUEUE_REFRESH_INTERVAL_SEC" Default="30" Mode="" Description="Background queue refresh interval." Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
+  <Config Name="KNOWLEDGE_FEATURE" Target="KNOWLEDGE_FEATURE" Default="false" Mode="" Description="Enable track trivia enrichment." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="OLLAMA_URL" Target="OLLAMA_URL" Default="" Mode="" Description="Optional Ollama URL for knowledge." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="OLLAMA_MODEL" Target="OLLAMA_MODEL" Default="" Mode="" Description="Ollama model name." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="SEARXNG_URL" Target="SEARXNG_URL" Default="" Mode="" Description="Optional SearXNG URL." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+</Container>

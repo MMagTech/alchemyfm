@@ -1,23 +1,23 @@
 /* Station tune-in layout — mobile only (640px and below). Independent from desktop. */
 
 .station-tune-in {
-  margin-bottom: 1.25rem;
-  padding: 1rem;
+  margin-bottom: 1.35rem;
+  padding: 1.15rem 1.1rem 1.1rem;
 }
 
 .tune-in-top {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 1rem;
+  gap: 1.15rem;
 }
 
 .tune-in-art-wrap {
   position: relative;
   align-self: center;
   flex-shrink: 0;
-  width: min(72vw, 240px);
-  height: min(72vw, 240px);
+  width: min(78vw, 280px);
+  height: min(78vw, 280px);
   overflow: visible;
 }
 
@@ -29,7 +29,7 @@
 .tune-in-art-wrap .cover-frame.tune-in-art {
   width: 100%;
   height: 100%;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
 }
 
 .tune-in-meta {
@@ -48,15 +48,16 @@
   justify-content: center;
   flex-wrap: wrap;
   gap: 0.5rem 0.75rem;
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.45rem;
 }
 
 .tune-in-station-row h2 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 0.78rem;
   font-weight: 600;
   color: var(--muted);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .tune-in-station-row .live-badge {
@@ -68,16 +69,17 @@
 }
 
 .tune-in-track .now-playing-title {
-  font-size: 1.35rem;
-  line-height: 1.25;
+  font-size: 1.45rem;
+  line-height: 1.22;
 }
 
 .tune-in-track .now-playing-artist {
-  margin: 0.2rem 0 0;
+  margin: 0.35rem 0 0;
+  font-size: 0.98rem;
 }
 
 .tune-in-desc {
-  margin: 0.5rem 0 0;
+  margin: 0.55rem 0 0;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
@@ -86,15 +88,12 @@
 }
 
 .tune-in-player {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1rem;
   flex-shrink: 0;
-  margin-left: 0;
-  margin-top: 0.15rem;
-  padding: 0.85rem 0 0;
-  border-left: none;
-  border-top: 1px solid var(--border);
+  margin: 0.85rem 0 0;
+  padding: 0.9rem 1rem;
   align-self: stretch;
   overflow: visible;
 }
@@ -107,28 +106,22 @@
 }
 
 .tune-in-player .live-timer {
-  font-size: 1.1rem;
+  font-size: 1.15rem;
 }
 
 .tune-in-player .live-volume {
-  flex-shrink: 0;
-  width: auto;
-  min-height: auto;
-  height: auto;
-  align-self: center;
+  width: 100%;
   padding: 0;
-  border-left: none;
 }
 
 .tune-in-player .live-volume-slider {
-  transform: none;
-  width: 4.5rem;
+  width: 100%;
 }
 
 .tune-in-art-wrap .knowledge-tip {
   position: absolute;
-  top: 0.5rem;
-  left: 0.5rem;
+  top: 0.55rem;
+  left: 0.55rem;
   z-index: 10;
   margin: 0;
   pointer-events: none;
@@ -147,7 +140,7 @@
   width: auto;
   max-width: none;
   margin: 0;
-  padding: 0.85rem 1rem;
+  padding: 0.9rem 1.05rem;
   max-height: min(70dvh, 22rem);
   overflow-x: hidden;
   overflow-y: auto;
@@ -156,6 +149,7 @@
   left: 50%;
   right: auto;
   width: calc(100vw - 2rem);
+  border-radius: var(--radius-lg);
 }
 
 .tune-in-art-wrap .knowledge-popover::before {
@@ -184,26 +178,32 @@
 }
 
 .tune-in-visualizer-wrap {
-  display: none;
+  margin-top: 0.9rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .tune-in-visualizer {
   display: block;
   width: 100%;
-  height: 48px;
-  border-radius: 8px;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.28) 100%);
-  border: 1px solid var(--border);
+  height: 44px;
+  border-radius: var(--radius);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 6%, var(--field)) 0%,
+    var(--field) 100%
+  );
+  border: 1px solid var(--border-subtle);
 }
 
 .tune-in-foot {
-  margin: 0.75rem 0 0;
-  padding-top: 0.85rem;
-  border-top: 1px solid var(--border);
+  margin: 0.85rem 0 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.65rem;
+  gap: 0.7rem;
 }
 
 .tune-in-foot-links {
@@ -212,11 +212,12 @@
   min-width: 0;
   text-align: center;
   word-break: break-all;
+  color: var(--muted);
 }
 
 .tune-in-foot-sep {
   margin: 0 0.35rem;
-  color: var(--muted);
+  color: var(--border);
 }
 
 .tune-in-foot .viz-fullscreen-btn {

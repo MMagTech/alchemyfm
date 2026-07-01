@@ -142,6 +142,7 @@ class BroadcastSettings(Base):
     genre: Mapped[str] = mapped_column(String(100), default="Radio")
     crossfade_sec: Mapped[int] = mapped_column(Integer, default=0)
     max_listeners: Mapped[int] = mapped_column(Integer, default=100)
+    default_theme: Mapped[str] = mapped_column(String(32), default="violet")
 
 
 connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
@@ -192,6 +193,7 @@ def _migrate_db() -> None:
                 ("encode_format", "VARCHAR(16) NOT NULL DEFAULT 'mp3'"),
                 ("vorbis_bitrate", "INTEGER NOT NULL DEFAULT 128"),
                 ("max_listeners", "INTEGER NOT NULL DEFAULT 100"),
+                ("default_theme", "VARCHAR(32) NOT NULL DEFAULT 'violet'"),
             ):
                 if col not in cols:
                     conn.execute(text(f"ALTER TABLE broadcast_settings ADD COLUMN {col} {ddl}"))
@@ -200,8 +202,21 @@ def _migrate_db() -> None:
                 conn.execute(
                     text(
                         "INSERT INTO broadcast_settings "
-                        "(id, mp3_bitrate, vorbis_bitrate, sample_rate, encode_format, genre, crossfade_sec, max_listeners) "
-                        "VALUES (1, 192, 128, 44100, 'mp3', 'Radio', 0, 100)"
+                        "(id, mp3_bitrate, vorbis_bitrate, sample_rate, encode_format, genre, "
+                        "crossfade_sec, max_listeners, default_theme) "
+                        "VALUES (1, 192, 128, 44100, 'mp3', 'Radio', 0, 100, 'violet')"
+                    )
+                )
+                conn.commit()
+        except Exception:
+            pass
+        try:
+            cols = {row[1] for row in conn.execute(text("PRAGMA table_info(broadcast_settings)"))}
+            if "default_theme" not in cols:
+                conn.execute(
+                    text(
+                        "ALTER TABLE broadcast_settings ADD COLUMN "
+                        "default_theme VARCHAR(32) NOT NULL DEFAULT 'violet'"
                     )
                 )
                 conn.commit()

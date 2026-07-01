@@ -3,13 +3,35 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#171f2c" media="(max-width: 640px)">
+  <meta name="theme-color" content="#09090b" media="(max-width: 640px)">
   <title>Alchemy FM</title>
-  <link rel="stylesheet" href="/static/style.css?v=64">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/static/style.css?v=94">
+  <link rel="stylesheet" href="/static/themes.css?v=2">
+  <script src="/static/themes.js?v=13"></script>
 </head>
 <body>
   <header>
-    <h1>Alchemy FM</h1>
+    <h1 class="site-wordmark">
+      <a href="/" class="site-wordmark-link">
+        <span class="site-wordmark-icon" aria-hidden="true">
+          <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" focusable="false">
+            <rect x="1.5" y="9" width="3" height="9" rx="1.2"/>
+            <rect x="6.5" y="6" width="3" height="12" rx="1.2"/>
+            <rect x="11.5" y="3" width="3" height="15" rx="1.2"/>
+            <rect x="16.5" y="7" width="3" height="11" rx="1.2"/>
+          </svg>
+        </span>
+        <span class="site-wordmark-text"><span class="site-wordmark-name">Alchemy</span><span class="site-wordmark-fm">FM</span></span>
+      </a>
+    </h1>
+    <div class="header-end">
+      <label class="header-theme">
+        <span class="sr-only">Color theme</span>
+        <select id="theme-select" class="theme-select" aria-label="Color theme"></select>
+      </label>
+    </div>
   </header>
   <main>
     <p class="subtitle">Curated stations on the air. Everyone tuned in hears the same track.</p>
@@ -36,12 +58,11 @@
             <h2></h2>
             <span class="station-card-listeners" title="Live listeners"></span>
           </div>
-          <p class="desc"></p>
           <div class="station-card-now">
             <span class="now-label">On Air</span>
             <span class="now-track"></span>
           </div>
-          <a class="btn" href="#">Tune In</a>
+          <a class="btn station-card-tune-in" href="#">Tune In</a>
         </div>`;
       return card;
     }
@@ -57,7 +78,7 @@
         if (overflow > 4) {
           trackEl.classList.add('is-scrolling');
           trackEl.style.setProperty('--scroll-distance', `-${overflow}px`);
-          trackEl.style.setProperty('--scroll-duration', `${Math.max(8, overflow / 28)}s`);
+          trackEl.style.setProperty('--scroll-duration', `${Math.max(16, overflow / 11)}s`);
         }
       });
     }
@@ -83,10 +104,9 @@
       card.querySelector('h2').textContent = s.name;
       const listenersEl = card.querySelector('.station-card-listeners');
       const count = Number(s.listeners) || 0;
-      listenersEl.textContent = count === 1 ? '1 listening' : `${count} listening`;
+      listenersEl.textContent = count === 1 ? '1 Listening' : `${count} Listening`;
       listenersEl.classList.toggle('is-live', count > 0);
       listenersEl.setAttribute('aria-label', `${count} live listeners`);
-      card.querySelector('.desc').textContent = s.description || 'Live radio';
       const trackEl = card.querySelector('.now-track');
       if (trackEl.dataset.trackKey !== trackKey) {
         trackEl.dataset.trackKey = trackKey || '';
@@ -96,7 +116,7 @@
       } else {
         setNowPlayingTrack(trackEl, now);
       }
-      card.querySelector('a.btn').href = `/station.html?slug=${encodeURIComponent(s.slug)}`;
+      card.querySelector('.station-card-tune-in').href = `/station.html?slug=${encodeURIComponent(s.slug)}`;
 
       const artWrap = card.querySelector('.station-card-art-wrap');
       if (!coverUrl) {

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.auth import admin_auth_enabled, admin_user_from_request
 from app.config import settings
 from app.database import SessionLocal, Station, init_db
-from app.schemas import BroadcastStatsRead
+from app.schemas import BroadcastStatsRead, HealthResponse
 from app.middleware import SecurityHeadersMiddleware
 from app.routers import admin, admin_auth, admin_broadcast, admin_knowledge, audiomuse_admin, internal, stations
 from app.knowledge.database import init_knowledge_db
@@ -155,17 +155,20 @@ def broadcast_stats():
     return BroadcastStatsRead(**totals)
 
 
-@app.get("/api/health")
+@app.get("/api/health", response_model=HealthResponse)
 def health():
     db = SessionLocal()
     try:
         count = db.query(Station).filter(Station.enabled.is_(True)).count()
+        bs = get_broadcast_settings(db)
+        default_theme = bs.default_theme or "violet"
     finally:
         db.close()
     return {
         "status": "ok",
         "stations_enabled": count,
         "knowledge_feature": settings.knowledge_feature,
+        "default_theme": default_theme,
     }
 
 

@@ -14,6 +14,21 @@ const StripVisualizer = {
     const halfBars = 28;
     let data = new Uint8Array(0);
 
+    const accentRgb = () => {
+      const raw = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+      if (raw.startsWith('#')) {
+        const hex = raw.slice(1);
+        const full = hex.length === 3
+          ? hex.split('').map((c) => c + c).join('')
+          : hex;
+        const n = Number.parseInt(full, 16);
+        if (!Number.isNaN(n)) {
+          return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+        }
+      }
+      return { r: 139, g: 92, b: 246 };
+    };
+
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
@@ -37,7 +52,9 @@ const StripVisualizer = {
     const drawMirrored = (live) => {
       const w = canvas.clientWidth;
       const h = canvas.clientHeight;
+      if (w < 1 || h < 1) return;
       const cx = w / 2;
+      const { r, g, b } = accentRgb();
       ctx.clearRect(0, 0, w, h);
 
       if (!live) {
@@ -46,7 +63,7 @@ const StripVisualizer = {
         for (let i = 0; i < halfBars; i++) {
           const wave = (Math.sin(phase + i * 0.28) + 1) * 0.5;
           const barH = 3 + wave * h * 0.14;
-          ctx.fillStyle = `rgba(90, 120, 180, ${0.12 + wave * 0.18})`;
+          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${0.14 + wave * 0.22})`;
           ctx.fillRect(cx + i * barW + 1, h - barH, barW - 2, barH);
           ctx.fillRect(cx - (i + 1) * barW + 1, h - barH, barW - 2, barH);
         }
@@ -60,8 +77,9 @@ const StripVisualizer = {
         for (let j = 0; j < step; j++) sum += data[i * step + j];
         const v = Math.pow(sum / step / 255, 0.82);
         const barH = Math.max(3, v * h * (0.62 + beat * 0.28));
-        const lightness = 34 + v * 38 + beat * 18;
-        ctx.fillStyle = `hsla(214, 76%, ${lightness}%, ${0.38 + v * 0.58})`;
+        const alpha = 0.4 + v * 0.55;
+        const mix = 0.55 + v * 0.35 + beat * 0.1;
+        ctx.fillStyle = `rgba(${Math.round(r * mix)}, ${Math.round(g * mix)}, ${Math.round(b * mix)}, ${alpha})`;
         ctx.fillRect(cx + i * barW + 1, h - barH, barW - 2, barH);
         ctx.fillRect(cx - (i + 1) * barW + 1, h - barH, barW - 2, barH);
       }
@@ -74,7 +92,11 @@ const StripVisualizer = {
 
     const drawLive = () => {
       const analyser = graph.analyserNode;
-      if (!analyser) return;
+      if (!analyser) {
+        drawMirrored(false);
+        animId = requestAnimationFrame(drawLive);
+        return;
+      }
       if (!data.length) data = new Uint8Array(analyser.frequencyBinCount);
       analyser.getByteFrequencyData(data);
       updateBeat();
@@ -89,8 +111,12 @@ const StripVisualizer = {
 
     resize();
     window.addEventListener('resize', resize);
+    if (typeof ResizeObserver !== 'undefined' && canvas.parentElement) {
+      const ro = new ResizeObserver(() => resize());
+      ro.observe(canvas.parentElement);
+    }
 
-    return {
+    const api = {
       isLive() { return stripLive; },
       suspend() {
         stripSuspended = true;
@@ -133,5 +159,8 @@ const StripVisualizer = {
         animId = requestAnimationFrame(drawIdle);
       },
     };
+
+    api.stop();
+    return api;
   },
 };
