@@ -90,7 +90,7 @@
 }
 
 .station-card-now .now-track .now-track-inner {
-  display: inline;
+  display: inline-block;
   white-space: nowrap;
 }
 

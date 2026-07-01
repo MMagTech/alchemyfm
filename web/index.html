@@ -5,11 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#09090b" media="(max-width: 640px)">
   <title>Alchemy FM</title>
+  <link rel="icon" href="/static/icons/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Alchemy FM">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/static/style.css?v=109">
   <link rel="stylesheet" href="/static/themes.css?v=2">
-  <link rel="stylesheet" href="/static/home-desktop.css?v=14" media="(min-width: 641px)">
+  <link rel="stylesheet" href="/static/home-desktop.css?v=15" media="(min-width: 641px)">
   <link rel="stylesheet" href="/static/home-mobile.css?v=9" media="(max-width: 640px)">
   <script src="/static/themes.js?v=14"></script>
 </head>
@@ -78,7 +85,14 @@
       trackEl.style.removeProperty('--scroll-distance');
       trackEl.style.removeProperty('--scroll-duration');
       requestAnimationFrame(() => {
-        const overflow = inner.scrollWidth - trackEl.clientWidth;
+        inner.style.display = 'inline-block';
+        const cs = getComputedStyle(trackEl);
+        const rootSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+        const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+        const fadePad = 1.1 * rootSize;
+        const available = trackEl.clientWidth - padX;
+        const overflow = inner.scrollWidth - available + fadePad;
+        inner.style.removeProperty('display');
         if (overflow > 4) {
           trackEl.classList.add('is-scrolling');
           trackEl.style.setProperty('--scroll-distance', `-${overflow}px`);
