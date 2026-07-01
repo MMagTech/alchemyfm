@@ -110,6 +110,19 @@ uvicorn app.main:app --reload --port 8080
 
 Set env vars from `.env.example`. SQLite DB defaults to `./data/radio.db` when `DATA_DIR=./data`.
 
+See **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** for project layout, backend-only mode, and contributor notes.
+
+## Contributing
+
+Contributions are welcome. Please read:
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — how to open PRs
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — local setup
+- [SECURITY.md](SECURITY.md) — report vulnerabilities privately (no public issues)
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+Use [GitHub Issues](https://github.com/MMagTech/alchemyfm/issues) for bugs and feature ideas.
+
 ## Security (public deployment)
 
 **Right now, anyone who can reach your backend can use admin unless you set a password.**
@@ -198,4 +211,4 @@ The backend **rewrites** each station’s `queue.m3u` from the database on refil
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).

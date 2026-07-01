@@ -1,0 +1,66 @@
+name: Bug report
+description: Something is broken or behaving unexpectedly
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Do **not** include passwords, tokens, or full `.env` contents.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: What did you expect vs what actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open admin…
+        2. Create station…
+        3. …
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Listener UI (home / station page)
+        - Admin UI
+        - Streaming (Liquidsoap / Icecast)
+        - Queue / programming
+        - Knowledge enrichment
+        - Deployment (Docker / Unraid / Traefik)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Git commit, image tag, or "latest from master"
+      placeholder: e.g. 71be2fb or ghcr.io latest
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: |
+        - OS / Unraid version
+        - docker compose vs Traefik
+        - Browser (if UI issue)
+      description: How are you running Alchemy FM?
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Backend, Liquidsoap, or Icecast log snippets (redact secrets)

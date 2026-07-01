@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Deployment & setup questions
+    url: https://github.com/MMagTech/alchemyfm/blob/master/README.md
+    about: Quick start, security checklist, and architecture overview
+  - name: Development guide
+    url: https://github.com/MMagTech/alchemyfm/blob/master/docs/DEVELOPMENT.md
+    about: Local setup, project layout, and how to run the stack

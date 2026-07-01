@@ -1,8 +1,9 @@
 # Music Knowledge Enrichment — Design Plan (v1)
 
-**Status:** Planning only — not implemented  
+**Status:** Implemented (v1 shipped) — this document is the original design reference; behavior may have drifted slightly from the plan. For current setup, see [DEVELOPMENT.md](DEVELOPMENT.md) and admin **Knowledge** when `KNOWLEDGE_FEATURE=true`.
+
 **Default:** OFF via `.env` — **opt-in only**; when OFF, **no UI changes anywhere**  
-**Scope v1:** Global admin toggle; per-station toggle deferred  
+**Scope v1:** Global admin settings; per-station toggle deferred  
 
 ---
 

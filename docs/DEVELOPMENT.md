@@ -1,0 +1,100 @@
+# Development guide
+
+How to run and work on Alchemy FM locally.
+
+## Prerequisites
+
+- Docker & Docker Compose (full stack), **or** Python 3.12+ (backend only)
+- [AudioMuse-AI](https://github.com/NeptuneHub/AudioMuse-AI) and [Navidrome](https://www.navidrome.org/) reachable from your machine
+- Copy `.env.example` → `.env` and fill in credentials
+
+## Repository layout
+
+```
+alchemyfm/
+├── backend/app/          FastAPI application
+│   ├── routers/          HTTP routes (public, admin, internal)
+│   ├── services/         Queue, stations, Icecast, Navidrome, AudioMuse
+│   └── knowledge/        Optional track trivia enrichment (feature-flagged)
+├── web/                  Static listener + admin UI
+│   └── static/           CSS, JS, themes
+├── liquidsoap/           Per-station playback scripts + supervisor
+├── icecast/              Icecast config
+├── docs/                 Deployment and design notes
+├── docker-compose.yml    Local dev (bind-mounts ./web)
+└── scripts/              Ad-hoc maintenance scripts
+```
+
+## Full stack (recommended)
+
+```bash
+cp .env.example .env
+# Edit .env — AudioMuse, Navidrome, ADMIN_PASSWORD, secrets
+
+docker compose up -d --build
+```
+
+- Listener UI: http://localhost:8080
+- Admin: http://localhost:8080/admin.html
+- Icecast: http://localhost:8000/{mount}
+
+`docker-compose.yml` bind-mounts `./web` so HTML/CSS/JS edits apply without rebuilding the backend image.
+
+## Backend only
+
+```bash
+cd backend
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+
+mkdir -p ../data
+export DATA_DIR=../data   # or set in .env
+uvicorn app.main:app --reload --port 8080
+```
+
+Liquidsoap and Icecast will not run in this mode — useful for API/UI work with mocked or partial integration.
+
+## Useful scripts
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/test_on_air_restart.py` | Manual check for on-air / stream epoch behavior |
+
+There is no automated test suite yet. Validate changes by running the stack and exercising admin + a station listen flow.
+
+## Making changes
+
+### Backend
+
+- Settings: `backend/app/config.py` and `.env.example`
+- Database models: `backend/app/database.py` (migrations are lightweight inline alters on startup)
+- New API routes: add router under `backend/app/routers/`, register in `main.py`
+
+### Web UI
+
+- Pages: `web/*.html`
+- Shared assets: `web/static/`
+- Bump `?v=` on script/style links when you change cached static files
+
+### Liquidsoap / Icecast
+
+- Station scripts generated at runtime under `DATA_DIR`; template in `backend/app/services/liquidsoap.py`
+- Edit `liquidsoap/radio.liq` or supervisor for playback behavior changes
+
+## Optional features
+
+| Flag | Effect |
+|------|--------|
+| `KNOWLEDGE_FEATURE=true` | Enables Knowledge admin page and station trivia (see `docs/MUSIC_KNOWLEDGE_PLAN.md`) |
+
+Requires container restart after `.env` changes.
+
+## CI
+
+Pushes to `master` build and publish Docker images to GHCR (`.github/workflows/docker-publish.yml`). There is no lint/test workflow yet — run manual checks before opening a PR.
+
+## Contributing
+
+See [CONTRIBUTING.md](../CONTRIBUTING.md).

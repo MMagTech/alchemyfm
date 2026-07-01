@@ -31,9 +31,11 @@ Set at minimum:
 
 If AudioMuse or Navidrome run as **other Docker containers on Unraid**, use the host IP and published port (e.g. `http://192.168.1.10:8387`), not container names, unless they share a custom network with Alchemy FM.
 
-## 3. Log in to GHCR (private repo)
+## 3. Pull images from GHCR
 
-The repo is private, so Unraid must authenticate before pulling images:
+Images are published to `ghcr.io/mmagtech/alchemyfm-*` on every push to `master`. For this **public** repository, pulls usually work without logging in.
+
+If Docker reports `permission denied` or `unauthorized` when pulling:
 
 1. GitHub → **Settings → Developer settings → Personal access tokens** → fine-grained token with **read:packages**
 2. On Unraid terminal:
@@ -42,7 +44,7 @@ The repo is private, so Unraid must authenticate before pulling images:
 docker login ghcr.io -u YOUR_GITHUB_USERNAME
 ```
 
-Paste the token as the password.
+Paste the token as the password, then pull again.
 
 ## 4. Deploy with Compose Manager
 
