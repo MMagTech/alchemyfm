@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#09090b" media="(max-width: 640px)">
   <title>Admin — Alchemy FM</title>
-  <link rel="stylesheet" href="/static/style.css?v=84">
+  <link rel="stylesheet" href="/static/style.css?v=89">
   <link rel="stylesheet" href="/static/themes.css?v=2">
-  <link rel="stylesheet" href="/static/admin-mobile.css?v=4" media="(max-width: 640px)">
-  <script src="/static/themes.js?v=13"></script>
+  <link rel="stylesheet" href="/static/admin-mobile.css?v=6" media="(max-width: 640px)">
+  <script src="/static/themes.js?v=14"></script>
 </head>
 <body>
   <header>
@@ -104,7 +104,7 @@
           <p class="admin-lede">Encoding and listener limits shared by all stations.</p>
         </div>
       </div>
-      <div id="broadcast-message" aria-live="polite"></div>
+      <div id="broadcast-message" class="broadcast-toast-host" aria-live="polite" hidden></div>
       <form id="broadcast-form">
         <div class="admin-broadcast-grid">
           <div class="admin-broadcast-group">
@@ -442,7 +442,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=23"></script>
+  <script src="/static/app.js?v=24"></script>
   <script>
     const VALID_SOURCE_TYPES = ['alchemy_anchor', 'similar_seed'];
     const SOURCE_LABELS = {
@@ -857,68 +857,6 @@
       el.textContent = text;
     }
 
-    let broadcastMessageTimer = null;
-
-    function clearBroadcastMessage() {
-      if (broadcastMessageTimer) {
-        clearTimeout(broadcastMessageTimer);
-        broadcastMessageTimer = null;
-      }
-      const el = document.getElementById('broadcast-message');
-      el.replaceChildren();
-      el.className = 'broadcast-toast-host';
-      el.hidden = true;
-    }
-
-    function showBroadcastMessage(text, type, autoDismissMs = 0, variant = '') {
-      if (broadcastMessageTimer) {
-        clearTimeout(broadcastMessageTimer);
-        broadcastMessageTimer = null;
-      }
-      const el = document.getElementById('broadcast-message');
-      el.hidden = false;
-      el.className = `broadcast-toast-host is-visible toast-${type}${variant ? ` toast-${variant}` : ''}`;
-
-      const icon = type === 'error'
-        ? '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>'
-        : '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>';
-
-      let title = type === 'error' ? 'Something went wrong' : 'Saved';
-      let body = text;
-      if (variant === 'icecast' && type === 'success') {
-        title = 'Icecast restarted';
-        body = 'Streams should reconnect in a few seconds.';
-      } else if (variant === 'icecast' && type === 'error') {
-        title = 'Icecast restart failed';
-      } else if (type === 'success' && text === 'Broadcast settings saved.') {
-        title = 'Broadcast settings saved';
-        body = 'Encoding and listener limits are updated.';
-      } else if (variant === 'appearance' && type === 'success') {
-        title = 'Default theme saved';
-        body = text;
-      } else if (variant === 'appearance' && type === 'error') {
-        title = 'Could not save theme';
-        body = text;
-      }
-
-      el.innerHTML = `
-        <div class="broadcast-toast" role="status">
-          <div class="broadcast-toast-icon" aria-hidden="true">${icon}</div>
-          <div class="broadcast-toast-copy">
-            <strong class="broadcast-toast-title">${RadioApp.escape(title)}</strong>
-            <span class="broadcast-toast-body">${RadioApp.escape(body)}</span>
-          </div>
-          <button type="button" class="broadcast-toast-close" aria-label="Dismiss">&times;</button>
-          ${autoDismissMs > 0 ? `<span class="broadcast-toast-progress" style="animation-duration:${autoDismissMs}ms"></span>` : ''}
-        </div>`;
-
-      el.querySelector('.broadcast-toast-close')?.addEventListener('click', clearBroadcastMessage, { once: true });
-
-      if (autoDismissMs > 0) {
-        broadcastMessageTimer = setTimeout(clearBroadcastMessage, autoDismissMs);
-      }
-    }
-
     let icecastRestartDialogResolver = null;
 
     function closeIcecastRestartDialog(confirmed = false) {
@@ -971,7 +909,7 @@
         updateEncodeFormatUi();
         syncIcecastRestartUi(s.icecast_restart_available);
       } catch (err) {
-        showBroadcastMessage(err.message, 'error');
+        RadioApp.showAdminToast(err.message, 'error');
       }
     }
 
@@ -991,9 +929,9 @@
       btn.disabled = true;
       try {
         await adminFetchJSON('/api/admin/broadcast/restart-icecast', { method: 'POST' });
-        showBroadcastMessage('', 'success', 6000, 'icecast');
+        RadioApp.showAdminToast('', 'success', 6000, 'icecast');
       } catch (err) {
-        showBroadcastMessage(err.message, 'error', 8000, 'icecast');
+        RadioApp.showAdminToast(err.message, 'error', 8000, 'icecast');
       } finally {
         btn.disabled = false;
       }
@@ -1030,14 +968,14 @@
         const { default_theme: savedTheme } = await saveAppearanceTheme(default_theme);
         RadioThemes.setAdminDefaultSelect(savedTheme);
         const label = RadioThemes.meta(savedTheme).label;
-        showBroadcastMessage(
+        RadioApp.showAdminToast(
           `${label} is the default for new visitors.`,
           'success',
           5000,
           'appearance'
         );
       } catch (err) {
-        showBroadcastMessage(err.message, 'error', 8000, 'appearance');
+        RadioApp.showAdminToast(err.message, 'error', 8000, 'appearance');
       } finally {
         if (btn) btn.disabled = false;
       }
@@ -1061,9 +999,9 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        showBroadcastMessage('Broadcast settings saved.', 'success', 5000);
+        RadioApp.showAdminToast('Broadcast settings saved.', 'success', 5000);
       } catch (err) {
-        showBroadcastMessage(err.message, 'error');
+        RadioApp.showAdminToast(err.message, 'error');
       }
     });
 

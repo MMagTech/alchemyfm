@@ -39,7 +39,7 @@ const RadioThemes = {
   ],
 
   isAdminPage() {
-    return /\/admin(?:\.html|\/)/.test(location.pathname);
+    return /^\/admin(?:\.html|-login\.html|\/)/.test(location.pathname);
   },
 
   isListenerPage() {
@@ -145,9 +145,13 @@ const RadioThemes = {
     selectEl.value = selected;
   },
 
-  /** Paint as early as possible on listener pages (before DOM ready). */
+  /** Paint as early as possible (before DOM ready). */
   async earlyPaint() {
-    if (this.isAdminPage()) return;
+    if (this.isAdminPage()) {
+      const siteDefault = await this.fetchSiteDefault();
+      this.apply(siteDefault);
+      return;
+    }
     const userTheme = this.getUserTheme();
     if (userTheme) {
       this.apply(userTheme);
@@ -173,13 +177,23 @@ const RadioThemes = {
     });
   },
 
+  async resolveAdminTheme() {
+    return (await this.fetchAdminDefault()) || (await this.fetchSiteDefault());
+  },
+
+  async initAdminTheme() {
+    if (!this.isAdminPage()) return null;
+    const siteDefault = await this.resolveAdminTheme();
+    this.apply(siteDefault);
+    return siteDefault;
+  },
+
   async initAdminDefault() {
     const select = document.getElementById('default_theme');
     if (!select) return null;
 
-    const siteDefault = (await this.fetchAdminDefault()) || this.DEFAULT_ID;
+    const siteDefault = (await this.initAdminTheme()) || this.DEFAULT_ID;
     this.populateSelect(select, siteDefault);
-    this.apply(siteDefault);
 
     select.addEventListener('change', () => {
       this.apply(select.value);
@@ -201,8 +215,12 @@ const RadioThemes = {
 RadioThemes.earlyPaint();
 
 function bootThemeUi() {
-  if (document.getElementById('default_theme')) {
-    RadioThemes.initAdminDefault();
+  if (RadioThemes.isAdminPage()) {
+    if (document.getElementById('default_theme')) {
+      RadioThemes.initAdminDefault();
+    } else {
+      RadioThemes.initAdminTheme();
+    }
     return;
   }
   if (document.getElementById('theme-select')) {

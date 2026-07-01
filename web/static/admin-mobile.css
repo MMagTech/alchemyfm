@@ -105,9 +105,16 @@ main {
 }
 
 .admin-table tbody tr {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "name status"
+    "mount source"
+    "queue queue"
+    "actions actions";
+  gap: 0.55rem 0.75rem;
   margin-bottom: 0.85rem;
-  padding: 0.9rem 0.8rem;
+  padding: 1rem 0.9rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--field);
@@ -120,28 +127,32 @@ main {
 
 .admin-table tbody td {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.35rem 0;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0.2rem;
+  padding: 0;
   overflow: visible;
-  text-align: right;
+  text-align: left;
+  min-width: 0;
 }
 
 .admin-table tbody td::before {
   content: attr(data-label);
   flex-shrink: 0;
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--muted);
-  text-align: left;
+  line-height: 1.2;
 }
 
 .admin-table tbody td[colspan] {
   display: block;
+  grid-column: 1 / -1;
   text-align: center;
+  padding: 0.5rem 0;
 }
 
 .admin-table tbody td[colspan]::before {
@@ -149,12 +160,8 @@ main {
 }
 
 .admin-table tbody td.admin-name-cell {
-  display: block;
-  padding-top: 0;
-  padding-bottom: 0.55rem;
-  margin-bottom: 0.25rem;
-  border-bottom: 1px solid var(--border-subtle);
-  text-align: left;
+  grid-area: name;
+  min-width: 0;
 }
 
 .admin-table tbody td.admin-name-cell::before {
@@ -162,38 +169,104 @@ main {
 }
 
 .admin-table tbody td.admin-name-cell .admin-station-link {
-  font-size: 1rem;
+  font-size: 1.02rem;
   font-weight: 700;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.admin-table tbody td.admin-status-cell {
+  grid-area: status;
+  align-items: flex-end;
+  align-self: start;
+}
+
+.admin-table tbody td.admin-status-cell::before {
+  display: none;
+}
+
+.admin-table tbody td.admin-cell-mount {
+  grid-area: mount;
+}
+
+.admin-table tbody td.admin-source-cell {
+  grid-area: source;
+}
+
+.admin-table tbody td.admin-queue-cell {
+  grid-area: queue;
+  padding-top: 0.15rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.admin-table tbody td.admin-queue-cell .admin-queue-compact {
+  font-size: 0.84rem;
 }
 
 .admin-table tbody td.actions {
-  flex-direction: column;
-  align-items: stretch;
-  padding-top: 0.65rem;
-  margin-top: 0.35rem;
-  border-top: 1px solid var(--border-subtle);
-  text-align: left;
+  grid-area: actions;
+  padding-top: 0.15rem;
+  margin-top: 0;
+  border-top: none;
 }
 
 .admin-table tbody td.actions::before {
-  align-self: flex-start;
-  margin-bottom: 0.15rem;
-}
-
-.admin-actions {
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  width: 100%;
-}
-
-.admin-action-menu-panel {
-  left: 0;
-  right: auto;
+  display: none;
 }
 
 .admin-table tbody td.admin-status-cell .admin-pill-row {
   flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 0.3rem;
+}
+
+.admin-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 0.45rem;
+  width: 100%;
+  align-items: stretch;
+}
+
+.admin-actions .btn-sm {
+  width: 100%;
+  min-height: 2.35rem;
+  justify-content: center;
+  padding-left: 0.35rem;
+  padding-right: 0.35rem;
+}
+
+.admin-action-menu {
+  display: block;
+}
+
+.admin-action-menu > summary {
+  width: 100%;
+  min-height: 2.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-action-more {
+  min-width: 0;
+  width: 100%;
+}
+
+.admin-action-menu-panel {
+  left: auto;
+  right: 0;
+  min-width: 9.5rem;
+}
+
+.admin-table tbody td .admin-chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .programming-grid,
@@ -221,17 +294,13 @@ main {
 
 .knowledge-mode-fieldset {
   grid-template-columns: 1fr;
-  border-radius: var(--radius);
+  gap: 0.35rem;
+  padding: 0.35rem;
 }
 
 .knowledge-mode-option {
   justify-content: flex-start;
-  border-right: none;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.knowledge-mode-option:last-child {
-  border-bottom: none;
+  border: 1px solid var(--border-subtle);
 }
 
 .admin-help-dialog {

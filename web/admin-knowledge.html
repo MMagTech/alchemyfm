@@ -5,8 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#171f2c" media="(max-width: 640px)">
   <title>Knowledge — Alchemy FM Admin</title>
-  <link rel="stylesheet" href="/static/style.css?v=84">
-  <link rel="stylesheet" href="/static/admin-mobile.css?v=4" media="(max-width: 640px)">
+  <link rel="stylesheet" href="/static/style.css?v=89">
+  <link rel="stylesheet" href="/static/themes.css?v=2">
+  <link rel="stylesheet" href="/static/admin-mobile.css?v=5" media="(max-width: 640px)">
+  <script src="/static/themes.js?v=14"></script>
 </head>
 <body>
   <header>
@@ -42,7 +44,7 @@
       <p class="admin-lede">Track trivia for on-air listeners and enrichment settings.</p>
     </header>
 
-    <div id="knowledge-message" class="message" aria-live="polite"></div>
+    <div id="broadcast-message" class="broadcast-toast-host" aria-live="polite" hidden></div>
 
     <div class="admin-knowledge-layout">
       <div class="admin-knowledge-top">
@@ -331,20 +333,9 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=23"></script>
+  <script src="/static/app.js?v=24"></script>
   <script>
-    const msgEl = document.getElementById('knowledge-message');
     const form = document.getElementById('knowledge-form');
-
-    function showMsg(text, kind) {
-      if (!text) {
-        msgEl.textContent = '';
-        msgEl.className = 'message';
-        return;
-      }
-      msgEl.textContent = text;
-      msgEl.className = kind === 'error' ? 'message error' : kind === 'success' ? 'message success' : 'message';
-    }
 
     async function adminFetchJSON(url, opts = {}) {
       const res = await fetch(url, { credentials: 'same-origin', ...opts });
@@ -405,9 +396,9 @@
           body: JSON.stringify(body),
         });
         applySettings(s);
-        showMsg('Settings saved.', 'success');
+        RadioApp.showAdminToast('', 'success', 5000, 'knowledge');
       } catch (err) {
-        showMsg(err.message, 'error');
+        RadioApp.showAdminToast(err.message, 'error', 8000, 'knowledge');
       }
     });
 
@@ -485,10 +476,10 @@
       if (!await openPurgeDialog()) return;
       try {
         const r = await adminFetchJSON('/api/admin/knowledge/purge', { method: 'POST' });
-        showMsg(`Cleared ${r.deleted} cache entries.`, 'success');
+        RadioApp.showAdminToast(`Cleared ${r.deleted} cache entries.`, 'success', 5000, 'knowledge-purge');
         loadSettings();
       } catch (err) {
-        showMsg(err.message, 'error');
+        RadioApp.showAdminToast(err.message, 'error', 8000, 'knowledge-purge');
       }
     });
 
@@ -522,7 +513,7 @@
       }
     });
 
-    loadSettings().catch(err => showMsg(err.message, 'error'));
+    loadSettings().catch(err => RadioApp.showAdminToast(err.message, 'error', 8000, 'knowledge'));
     setInterval(() => loadSettings().catch(() => {}), 15000);
   </script>
 </body>

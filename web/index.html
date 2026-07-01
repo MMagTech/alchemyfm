@@ -7,9 +7,9 @@
   <title>Alchemy FM</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="/static/style.css?v=94">
+  <link rel="stylesheet" href="/static/style.css?v=101">
   <link rel="stylesheet" href="/static/themes.css?v=2">
-  <script src="/static/themes.js?v=13"></script>
+  <script src="/static/themes.js?v=14"></script>
 </head>
 <body>
   <header>
@@ -83,21 +83,32 @@
       });
     }
 
-    function setNowPlayingTrack(trackEl, text) {
+    function setNowPlayingTrack(trackEl, np) {
       let inner = trackEl.querySelector('.now-track-inner');
       if (!inner) {
         trackEl.innerHTML = `<span class="now-track-inner"></span>`;
         inner = trackEl.querySelector('.now-track-inner');
       }
-      inner.textContent = text;
-      trackEl.title = text;
+
+      if (!np) {
+        trackEl.classList.add('is-waiting');
+        inner.textContent = 'Starting up…';
+        trackEl.title = 'Starting up…';
+        syncTrackMarquee(trackEl);
+        return;
+      }
+
+      trackEl.classList.remove('is-waiting');
+      const label = `${np.artist} — ${np.title}`;
+      inner.innerHTML = `
+        <span class="now-track-artist">${RadioApp.escape(np.artist)}</span><span class="now-track-sep" aria-hidden="true"> — </span><span class="now-track-title">${RadioApp.escape(np.title)}</span>`;
+      trackEl.title = label;
       syncTrackMarquee(trackEl);
     }
 
     function updateCard(s) {
       const card = ensureCard(s);
       const np = s.now_playing;
-      const now = np ? `${np.artist} — ${np.title}` : 'Starting up…';
       const trackKey = RadioApp.trackKey(np);
       const coverUrl = (np && np.cover_url) ? np.cover_url : (s.artwork_url || '');
 
@@ -110,11 +121,11 @@
       const trackEl = card.querySelector('.now-track');
       if (trackEl.dataset.trackKey !== trackKey) {
         trackEl.dataset.trackKey = trackKey || '';
-        setNowPlayingTrack(trackEl, now);
+        setNowPlayingTrack(trackEl, np);
         trackEl.classList.add('track-switch');
         requestAnimationFrame(() => trackEl.classList.remove('track-switch'));
       } else {
-        setNowPlayingTrack(trackEl, now);
+        setNowPlayingTrack(trackEl, np);
       }
       card.querySelector('.station-card-tune-in').href = `/station.html?slug=${encodeURIComponent(s.slug)}`;
 

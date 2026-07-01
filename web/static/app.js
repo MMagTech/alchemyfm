@@ -136,6 +136,37 @@ const RadioApp = {
     }
   },
 
+  formatTabTitleNowPlaying(artist, title, stationName, maxLen = 50) {
+    const suffix = ` · ${stationName}`;
+    const a = String(artist || '').trim();
+    const t = String(title || '').trim();
+    if (!a && !t) return `${stationName} — Alchemy FM`;
+
+    let core = a && t ? `${a} — ${t}` : (t || a);
+    const maxCore = Math.max(12, maxLen - suffix.length);
+    if (core.length > maxCore) {
+      core = `${core.slice(0, maxCore - 1).trimEnd()}…`;
+    }
+    return `${core}${suffix}`;
+  },
+
+  updateTabTitle({ stationName, nowPlaying, playing } = {}) {
+    if (!stationName) return;
+
+    const defaultTitle = `${stationName} — Alchemy FM`;
+    const np = nowPlaying;
+    const hasTrack = Boolean(np?.title?.trim() && np?.artist?.trim());
+    const showTrack = Boolean(playing && hasTrack);
+
+    const nextTitle = showTrack
+      ? this.formatTabTitleNowPlaying(np.artist, np.title, stationName)
+      : defaultTitle;
+
+    if (document.title !== nextTitle) {
+      document.title = nextTitle;
+    }
+  },
+
   wireMediaSessionControls(audio, onPlay, onPause) {
     if (!('mediaSession' in navigator)) return;
 
@@ -209,7 +240,7 @@ const RadioApp = {
     let tick = null;
     let reconnectTimer = null;
     let reconnectAttempt = 0;
-    let streamLive = true;
+    let streamLive = false;
     let stallTimer = null;
     let connectInFlight = false;
     let lastProgressAt = 0;
@@ -299,6 +330,9 @@ const RadioApp = {
       }
       connectInFlight = true;
       setConnectingUi(bustCache ? 'Reconnecting…' : 'Connecting…');
+      if (audio.src && audio.src !== src) {
+        audio.pause();
+      }
       audio.src = src;
       audio.load();
       return audio.play().finally(() => {
@@ -504,12 +538,21 @@ const RadioApp = {
     audio.setStreamLive = (live) => {
       const next = Boolean(live);
       if (streamLive === next) return;
+      const wasLive = streamLive;
       streamLive = next;
       if (!next) {
-        markStreamOffline('Off air');
+        if (audio.dataset.wantLive !== '1') return;
+        const playing = btn.classList.contains('is-playing') || !audio.paused;
+        if (playing && wasLive) {
+          markStreamOffline('Off air');
+        } else if (!connectInFlight) {
+          status.textContent = 'Off air';
+          status.classList.remove('is-live');
+          if (dot) dot.classList.remove('is-live');
+        }
         return;
       }
-      if (audio.dataset.wantLive === '1' && audio.paused) {
+      if (audio.dataset.wantLive === '1' && audio.paused && !connectInFlight) {
         reconnectAttempt = 0;
         clearTimeout(reconnectTimer);
         connectStream(true).catch(() => scheduleReconnect());
@@ -552,6 +595,92 @@ const RadioApp = {
     const n = Number(kbps) || 0;
     if (n >= 1000) return `${(n / 1000).toFixed(1)} Mbps`;
     return `${Math.round(n)} kbps`;
+  },
+
+  _adminToastTimer: null,
+
+  clearAdminToast(hostId = 'broadcast-message') {
+    if (this._adminToastTimer) {
+      clearTimeout(this._adminToastTimer);
+      this._adminToastTimer = null;
+    }
+    const el = document.getElementById(hostId);
+    if (!el) return;
+    el.replaceChildren();
+    el.className = 'broadcast-toast-host';
+    el.hidden = true;
+  },
+
+  resolveAdminToastCopy(text, type, variant = '') {
+    let title = type === 'error' ? 'Something went wrong' : 'Saved';
+    let body = text;
+    if (variant === 'icecast' && type === 'success') {
+      title = 'Icecast restarted';
+      body = 'Streams should reconnect in a few seconds.';
+    } else if (variant === 'icecast' && type === 'error') {
+      title = 'Icecast restart failed';
+    } else if (type === 'success' && text === 'Broadcast settings saved.') {
+      title = 'Broadcast settings saved';
+      body = 'Encoding and listener limits are updated.';
+    } else if (variant === 'appearance' && type === 'success') {
+      title = 'Default theme saved';
+      body = text;
+    } else if (variant === 'appearance' && type === 'error') {
+      title = 'Could not save theme';
+      body = text;
+    } else if (variant === 'knowledge' && type === 'success') {
+      title = 'Knowledge settings saved';
+      body = 'Enrichment and on-air display settings are updated.';
+    } else if (variant === 'knowledge' && type === 'error') {
+      title = 'Could not save settings';
+      body = text;
+    } else if (variant === 'knowledge-purge' && type === 'success') {
+      title = 'Cache cleared';
+      body = text;
+    } else if (variant === 'knowledge-purge' && type === 'error') {
+      title = 'Could not clear cache';
+      body = text;
+    }
+    return { title, body };
+  },
+
+  showAdminToast(text, type, autoDismissMs = 0, variant = '', hostId = 'broadcast-message') {
+    if (this._adminToastTimer) {
+      clearTimeout(this._adminToastTimer);
+      this._adminToastTimer = null;
+    }
+    const el = document.getElementById(hostId);
+    if (!el) return;
+
+    el.hidden = false;
+    el.className = `broadcast-toast-host is-visible toast-${type}${variant ? ` toast-${variant}` : ''}`;
+
+    const icon = type === 'error'
+      ? '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>'
+      : '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>';
+
+    const { title, body } = this.resolveAdminToastCopy(text, type, variant);
+
+    el.innerHTML = `
+      <div class="broadcast-toast" role="status">
+        <div class="broadcast-toast-icon" aria-hidden="true">${icon}</div>
+        <div class="broadcast-toast-copy">
+          <strong class="broadcast-toast-title">${this.escape(title)}</strong>
+          <span class="broadcast-toast-body">${this.escape(body)}</span>
+        </div>
+        <button type="button" class="broadcast-toast-close" aria-label="Dismiss">&times;</button>
+        ${autoDismissMs > 0 ? `<span class="broadcast-toast-progress" style="animation-duration:${autoDismissMs}ms"></span>` : ''}
+      </div>`;
+
+    el.querySelector('.broadcast-toast-close')?.addEventListener(
+      'click',
+      () => this.clearAdminToast(hostId),
+      { once: true }
+    );
+
+    if (autoDismissMs > 0) {
+      this._adminToastTimer = setTimeout(() => this.clearAdminToast(hostId), autoDismissMs);
+    }
   },
 
   initHeaderBroadcastStats() {

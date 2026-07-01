@@ -89,6 +89,7 @@ services:
       - "traefik.http.routers.alchemyfm-web.middlewares=noindex@file,crowdsec@file"
       - "traefik.http.routers.alchemyfm-web.priority=10"
       - "traefik.http.services.alchemyfm-web.loadbalancer.server.port=8080"
+      - "traefik.http.services.alchemyfm-web.loadbalancer.responseForwarding.flushInterval=1s"
       - "com.docker.compose.project=alchemyfm"
       - "com.docker.compose.service=backend"
     restart: unless-stopped

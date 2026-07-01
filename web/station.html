@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#09090b" media="(max-width: 640px)">
   <title>Station — Alchemy FM</title>
-  <link rel="stylesheet" href="/static/style.css?v=98">
+  <link rel="stylesheet" href="/static/style.css?v=101">
   <link rel="stylesheet" href="/static/themes.css?v=2">
   <link rel="stylesheet" href="/static/station-desktop.css?v=7" media="(min-width: 641px)">
-  <link rel="stylesheet" href="/static/station-mobile.css?v=10" media="(max-width: 640px)">
-  <script src="/static/themes.js?v=13"></script>
+  <link rel="stylesheet" href="/static/station-mobile.css?v=12" media="(max-width: 640px)">
+  <script src="/static/themes.js?v=14"></script>
 </head>
 <body>
   <header>
@@ -41,7 +41,7 @@
   </main>
   <script src="/static/live-audio-graph.js?v=1"></script>
   <script src="/static/strip-visualizer.js?v=2"></script>
-  <script src="/static/app.js?v=21"></script>
+  <script src="/static/app.js?v=25"></script>
   <script>
     const params = new URLSearchParams(location.search);
     const slug = params.get('slug');
@@ -183,15 +183,26 @@
       }
     }
 
-    function browserStreamUrl(stationSlug) {
-      return new URL(
-        `/api/stations/${encodeURIComponent(stationSlug)}/listen`,
+    function browserStreamUrl(station) {
+      const slug = typeof station === 'string' ? station : station.slug;
+      const proxy = new URL(
+        `/api/stations/${encodeURIComponent(slug)}/listen`,
         location.origin
       ).href;
+      const direct = typeof station === 'object' ? station.stream_url : '';
+      if (direct) {
+        try {
+          const url = new URL(direct);
+          if (url.origin === location.origin) return url.href;
+        } catch {
+          /* use proxy */
+        }
+      }
+      return proxy;
     }
 
     function renderShell(s) {
-      document.title = `${s.name} — Alchemy FM`;
+      RadioApp.updateTabTitle({ stationName: s.name, playing: false });
       document.getElementById('content').innerHTML = `
         <div class="panel station-tune-in">
           <div class="tune-in-top">
@@ -258,7 +269,7 @@
         </div>`;
 
       const audio = document.getElementById('live-audio');
-      const listenUrl = browserStreamUrl(s.slug);
+      const listenUrl = browserStreamUrl(s);
       audio.dataset.streamSrc = listenUrl;
       audio.src = listenUrl;
       const streamUrl = s.stream_url;
@@ -404,7 +415,7 @@
         renderShell(s);
       }
       const audio = document.getElementById('live-audio');
-      const listenUrl = browserStreamUrl(slug);
+      const listenUrl = browserStreamUrl(s);
       if (audio && !streamUrlsMatch(audio.src, listenUrl)) {
         const wasPlaying = !audio.paused || audio.dataset.wantLive === '1';
         audio.dataset.streamSrc = listenUrl;
@@ -450,6 +461,11 @@
           artist: np?.artist || s.name,
           album: s.name,
           artworkUrl: (np && np.cover_url) || s.artwork_url || '',
+          playing: !audio.paused && audio.dataset.wantLive === '1',
+        });
+        RadioApp.updateTabTitle({
+          stationName: s.name,
+          nowPlaying: np,
           playing: !audio.paused && audio.dataset.wantLive === '1',
         });
       }

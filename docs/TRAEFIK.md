@@ -60,6 +60,28 @@ Only **`ALCHEMYFM_HOST`** is required in `.env`. To change labels (middleware, c
 - [ ] `/internal/*` never exposed (Liquidsoap calls `http://backend:8080` on the `proxy` network only)
 - [ ] Change `ICECAST_SOURCE_PASSWORD` and `LIQUIDSOAP_CALLBACK_SECRET` from defaults
 
+## Cloudflare / long-lived streams
+
+If `alchemyfm.example.com` is **proxied** (orange cloud), live audio through `/api/stations/{slug}/listen` can stall or fail. Prefer:
+
+1. **Gray-cloud** the hostname (DNS only), or
+2. Let the in-browser player use the **direct mount URL** (`https://host/mount`) — same origin as the site when Traefik routes mounts to Icecast; the web UI picks this automatically when `stream_url` matches the page origin.
+
+Icecast router already sets `responseForwarding.flushInterval=1s`. The backend web service uses the same flush interval in `docker-compose.traefik.yml` for the listen proxy.
+
+## Troubleshooting “Stream error” / `NS_BINDING_ABORTED`
+
+In Firefox devtools, rapid aborted `/listen` requests usually mean the player is **reconnecting in a loop**, not that Traefik returned HTML.
+
+Check `/api/stations/{slug}`:
+
+| Field | Meaning |
+|-------|---------|
+| `on_air: false` | Liquidsoap is not connected to Icecast for that mount — fix encoder side first |
+| `on_air: true` but no audio | Traefik routing, Cloudflare proxy, or mount name mismatch |
+
+Verify Icecast from the backend container: `curl -s http://icecast:8000/status-json.xsl` and confirm each station mount appears under `icestats.source`.
+
 Optional defense in depth: add a Traefik router rule or middleware to return 404 for `PathPrefix(`/internal`)` on the public hostname.
 
 ## Custom mount paths
