@@ -88,8 +88,20 @@ There is no automated test suite yet. Validate changes by running the stack and 
 | Flag | Effect |
 |------|--------|
 | `KNOWLEDGE_FEATURE=true` | Enables Knowledge admin page and station trivia (see `docs/MUSIC_KNOWLEDGE_PLAN.md`) |
+| `LOG_LEVEL` | Backend log verbosity (`INFO` default) |
+| `LOG_MAX_BYTES` / `LOG_BACKUP_COUNT` | Rotating log at `DATA_DIR/logs/backend.log` (~20 MB cap by default) |
 
 Requires container restart after `.env` changes.
+
+## Logs
+
+The backend writes to stdout (visible via `docker compose logs backend`) and to a persistent rotating file:
+
+- **Path:** `DATA_DIR/logs/backend.log` (default `/data/logs/backend.log` in Docker)
+- **Rotation:** when the file exceeds `LOG_MAX_BYTES`, it rolls to `.1`, `.2`, … up to `LOG_BACKUP_COUNT` backups
+- **Local dev:** with `DATA_DIR=../data`, logs land in `../data/logs/backend.log`
+
+Liquidsoap and Icecast logs remain in their container stdout / internal log files unless you configure Docker log rotation separately.
 
 ## CI
 

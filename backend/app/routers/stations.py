@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 import httpx
 from sqlalchemy.orm import Session
@@ -15,6 +17,41 @@ from app.services.navidrome import attach_artist_bio
 from app.services.stations import station_to_detail, station_to_summary
 
 router = APIRouter(prefix="/api/stations", tags=["stations"])
+
+logger = logging.getLogger(__name__)
+
+# Active same-origin stream connections keyed by slug (diagnostics for
+# duplicate-listener issues, e.g. iOS probe + playback connections).
+_active_listen_connections: dict[str, int] = {}
+
+
+def _probe_range_end(range_header: str | None) -> int | None:
+    """Return the end byte for a tiny start-of-resource probe range.
+
+    iOS/Safari sniffs a media resource with a small range like ``bytes=0-1``
+    before opening the real (rangeless) playback connection. We only treat a
+    small, finite range that starts at 0 as a probe; open-ended ranges
+    (``bytes=0-``) belong to actual playback and must stream normally.
+    """
+    if not range_header:
+        return None
+    value = range_header.strip().lower()
+    if not value.startswith("bytes="):
+        return None
+    spec = value[len("bytes="):].split(",")[0].strip()
+    if "-" not in spec:
+        return None
+    start_s, end_s = spec.split("-", 1)
+    if not end_s:
+        return None
+    try:
+        start = int(start_s or "0")
+        end = int(end_s)
+    except ValueError:
+        return None
+    if start != 0 or end < 0 or (end - start) >= 64:
+        return None
+    return end
 
 
 def _icecast_internal_url(station: Station) -> str:
@@ -65,13 +102,45 @@ def listen_m3u(slug: str, request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/{slug}/listen")
-async def listen_stream(slug: str, db: Session = Depends(get_db)):
-    """Same-origin stream for in-browser playback + visualizer."""
+async def listen_stream(slug: str, request: Request, db: Session = Depends(get_db)):
+    """Same-origin stream for in-browser playback + visualizer.
+
+    iOS Safari typically opens a short probe/Range connection to sniff the
+    resource before opening the real playback connection, and may hold both
+    open. Each browser connection maps to one upstream Icecast listener, so a
+    lingering probe inflates the listener count. We detect client disconnects
+    between chunks and tear the upstream connection down immediately so ghost
+    connections drop from Icecast quickly.
+    """
     station = db.query(Station).filter(Station.slug == slug, Station.enabled.is_(True)).first()
     if not station:
         raise HTTPException(status_code=404, detail="Station not found")
-    upstream = _icecast_internal_url(station)
 
+    range_header = request.headers.get("range")
+    user_agent = request.headers.get("user-agent", "")
+    media_type = stream_media_type(get_broadcast_settings(db).encode_format)
+
+    # Answer iOS/Safari's tiny sniff probe with a finite 206 so it closes the
+    # probe connection immediately, instead of leaving an endless 200 stream
+    # open (which registers as a duplicate Icecast listener). No upstream
+    # connection is opened for the probe at all.
+    probe_end = _probe_range_end(range_header)
+    if probe_end is not None:
+        logger.debug(
+            "listen probe slug=%s range=%s ua=%s", slug, range_header, user_agent[:80]
+        )
+        return Response(
+            content=bytes(probe_end + 1),
+            status_code=206,
+            media_type=media_type,
+            headers={
+                "Content-Range": f"bytes 0-{probe_end}/*",
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "no-store",
+            },
+        )
+
+    upstream = _icecast_internal_url(station)
     client = httpx.AsyncClient(timeout=httpx.Timeout(15.0, read=None))
     req = client.build_request("GET", upstream)
     resp = await client.send(req, stream=True)
@@ -80,18 +149,33 @@ async def listen_stream(slug: str, db: Session = Depends(get_db)):
         await client.aclose()
         raise HTTPException(status_code=502, detail="Stream unavailable")
 
+    active = _active_listen_connections.get(slug, 0) + 1
+    _active_listen_connections[slug] = active
+    logger.debug(
+        "listen open slug=%s active=%d range=%s ua=%s",
+        slug,
+        active,
+        range_header or "-",
+        user_agent[:80],
+    )
+
     async def stream():
         try:
             async for chunk in resp.aiter_bytes(8192):
+                if await request.is_disconnected():
+                    break
                 yield chunk
         finally:
             await resp.aclose()
             await client.aclose()
+            remaining = _active_listen_connections.get(slug, 1) - 1
+            if remaining > 0:
+                _active_listen_connections[slug] = remaining
+            else:
+                _active_listen_connections.pop(slug, None)
+            logger.debug("listen close slug=%s active=%d", slug, max(remaining, 0))
 
-    return StreamingResponse(
-        stream(),
-        media_type=stream_media_type(get_broadcast_settings(db).encode_format),
-    )
+    return StreamingResponse(stream(), media_type=media_type)
 
 
 @router.get("/{slug}/artwork")

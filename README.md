@@ -17,9 +17,9 @@ Turn [AudioMuse](https://github.com/NeptuneHub/AudioMuse-AI) programming into **
 
 ### What you get
 
-**Listeners** — station picker, tune-in page with now playing / up next / recently played, and a listen button.
+**Listeners** — station picker with play-from-grid, persistent mini-player while browsing, tune-in page with now playing / up next / recently played, per-listener color themes, and optional artist biography.
 
-**Operators** — admin UI to create stations, set mounts and programming sources, manage broadcast settings, and optional track trivia (Knowledge feature).
+**Operators** — admin UI to create stations, set mounts and programming sources, manage broadcast and appearance settings, and optional track trivia (Knowledge feature).
 
 ```
 AudioMuse ──▶ Backend ──▶ queue.m3u (per station) ──▶ Liquidsoap ──▶ Icecast ──▶ Listeners
@@ -106,6 +106,7 @@ When a station exhausts fresh tracks from its primary source:
 |---------|-----------------|
 | Admin shows **503** | Set `ADMIN_PASSWORD` in `.env` and restart the backend container |
 | Station has **no tracks** / empty queue | AudioMuse URL/token in `.env`; anchor or seed exists; backend logs for AudioMuse errors |
+| Need **backend logs** after a restart | Persistent log at `DATA_DIR/logs/backend.log` (default `/data/logs/backend.log` in Docker; rotates at ~20 MB total). Also `docker compose logs backend` for stdout |
 | Backend **can't reach** AudioMuse/Navidrome on the host | On Docker Desktop use `host.docker.internal`; on Linux add `extra_hosts` or use the host LAN IP in `.env` |
 | Stream **won't play** | Icecast on port `8000`; mount matches admin (e.g. `/yachtrock`); station is **On** in admin |
 | **Wrong stream URL** behind a proxy | See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — set `TRUST_PROXY_HEADERS=true` and route mount paths to Icecast |
@@ -138,6 +139,7 @@ Contributions welcome — [CONTRIBUTING.md](CONTRIBUTING.md), [docs/DEVELOPMENT.
 - Icecast source password in `.env` must match `icecast/icecast.xml` (default `hackme`).
 - `LIQUIDSOAP_CALLBACK_SECRET` must match between backend and Liquidsoap containers.
 - Queue files: the backend rewrites each `queue.m3u` from the database; after upgrading an old install, use admin **Rebuild M3U** once per station. See [docs/TECH_DEBT.md](docs/TECH_DEBT.md).
+- Backend logs persist under `DATA_DIR/logs/` with automatic rotation (`LOG_MAX_BYTES` × `LOG_BACKUP_COUNT`, default ~20 MB cap). Optional overrides in `.env`.
 
 ## License
 

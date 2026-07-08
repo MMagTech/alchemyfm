@@ -244,9 +244,8 @@ html {
 
 .appearance-theme-field {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 1rem 1.5rem;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 .appearance-theme-field label {
@@ -261,6 +260,8 @@ html {
 
 .appearance-theme-field select {
   min-width: 11rem;
+  max-width: 20rem;
+  width: 100%;
   font-family: inherit;
   font-size: 0.95rem;
   color: var(--text);
@@ -299,6 +300,14 @@ html {
   font-size: 0.88rem;
   color: var(--muted);
   max-width: 36rem;
+}
+
+.appearance-actions {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: flex-end;
 }
 
 * {

@@ -34,15 +34,15 @@
       </a>
     </h1>
     <div class="header-end">
-      <label class="header-theme">
-        <span class="sr-only">Color theme</span>
-        <select id="theme-select" class="theme-select" aria-label="Color theme"></select>
-      </label>
       <button type="button" id="artist-bio-toggle" class="header-bio-toggle"
         aria-pressed="true" aria-label="Show artist biography" hidden>
         <span class="header-bio-toggle-long">Artist Bio</span>
         <span class="header-bio-toggle-short">Bio</span>
       </button>
+      <label class="header-theme">
+        <span class="sr-only">Color theme</span>
+        <select id="theme-select" class="theme-select" aria-label="Color theme"></select>
+      </label>
       <nav>
       <a href="/">All Stations</a>
       </nav>
@@ -351,7 +351,13 @@
           void GlobalLivePlayer.resumePlaybackForSession(session);
         } else {
           audio.dataset.streamSrc = listenUrl;
-          audio.src = listenUrl;
+          // Only prime the element src when it isn't already pointed at this
+          // stream. Reassigning while already live (src carries a cache-bust
+          // query) tears down the active connection and makes iOS open a fresh
+          // one while the previous upstream lingers -> duplicate listener.
+          if (!streamUrlsMatch(audio.src, listenUrl)) {
+            audio.src = listenUrl;
+          }
           RadioApp.bindLivePlayerStationUi(audio, {
             viewingSlug: s.slug,
             pageStationName: s.name,

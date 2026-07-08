@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/icons/favicon.ico?v=2" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png?v=2">
   <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png?v=2">
-  <link rel="stylesheet" href="/static/style.css?v=89">
+  <link rel="stylesheet" href="/static/style.css?v=90">
   <link rel="stylesheet" href="/static/themes.css?v=2">
   <link rel="stylesheet" href="/static/admin-mobile.css?v=6" media="(max-width: 640px)">
   <script src="/static/themes.js?v=14"></script>
@@ -56,11 +56,8 @@
       </div>
       <form id="appearance-form">
         <div class="appearance-theme-field">
-          <div>
-            <label for="default_theme">Default station theme</label>
-            <select id="default_theme" name="default_theme" required></select>
-          </div>
-          <button type="submit" class="btn">Save appearance</button>
+          <label for="default_theme">Default station theme</label>
+          <select id="default_theme" name="default_theme" required></select>
         </div>
         <div class="appearance-bio-field">
           <label class="appearance-checkbox">
@@ -68,6 +65,9 @@
             Show Artist Biography on Station Page
           </label>
           <p class="hint appearance-hint">Short bio from Navidrome above the visualizer. Requires external metadata (Last.fm/Deezer).</p>
+        </div>
+        <div class="appearance-actions">
+          <button type="submit" class="btn">Save Appearance</button>
         </div>
       </form>
     </section>
@@ -337,7 +337,7 @@
       <header class="admin-help-header">
         <div>
           <h2 id="admin-help-title">Admin Help</h2>
-          <p class="admin-help-lede">Operations for managing stations, queues, broadcast, and knowledge settings.</p>
+          <p class="admin-help-lede">Operations for managing stations, queues, appearance, broadcast, and knowledge settings.</p>
         </div>
         <button type="button" class="admin-help-close" data-help-dismiss aria-label="Close help">×</button>
       </header>
@@ -380,6 +380,15 @@
           </dl>
         </section>
         <section class="admin-help-section">
+          <h3>Appearance</h3>
+          <dl class="admin-help-dl">
+            <dt>Default Station Theme</dt>
+            <dd>Theme new visitors see before they pick their own. Listeners can override it per browser from the station page header.</dd>
+            <dt>Artist Biography</dt>
+            <dd>When enabled, station pages can show a short artist bio above the visualizer (from Navidrome / Last.fm / Deezer metadata). Listeners can hide or show it with the <strong>Artist Bio</strong> toggle in the station header.</dd>
+          </dl>
+        </section>
+        <section class="admin-help-section">
           <h3>Broadcast (global)</h3>
           <dl class="admin-help-dl">
             <dt>Max Listeners</dt>
@@ -388,6 +397,17 @@
             <dd>Format, bitrate, and sample rate for every station. Saving applies to Liquidsoap; stations restart individually.</dd>
             <dt>Crossfade</dt>
             <dd>Seconds to overlap between tracks. <code>0</code> = hard cut.</dd>
+          </dl>
+        </section>
+        <section class="admin-help-section">
+          <h3>Listener UI</h3>
+          <dl class="admin-help-dl">
+            <dt>Home Grid</dt>
+            <dd>Listeners can tune in directly from a station card on the home page.</dd>
+            <dt>Mini-Player</dt>
+            <dd>Playback persists in a bottom bar while browsing between home and station pages.</dd>
+            <dt>In-Browser Stream</dt>
+            <dd>The website plays through a same-origin proxy (<code>/api/stations/{slug}/listen</code>) so the visualizer and volume controls work without CORS issues.</dd>
           </dl>
         </section>
         <section class="admin-help-section" id="admin-help-knowledge">
@@ -412,9 +432,10 @@
           <ul class="admin-help-list">
             <li><strong>Missing Album Art</strong> — Usually the on-air track could not be matched to a Navidrome ID. Try <em>Queue</em> or <em>Rebuild</em> if metadata looks wrong.</li>
             <li><strong>Wrong Or Repeating Tracks</strong> — Long uptimes: <code>queue.m3u</code> can grow with old entries while the database moves on. Restart the backend or use Rebuild to resync (see <code>docs/TECH_DEBT.md</code> in the repo).</li>
-            <li><strong>Station Silent After Edit</strong> — Confirm the station is enabled and check Docker logs for Liquidsoap. Mount changes restart only that station (~1–2s gap).</li>
+            <li><strong>Station Silent After Edit</strong> — Confirm the station is enabled and check Docker logs for Liquidsoap. Mount changes restart only that station (~1–2s gap). Persistent backend log: <code>DATA_DIR/logs/backend.log</code> (inside the app data volume).</li>
             <li><strong>Seed Search Empty</strong> — AudioMuse must be running and reachable; hard-refresh admin after backend updates.</li>
             <li><strong>Listeners Stuck After Icecast Restart</strong> — Stream epoch bumps automatically; tuned-in web players reconnect within a few seconds.</li>
+            <li><strong>Listener Count Looks High on iPhone</strong> — Safari opens a short probe request before playback; the backend answers it without holding an extra Icecast connection. If counts still look wrong, check <code>backend.log</code> for duplicate stream opens.</li>
           </ul>
         </section>
         <section class="admin-help-section">

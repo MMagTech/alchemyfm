@@ -100,6 +100,16 @@ docker compose --env-file /mnt/user/appdata/alchemyfm/.env \
 
 `docker-compose.unraid.yml` mounts `/var/run/docker.sock` into the backend so **Restart Icecast** in admin works. `DOCKER_COMPOSE_PROJECT` is set to `alchemyfm` to match the stack name.
 
+## Logs
+
+Backend application logs persist in appdata and rotate automatically:
+
+```text
+/mnt/user/appdata/alchemyfm/data/logs/backend.log
+```
+
+Default cap is ~20 MB (`LOG_MAX_BYTES=5000000`, `LOG_BACKUP_COUNT=3`). Override in `.env` if needed. For live tailing during a session, `docker logs -f alchemyfm-backend` still works.
+
 ## Build locally instead (optional)
 
 If you prefer building on Unraid instead of GHCR:

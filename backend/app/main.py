@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -71,9 +72,58 @@ async def _queue_refresh_loop() -> None:
         await asyncio.sleep(settings.queue_refresh_interval_sec)
 
 
+def _configure_logging() -> None:
+    """Log to stdout plus a persistent, size-capped rotating file under DATA_DIR.
+
+    The file rotates in place: once ``log_max_bytes`` is reached it rolls to
+    ``backend.log.1`` (up to ``log_backup_count`` backups), so total disk use is
+    bounded (~max_bytes * (backup_count + 1)) and the oldest data is overwritten.
+    """
+    level = getattr(logging, settings.log_level.upper(), logging.INFO)
+    root = logging.getLogger()
+    root.setLevel(level)
+
+    fmt = logging.Formatter(
+        "%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    has_console = any(
+        isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)
+        for h in root.handlers
+    )
+    if not has_console:
+        stream = logging.StreamHandler()
+        stream.setFormatter(fmt)
+        root.addHandler(stream)
+
+    already_have_file = any(
+        isinstance(h, RotatingFileHandler) for h in root.handlers
+    )
+    if not already_have_file:
+        try:
+            Path(settings.log_dir).mkdir(parents=True, exist_ok=True)
+            file_handler = RotatingFileHandler(
+                settings.log_file,
+                maxBytes=settings.log_max_bytes,
+                backupCount=settings.log_backup_count,
+                encoding="utf-8",
+            )
+            file_handler.setFormatter(fmt)
+            root.addHandler(file_handler)
+            logger.info(
+                "Logging to %s (max %d bytes x %d backups)",
+                settings.log_file,
+                settings.log_max_bytes,
+                settings.log_backup_count,
+            )
+        except OSError as exc:
+            logger.warning("Could not open log file %s: %s", settings.log_file, exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logging.basicConfig(level=logging.INFO)
+    _configure_logging()
     if not admin_auth_enabled():
         logger.warning(
             "ADMIN_PASSWORD is not set — admin UI and /api/admin are DISABLED. "

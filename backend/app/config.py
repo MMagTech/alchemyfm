@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     liquidsoap_callback_secret: str = "change-me"
     queue_refresh_interval_sec: int = 30
 
+    # Persistent, size-capped application log (rotates in place under DATA_DIR).
+    log_level: str = "INFO"
+    log_max_bytes: int = 5_000_000  # ~5 MB per file
+    log_backup_count: int = 3  # keep .1/.2/.3 -> ~20 MB total cap
+
     # Admin UI + /api/admin/* — required before exposing this app publicly
     admin_username: str = "admin"
     admin_password: str = ""
@@ -45,6 +50,14 @@ class Settings(BaseSettings):
     @property
     def stations_root(self) -> str:
         return f"{self.data_dir.rstrip('/')}/stations"
+
+    @property
+    def log_dir(self) -> str:
+        return f"{self.data_dir.rstrip('/')}/logs"
+
+    @property
+    def log_file(self) -> str:
+        return f"{self.log_dir}/backend.log"
 
     def stream_public_url(self, mount: str) -> str:
         mount = mount if mount.startswith("/") else f"/{mount}"
