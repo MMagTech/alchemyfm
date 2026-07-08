@@ -14,10 +14,10 @@
   <meta name="apple-mobile-web-app-title" content="Alchemy FM">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="/static/style.css?v=109">
+  <link rel="stylesheet" href="/static/style.css?v=120">
   <link rel="stylesheet" href="/static/themes.css?v=2">
-  <link rel="stylesheet" href="/static/home-desktop.css?v=15" media="(min-width: 641px)">
-  <link rel="stylesheet" href="/static/home-mobile.css?v=9" media="(max-width: 640px)">
+  <link rel="stylesheet" href="/static/home-desktop.css?v=16" media="(min-width: 641px)">
+  <link rel="stylesheet" href="/static/home-mobile.css?v=10" media="(max-width: 640px)">
   <script src="/static/themes.js?v=14"></script>
 </head>
 <body>
@@ -48,146 +48,46 @@
       <p class="empty">Loading stations…</p>
     </div>
   </main>
-  <script src="/static/app.js"></script>
-  <script>
-    const cardState = new Map();
-
-    function ensureCard(s) {
-      let card = document.querySelector(`[data-slug="${CSS.escape(s.slug)}"]`);
-      if (card) return card;
-
-      card = document.createElement('article');
-      card.className = 'station-card';
-      card.dataset.slug = s.slug;
-      card.innerHTML = `
-        <div class="station-card-art-wrap" data-img-class="station-card-art"
-          data-placeholder='<div class="station-card-art station-card-art-placeholder">♪</div>'></div>
-        <div class="station-card-body">
-          <div class="station-card-head">
-            <h2></h2>
-          </div>
-          <div class="station-card-actions">
-            <span class="station-card-listeners" title="Live listeners"></span>
-            <a class="btn station-card-tune-in" href="#">Open</a>
-          </div>
+  <div id="global-live-shell">
+    <audio id="live-audio" preload="none" playsinline></audio>
+    <div id="live-mini-player" class="live-mini-player" hidden>
+      <button type="button" id="live-mini-play-btn" class="live-mini-play-btn" aria-label="Play">
+        <span class="live-mini-play-icon" aria-hidden="true"></span>
+      </button>
+      <div class="live-mini-art" id="live-mini-art" aria-hidden="true">
+        <div class="live-mini-art-placeholder">♪</div>
+      </div>
+      <div class="live-mini-meta">
+        <a id="live-mini-station" class="live-mini-station" href="#">Station</a>
+        <p id="live-mini-track" class="live-mini-track">Live</p>
+      </div>
+      <button type="button" id="live-mini-viz-btn" class="live-mini-viz-btn"
+        aria-label="Fullscreen visuals" title="Fullscreen visuals" hidden>
+        <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" focusable="false">
+          <path fill="currentColor" d="M3 5a2 2 0 0 1 2-2h2.5a1 1 0 1 1 0 2H5v2.5a1 1 0 1 1-2 0V5zm12-2h-2.5a1 1 0 1 1 0-2H15a2 2 0 0 1 2 2v2.5a1 1 0 1 1-2 0V5h-2.5a1 1 0 1 1 0-2H15zM3 15v-2.5a1 1 0 1 1 2 0V15h2.5a1 1 0 1 1 0 2H5a2 2 0 0 1-2-2zm14 0a2 2 0 0 1-2 2h-2.5a1 1 0 1 1 0-2H15v-2.5a1 1 0 1 1 2 0V15zM6 10a1 1 0 0 1 1-1h6a1 1 0 1 1 0 2H7a1 1 0 0 1-1-1z"/>
+        </svg>
+      </button>
+      <div class="live-mini-volume">
+        <button type="button" id="live-mini-volume-btn" class="live-mini-volume-btn"
+          aria-label="Volume" aria-expanded="false" aria-controls="live-mini-volume-pop">
+          <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M11 4.5v11l-4.5-3H3a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h3.5L11 4.5zm2.2 2.3a1 1 0 0 1 1.4 0 5 5 0 0 1 0 7.1 1 1 0 1 1-1.4-1.4 3 3 0 0 0 0-4.3 1 1 0 0 1 0-1.4zm1.4-1.4a1 1 0 0 1 1.4 0 7 7 0 0 1 0 9.9 1 1 0 1 1-1.4-1.4 5 5 0 0 0 0-7.1 1 1 0 0 1 0-1.4z"/>
+          </svg>
+        </button>
+        <div id="live-mini-volume-pop" class="live-mini-volume-pop">
+          <input type="range" id="live-mini-volume" class="live-volume-slider"
+            min="0" max="1" step="0.05" value="1" aria-label="Volume">
         </div>
-        <div class="station-card-now">
-          <span class="now-label">On Air</span>
-          <span class="now-track"></span>
-        </div>`;
-      return card;
-    }
-
-    function syncTrackMarquee(trackEl) {
-      const inner = trackEl.querySelector('.now-track-inner');
-      if (!inner) return;
-      trackEl.classList.remove('is-scrolling');
-      trackEl.style.removeProperty('--scroll-distance');
-      trackEl.style.removeProperty('--scroll-duration');
-      requestAnimationFrame(() => {
-        inner.style.display = 'inline-block';
-        const cs = getComputedStyle(trackEl);
-        const rootSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-        const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
-        const fadePad = 1.1 * rootSize;
-        const available = trackEl.clientWidth - padX;
-        const overflow = inner.scrollWidth - available + fadePad;
-        inner.style.removeProperty('display');
-        if (overflow > 4) {
-          trackEl.classList.add('is-scrolling');
-          trackEl.style.setProperty('--scroll-distance', `-${overflow}px`);
-          trackEl.style.setProperty('--scroll-duration', `${Math.max(16, overflow / 11)}s`);
-        }
-      });
-    }
-
-    function setNowPlayingTrack(trackEl, np) {
-      let inner = trackEl.querySelector('.now-track-inner');
-      if (!inner) {
-        trackEl.innerHTML = `<span class="now-track-inner"></span>`;
-        inner = trackEl.querySelector('.now-track-inner');
-      }
-
-      if (!np) {
-        trackEl.classList.add('is-waiting');
-        inner.textContent = 'Starting up…';
-        trackEl.title = 'Starting up…';
-        syncTrackMarquee(trackEl);
-        return;
-      }
-
-      trackEl.classList.remove('is-waiting');
-      const label = `${np.artist} — ${np.title}`;
-      inner.innerHTML = `
-        <span class="now-track-artist">${RadioApp.escape(np.artist)}</span><span class="now-track-sep" aria-hidden="true"> — </span><span class="now-track-title">${RadioApp.escape(np.title)}</span>`;
-      trackEl.title = label;
-      syncTrackMarquee(trackEl);
-    }
-
-    function updateCard(s) {
-      const card = ensureCard(s);
-      const np = s.now_playing;
-      const trackKey = RadioApp.trackKey(np);
-      const coverUrl = (np && np.cover_url) ? np.cover_url : (s.artwork_url || '');
-
-      card.querySelector('h2').textContent = s.name;
-      const listenersEl = card.querySelector('.station-card-listeners');
-      const count = Number(s.listeners) || 0;
-      listenersEl.textContent = count === 1 ? '1 Listening' : `${count} Listening`;
-      listenersEl.classList.toggle('is-live', count > 0);
-      listenersEl.setAttribute('aria-label', `${count} live listeners`);
-      const trackEl = card.querySelector('.now-track');
-      if (trackEl.dataset.trackKey !== trackKey) {
-        trackEl.dataset.trackKey = trackKey || '';
-        setNowPlayingTrack(trackEl, np);
-        trackEl.classList.add('track-switch');
-        requestAnimationFrame(() => trackEl.classList.remove('track-switch'));
-      } else {
-        setNowPlayingTrack(trackEl, np);
-      }
-      card.querySelector('.station-card-tune-in').href = `/station.html?slug=${encodeURIComponent(s.slug)}`;
-      card.querySelector('.station-card-tune-in').textContent = 'Open';
-
-      const artWrap = card.querySelector('.station-card-art-wrap');
-      if (!coverUrl) {
-        artWrap.dataset.trackKey = '';
-        artWrap.innerHTML = artWrap.dataset.placeholder;
-      } else {
-        RadioApp.setCoverImage(artWrap, coverUrl, trackKey);
-      }
-      return card;
-    }
-
-    async function loadStations() {
-      const root = document.getElementById('stations');
-      try {
-        const stations = await RadioApp.fetchJSON('/api/stations');
-        if (!stations.length) {
-          root.innerHTML = '<p class="empty">No stations on air yet.</p>';
-          cardState.clear();
-          return;
-        }
-        const seen = new Set();
-        root.querySelector('.empty')?.remove();
-        const frag = document.createDocumentFragment();
-        stations.forEach(s => {
-          seen.add(s.slug);
-          frag.appendChild(updateCard(s));
-        });
-        root.querySelectorAll('[data-slug]').forEach(el => {
-          if (!seen.has(el.dataset.slug)) el.remove();
-        });
-        root.appendChild(frag);
-      } catch (err) {
-        root.innerHTML = `<p class="empty">Could not load stations: ${RadioApp.escape(err.message)}</p>`;
-      }
-    }
-
-    loadStations();
-    setInterval(loadStations, 8000);
-    window.addEventListener('resize', () => {
-      document.querySelectorAll('.now-track').forEach(syncTrackMarquee);
-    });
+      </div>
+    </div>
+  </div>
+  <script src="/static/live-audio-graph.js?v=6"></script>
+  <script src="/static/tuning-static.js?v=1"></script>
+  <script src="/static/global-live-player.js?v=19"></script>
+  <script src="/static/home-page.js?v=3"></script>
+  <script src="/static/app.js?v=38"></script>
+  <script>
+    AlchemyHome.mount();
   </script>
 </body>
 </html>

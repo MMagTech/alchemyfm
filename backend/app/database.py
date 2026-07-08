@@ -143,6 +143,7 @@ class BroadcastSettings(Base):
     crossfade_sec: Mapped[int] = mapped_column(Integer, default=0)
     max_listeners: Mapped[int] = mapped_column(Integer, default=100)
     default_theme: Mapped[str] = mapped_column(String(32), default="violet")
+    artist_bio_enabled: Mapped[bool] = mapped_column(default=True)
 
 
 connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
@@ -194,6 +195,7 @@ def _migrate_db() -> None:
                 ("vorbis_bitrate", "INTEGER NOT NULL DEFAULT 128"),
                 ("max_listeners", "INTEGER NOT NULL DEFAULT 100"),
                 ("default_theme", "VARCHAR(32) NOT NULL DEFAULT 'violet'"),
+                ("artist_bio_enabled", "INTEGER NOT NULL DEFAULT 1"),
             ):
                 if col not in cols:
                     conn.execute(text(f"ALTER TABLE broadcast_settings ADD COLUMN {col} {ddl}"))

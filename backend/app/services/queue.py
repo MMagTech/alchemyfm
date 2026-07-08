@@ -387,19 +387,33 @@ def _attach_knowledge(np: NowPlaying) -> NowPlaying:
     return np
 
 
-def _now_playing_from_item(item_id: str | None, artist: str, title: str) -> NowPlaying:
+def _now_playing_from_item(
+    item_id: str | None,
+    artist: str,
+    title: str,
+    *,
+    include_knowledge: bool = True,
+) -> NowPlaying:
     np = NowPlaying(
         title=title,
         artist=artist,
         item_id=item_id or None,
         cover_url=navidrome_client.cover_art_url(item_id) if item_id else None,
     )
-    return _attach_knowledge(np)
+    if include_knowledge:
+        return _attach_knowledge(np)
+    return np
 
 
-def get_now_playing(db: Session, station: Station) -> NowPlaying | None:
+def get_now_playing(
+    db: Session,
+    station: Station,
+    *,
+    mount_stats: dict | None = None,
+    include_knowledge: bool = True,
+) -> NowPlaying | None:
     # Icecast title is what's actually on the wire — prefer it over DB state.
-    ice = fetch_mount_now_playing(station.icecast_mount)
+    ice = fetch_mount_now_playing(station.icecast_mount, mount_stats=mount_stats)
     if ice and (ice.artist or ice.title):
         item_id = _lookup_item_id(db, station, ice.artist, ice.title)
         artist, title = ice.artist, ice.title
@@ -407,7 +421,9 @@ def get_now_playing(db: Session, station: Station) -> NowPlaying | None:
             matched = _find_queue_item_for_metadata(db, station, artist, title)
             if matched:
                 artist = matched.artist
-        return _now_playing_from_item(item_id, artist, title)
+        return _now_playing_from_item(
+            item_id, artist, title, include_knowledge=include_knowledge
+        )
 
     playing = (
         db.query(QueueItem)
@@ -419,7 +435,12 @@ def get_now_playing(db: Session, station: Station) -> NowPlaying | None:
         .first()
     )
     if playing:
-        return _now_playing_from_item(playing.item_id, playing.artist, playing.title)
+        return _now_playing_from_item(
+            playing.item_id,
+            playing.artist,
+            playing.title,
+            include_knowledge=include_knowledge,
+        )
 
     last = (
         db.query(PlayHistory)
@@ -431,7 +452,9 @@ def get_now_playing(db: Session, station: Station) -> NowPlaying | None:
         item_id = last.item_id or _lookup_item_id_from_catalog(
             db, station, last.artist, last.title
         )
-        return _now_playing_from_item(item_id, last.artist, last.title)
+        return _now_playing_from_item(
+            item_id, last.artist, last.title, include_knowledge=include_knowledge
+        )
     return None
 
 

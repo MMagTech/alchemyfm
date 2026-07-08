@@ -157,10 +157,14 @@ def mount_on_air(mount: str) -> bool:
     return mount in fetch_all_mount_stats()
 
 
-def fetch_mount_now_playing(mount: str) -> IcecastNowPlaying | None:
+def fetch_mount_now_playing(
+    mount: str,
+    mount_stats: dict[str, IcecastMountStats] | None = None,
+) -> IcecastNowPlaying | None:
     """Read the current stream title from Icecast status-json."""
     mount = _normalize_mount(mount)
-    parsed = fetch_all_mount_stats().get(mount)
+    stats = mount_stats if mount_stats is not None else fetch_all_mount_stats()
+    parsed = stats.get(mount)
     if not parsed or not (parsed.artist or parsed.title):
         return None
     return IcecastNowPlaying(

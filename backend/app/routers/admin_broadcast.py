@@ -36,15 +36,27 @@ def read_broadcast_settings(db: Session = Depends(get_db)):
 def read_appearance_settings(db: Session = Depends(get_db)):
     row = get_broadcast_settings(db)
     theme = row.default_theme or "violet"
-    return AppearanceSettingsRead(default_theme=theme)
+    return AppearanceSettingsRead(
+        default_theme=theme,
+        artist_bio_enabled=bool(row.artist_bio_enabled),
+    )
 
 
 @router.put("/appearance", response_model=AppearanceSettingsRead)
 def save_appearance_settings(
     payload: AppearanceSettingsUpdate, db: Session = Depends(get_db)
 ):
-    row = update_broadcast_settings(db, {"default_theme": payload.default_theme})
-    return AppearanceSettingsRead(default_theme=row.default_theme or "violet")
+    row = update_broadcast_settings(
+        db,
+        {
+            "default_theme": payload.default_theme,
+            "artist_bio_enabled": payload.artist_bio_enabled,
+        },
+    )
+    return AppearanceSettingsRead(
+        default_theme=row.default_theme or "violet",
+        artist_bio_enabled=bool(row.artist_bio_enabled),
+    )
 
 
 @router.put("", response_model=BroadcastSettingsRead)

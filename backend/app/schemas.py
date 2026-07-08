@@ -41,6 +41,8 @@ class NowPlaying(BaseModel):
     artist: str
     item_id: str | None = None
     cover_url: str | None = None
+    artist_bio: str | None = None
+    artist_bio_url: str | None = None
     knowledge: KnowledgeBlock | None = None
 
 
@@ -56,6 +58,7 @@ class StationSummary(BaseModel):
     on_air: bool = False
     stream_epoch: int = 0
     knowledge_feature: bool = False
+    artist_bio_enabled: bool = True
 
 
 class StationDetail(StationSummary):
@@ -159,10 +162,12 @@ class IcecastRestartResponse(BaseModel):
 
 class AppearanceSettingsRead(BaseModel):
     default_theme: str = "violet"
+    artist_bio_enabled: bool = True
 
 
 class AppearanceSettingsUpdate(BaseModel):
     default_theme: str
+    artist_bio_enabled: bool = True
 
     @field_validator("default_theme")
     @classmethod

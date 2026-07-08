@@ -51,7 +51,7 @@
       <div class="admin-panel-head">
         <div>
           <h2>Appearance</h2>
-          <p class="admin-lede">Default color theme for new visitors.</p>
+          <p class="admin-lede">Default theme and optional artist biography on station pages.</p>
         </div>
       </div>
       <form id="appearance-form">
@@ -60,7 +60,14 @@
             <label for="default_theme">Default station theme</label>
             <select id="default_theme" name="default_theme" required></select>
           </div>
-          <button type="submit" class="btn">Save theme</button>
+          <button type="submit" class="btn">Save appearance</button>
+        </div>
+        <div class="appearance-bio-field">
+          <label class="appearance-checkbox">
+            <input type="checkbox" id="artist_bio_enabled" name="artist_bio_enabled" checked>
+            Show Artist Biography on Station Page
+          </label>
+          <p class="hint appearance-hint">Short bio from Navidrome above the visualizer. Requires external metadata (Last.fm/Deezer).</p>
         </div>
       </form>
     </section>
@@ -942,14 +949,24 @@
 
     document.getElementById('encode_format').addEventListener('change', updateEncodeFormatUi);
 
-    async function saveAppearanceTheme(default_theme) {
+    async function loadAppearanceSettings() {
+      try {
+        const s = await adminFetchJSON('/api/admin/broadcast/appearance');
+        const bio = document.getElementById('artist_bio_enabled');
+        if (bio) bio.checked = s.artist_bio_enabled !== false;
+      } catch (err) {
+        RadioApp.showAdminToast(err.message, 'error', 8000, 'appearance');
+      }
+    }
+
+    async function saveAppearanceSettings({ default_theme, artist_bio_enabled }) {
       if (!RadioThemes.isValid(default_theme)) {
         throw new Error('Pick a valid theme.');
       }
       const opts = {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ default_theme }),
+        body: JSON.stringify({ default_theme, artist_bio_enabled }),
       };
       let data;
       try {
@@ -959,20 +976,30 @@
         data = await adminFetchJSON('/api/admin/broadcast', opts);
       }
       const resolved = RadioThemes.isValid(data?.default_theme) ? data.default_theme : default_theme;
-      return { default_theme: resolved };
+      const bio = document.getElementById('artist_bio_enabled');
+      if (bio && data?.artist_bio_enabled !== undefined) {
+        bio.checked = Boolean(data.artist_bio_enabled);
+      }
+      return {
+        default_theme: resolved,
+        artist_bio_enabled: Boolean(data?.artist_bio_enabled),
+      };
     }
 
     document.getElementById('appearance-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const default_theme = document.getElementById('default_theme').value;
+      const artist_bio_enabled = document.getElementById('artist_bio_enabled')?.checked ?? true;
       const btn = e.target.querySelector('button[type="submit"]');
       if (btn) btn.disabled = true;
       try {
-        const { default_theme: savedTheme } = await saveAppearanceTheme(default_theme);
+        const { default_theme: savedTheme } = await saveAppearanceSettings({
+          default_theme,
+          artist_bio_enabled,
+        });
         RadioThemes.setAdminDefaultSelect(savedTheme);
-        const label = RadioThemes.meta(savedTheme).label;
         RadioApp.showAdminToast(
-          `${label} is the default for new visitors.`,
+          'Appearance settings saved.',
           'success',
           5000,
           'appearance'
@@ -1183,6 +1210,7 @@
     });
 
     loadBroadcastSettings();
+    loadAppearanceSettings();
     loadAdminStations();
     fetch('/api/health').then(r => r.json()).then(h => {
       const link = document.getElementById('admin-knowledge-link');

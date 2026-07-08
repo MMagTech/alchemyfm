@@ -27,12 +27,13 @@ const RadioApp = {
     return np.item_id || `${np.artist}\0${np.title}`;
   },
 
-  setCoverImage(container, url, trackKey) {
+  setCoverImage(container, url, trackKey, options = {}) {
     if (!container) return;
-    const prevKey = container.dataset.trackKey || '';
-    const prevUrl = container.dataset.coverUrl || '';
+    const forceReset = options.reset === true;
+    const prevKey = forceReset ? '' : (container.dataset.trackKey || '');
+    const prevUrl = forceReset ? '' : (container.dataset.coverUrl || '');
     const nextUrl = url || '';
-    if (trackKey && prevKey === trackKey && prevUrl === nextUrl) return;
+    if (!forceReset && trackKey && prevKey === trackKey && prevUrl === nextUrl) return;
 
     const placeholder = container.dataset.placeholder || '';
     const imgClass = container.dataset.imgClass || '';
@@ -44,8 +45,11 @@ const RadioApp = {
       return;
     }
 
-    const isSwitch = !!(prevKey && prevKey !== (trackKey || '') &&
-      container.querySelector('.cover-frame, img, .artwork, .station-card-art'));
+    const isSwitch = !!(options.forceGlitch || (
+      prevKey &&
+      prevKey !== (trackKey || '') &&
+      (options.waitForLoad || container.querySelector('.cover-frame, img, .artwork, .station-card-art'))
+    ));
 
     const mount = () => {
       container.dataset.trackKey = trackKey || '';
@@ -67,10 +71,21 @@ const RadioApp = {
       });
     };
 
-    if (isSwitch) {
+    if (isSwitch && !options.reset && !options.waitForLoad) {
       const probe = new Image();
       probe.onload = mount;
       probe.onerror = mount;
+      probe.src = url;
+      return;
+    }
+    if (options.waitForLoad) {
+      const probe = new Image();
+      const finish = () => {
+        options.onApplied?.();
+        mount();
+      };
+      probe.onload = finish;
+      probe.onerror = finish;
       probe.src = url;
       return;
     }
@@ -223,19 +238,50 @@ const RadioApp = {
     return ok;
   },
 
-  /** Custom live player — play/pause, tuned-in timer, vertical volume, spectrum visualizer. */
-  initLivePlayer(audio) {
-    if (!audio || audio.dataset.playerReady === '1') return;
-    audio.dataset.playerReady = '1';
-    audio.classList.add('live-audio-hidden');
+  applySavedLiveVolume(audio) {
+    if (!audio) return;
+    const saved = localStorage.getItem('radio-volume');
+    if (saved == null) return;
+    const v = parseFloat(saved);
+    if (audio._liveEngine) {
+      audio._liveEngine.setVolume(v);
+    } else {
+      audio.volume = v;
+    }
+    document.querySelectorAll('#live-volume, #live-mini-volume').forEach((el) => {
+      if (el) el.value = saved;
+    });
+  },
 
-    const btn = document.getElementById('live-play-btn');
-    const timer = document.getElementById('live-timer');
-    const status = document.getElementById('live-status-text');
-    const dot = document.getElementById('live-status-dot');
-    const vol = document.getElementById('live-volume');
-    const stripCanvas = document.getElementById('live-visualizer');
-    if (!btn || !timer || !status || !vol) return;
+  wireLiveVolumeControl(input, audio, options = {}) {
+    if (!input || !audio) return;
+    const saved = localStorage.getItem('radio-volume');
+    if (saved != null) input.value = saved;
+
+    const onInput = () => {
+      const v = input.value;
+      audio._liveEngine?.setVolume(v);
+      localStorage.setItem('radio-volume', v);
+      document.querySelectorAll('#live-volume, #live-mini-volume').forEach((el) => {
+        if (el && el !== input) el.value = v;
+      });
+    };
+
+    const listenerOpts = options.signal ? { signal: options.signal } : undefined;
+    input.addEventListener('input', onInput, listenerOpts);
+  },
+
+  /** Core stream engine — once per audio element. */
+  initLivePlayerEngine(audio, options = {}) {
+    if (!audio) return null;
+    if (audio._liveEngine) {
+      if (options.onSessionChange) {
+        audio._liveSessionNotify = options.onSessionChange;
+      }
+      return audio._liveEngine;
+    }
+
+    audio.classList.add('live-audio-hidden');
 
     let tick = null;
     let reconnectTimer = null;
@@ -244,19 +290,11 @@ const RadioApp = {
     let stallTimer = null;
     let connectInFlight = false;
     let lastProgressAt = 0;
-    const useWebAudio = this.useStripWebAudio();
-    const graph = useWebAudio && typeof LiveAudioGraph !== 'undefined'
-      ? LiveAudioGraph.attach(audio)
-      : null;
-    if (graph) {
-      audio._liveAudioGraph = graph;
-    }
-    const viz = stripCanvas && graph
-      ? StripVisualizer.create(graph, stripCanvas)
-      : null;
-    if (viz) {
-      audio._stripViz = viz;
-    }
+    audio._liveSessionNotify = options.onSessionChange;
+
+    const notifySession = (meta = {}) => {
+      audio._liveSessionNotify?.(meta);
+    };
 
     const baseStreamUrl = () => {
       const raw = audio.dataset.streamSrc || audio.src || '';
@@ -270,52 +308,34 @@ const RadioApp = {
       }
     };
 
-    const setIdleUi = (message = 'Ready') => {
-      btn.classList.remove('is-playing');
-      btn.setAttribute('aria-label', 'Play');
-      status.textContent = message;
-      status.classList.remove('is-live');
-      if (dot) dot.classList.remove('is-live');
-      if (viz) viz.stop();
-    };
-
-    const setConnectingUi = (message = 'Connecting…') => {
-      btn.classList.remove('is-playing');
-      btn.setAttribute('aria-label', 'Play');
-      status.textContent = message;
-      status.classList.remove('is-live');
-      if (dot) dot.classList.remove('is-live');
-      if (viz) viz.stop();
-    };
-
-    const setPlayingUi = (playing) => {
-      btn.classList.toggle('is-playing', playing);
-      btn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
-      if (playing) {
-        status.textContent = 'Live';
-        status.classList.add('is-live');
-        if (dot) dot.classList.add('is-live');
-        if (viz) viz.start();
+    const setVolume = (value) => {
+      const v = parseFloat(value);
+      const graph = audio._liveAudioGraph;
+      if (graph?.gain) {
+        graph.gain.gain.value = v;
       } else {
-        status.classList.remove('is-live');
-        if (dot) dot.classList.remove('is-live');
-        if (viz) viz.stop();
+        audio.volume = v;
       }
     };
 
-    const pauseAndFlushBuffer = () => {
-      const base = baseStreamUrl();
-      if (base) audio.dataset.streamSrc = base;
-      audio.pause();
-      audio.removeAttribute('src');
-      audio.load();
-      clearInterval(tick);
-      timer.textContent = '0:00';
-      btn.classList.remove('is-playing');
-      btn.setAttribute('aria-label', 'Play');
-      status.classList.remove('is-live');
-      if (dot) dot.classList.remove('is-live');
-      if (viz) viz.stop();
+    const primeAudioGraph = () => {
+      const graph = audio._liveAudioGraph;
+      graph?.ensureGraph?.();
+      if (graph?.audioContext?.state === 'suspended') {
+        graph.audioContext.resume();
+      }
+    };
+
+    const setWantLive = (want) => {
+      audio.dataset.wantLive = want ? '1' : '0';
+      if (!want) {
+        clearTimeout(reconnectTimer);
+        reconnectAttempt = 0;
+        clearStallWatch();
+        notifySession({ wantLive: false });
+      } else {
+        notifySession({ wantLive: true });
+      }
     };
 
     const connectStream = (bustCache = false) => {
@@ -330,7 +350,7 @@ const RadioApp = {
         src = url.href;
       }
       connectInFlight = true;
-      setConnectingUi(bustCache ? 'Reconnecting…' : 'Connecting…');
+      audio._liveUi?.setConnectingUi?.(bustCache ? 'Reconnecting…' : 'Connecting…');
       if (audio.src && audio.src !== src) {
         audio.pause();
       }
@@ -340,15 +360,6 @@ const RadioApp = {
       return audio.play().finally(() => {
         connectInFlight = false;
       });
-    };
-
-    const setWantLive = (want) => {
-      audio.dataset.wantLive = want ? '1' : '0';
-      if (!want) {
-        clearTimeout(reconnectTimer);
-        reconnectAttempt = 0;
-        clearStallWatch();
-      }
     };
 
     const scheduleReconnect = () => {
@@ -361,13 +372,26 @@ const RadioApp = {
       }, delay);
     };
 
+    const pauseAndFlushBuffer = () => {
+      const base = baseStreamUrl();
+      if (base) audio.dataset.streamSrc = base;
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+      clearInterval(tick);
+      if (audio._liveUi?.timer) {
+        audio._liveUi.timer.textContent = '0:00';
+      }
+      audio._liveUi?.setIdleUi?.('Ready');
+    };
+
     const markStreamOffline = (message = 'Off air') => {
       if (audio.dataset.wantLive !== '1') return;
       streamLive = false;
       clearTimeout(reconnectTimer);
       clearStallWatch();
       pauseAndFlushBuffer();
-      setIdleUi(message);
+      audio._liveUi?.setIdleUi?.(message);
       scheduleReconnect();
     };
 
@@ -402,29 +426,13 @@ const RadioApp = {
       }, 12000);
     };
 
-    const setVolume = (value) => {
-      const v = parseFloat(value);
-      if (graph?.gain) {
-        graph.gain.gain.value = v;
-      } else {
-        audio.volume = v;
-      }
-    };
-
     const updateTimer = () => {
-      if (!audio.paused) {
-        timer.textContent = this.formatListenTime(audio.currentTime);
+      if (!audio.paused && audio._liveUi?.timer) {
+        audio._liveUi.timer.textContent = this.formatListenTime(audio.currentTime);
       }
     };
 
-    const primeAudioGraph = () => {
-      graph?.ensureGraph?.();
-      if (graph?.audioContext?.state === 'suspended') {
-        graph.audioContext.resume();
-      }
-    };
-
-    btn.addEventListener('click', () => {
+    const togglePlay = () => {
       if (audio.paused) {
         setWantLive(true);
         reconnectAttempt = 0;
@@ -434,17 +442,17 @@ const RadioApp = {
       } else {
         setWantLive(false);
         audio.pause();
-        setIdleUi('Paused');
+        audio._liveUi?.setIdleUi?.('Paused');
       }
-    });
+    };
 
     this.wireMediaSessionControls(
       audio,
       () => {
-        if (audio.paused) btn.click();
+        if (audio.paused) togglePlay();
       },
       () => {
-        if (!audio.paused) btn.click();
+        if (!audio.paused) togglePlay();
       },
     );
 
@@ -462,19 +470,13 @@ const RadioApp = {
         navigator.mediaSession.playbackState = 'paused';
       }
       if (audio.dataset.wantLive !== '1') {
-        setPlayingUi(false);
-        status.textContent = 'Paused';
-      } else if (!btn.classList.contains('is-playing')) {
-        /* keep Off air / Reconnecting label */
-      } else {
-        btn.classList.remove('is-playing');
-        btn.setAttribute('aria-label', 'Play');
-        if (viz) viz.stop();
+        audio._liveUi?.setPlayingUi?.(false);
+        audio._liveUi?.setStatusText?.('Paused');
       }
     });
 
     audio.addEventListener('waiting', () => {
-      setConnectingUi('Buffering…');
+      audio._liveUi?.setConnectingUi?.('Buffering…');
       armStallWatch();
     });
 
@@ -482,16 +484,18 @@ const RadioApp = {
       reconnectAttempt = 0;
       clearTimeout(reconnectTimer);
       lastProgressAt = Date.now();
-      setPlayingUi(true);
+      this.applySavedLiveVolume(audio);
+      audio._liveUi?.setPlayingUi?.(true);
       armStallWatch();
       this.configurePlaybackSession();
       if ('mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'playing';
       }
+      notifySession({ wantLive: true });
     });
 
     audio.addEventListener('stalled', () => {
-      setConnectingUi('Buffering…');
+      audio._liveUi?.setConnectingUi?.('Buffering…');
       armStallWatch();
     });
 
@@ -514,22 +518,14 @@ const RadioApp = {
       audio.pause();
       audio.removeAttribute('src');
       audio.load();
-      setIdleUi('Stream error');
+      audio._liveUi?.setIdleUi?.('Stream error');
       scheduleReconnect();
     });
 
     const savedVol = localStorage.getItem('radio-volume');
     if (savedVol != null) {
-      vol.value = savedVol;
       setVolume(savedVol);
     }
-
-    vol.addEventListener('input', () => {
-      setVolume(vol.value);
-      localStorage.setItem('radio-volume', vol.value);
-    });
-
-    setIdleUi('Ready');
 
     audio.reconnectLiveStream = () => {
       if (audio.dataset.wantLive !== '1') return;
@@ -545,13 +541,12 @@ const RadioApp = {
       streamLive = next;
       if (!next) {
         if (audio.dataset.wantLive !== '1') return;
-        const playing = btn.classList.contains('is-playing') || !audio.paused;
+        const playing = audio._liveUi?.playBtn?.classList.contains('is-playing') || !audio.paused;
         if (playing && wasLive) {
           markStreamOffline('Off air');
         } else if (!connectInFlight) {
-          status.textContent = 'Off air';
-          status.classList.remove('is-live');
-          if (dot) dot.classList.remove('is-live');
+          audio._liveUi?.setStatusText?.('Off air');
+          audio._liveUi?.setLiveDot?.(false);
         }
         return;
       }
@@ -565,13 +560,226 @@ const RadioApp = {
     audio.forceStreamOffline = (message = 'Off air') => {
       markStreamOffline(message);
     };
+
+    audio._liveEngine = {
+      togglePlay,
+      setWantLive,
+      setVolume,
+      connectStream,
+    };
+
+    return audio._liveEngine;
+  },
+
+  /** Detach strip visualizer surface (canvas is recreated per station shell). */
+  detachStripViz(audio) {
+    if (!audio) return;
+    audio._stripViz?.destroy?.();
+    audio._stripViz = null;
+  },
+
+  /** Station tune-in controls — re-bind when shell re-renders. */
+  bindLivePlayerStationUi(audio, options = {}) {
+    if (!audio) return;
+
+    const viewingSlug = options.viewingSlug || '';
+    const pageStationName = options.pageStationName || '';
+    const pageStation = options.pageStation || null;
+
+    const btn = document.getElementById('live-play-btn');
+    const timer = document.getElementById('live-timer');
+    const status = document.getElementById('live-status-text');
+    const dot = document.getElementById('live-status-dot');
+    const vol = document.getElementById('live-volume');
+    const stripCanvas = document.getElementById('live-visualizer');
+    if (!btn || !timer || !status || !vol) return;
+
+    if (audio._liveUiAbort) {
+      audio._liveUiAbort.abort();
+    }
+    audio._liveUiAbort = new AbortController();
+    const { signal } = audio._liveUiAbort;
+
+    const useWebAudio = this.useStripWebAudio();
+    if (!audio._liveAudioGraph && useWebAudio && typeof LiveAudioGraph !== 'undefined') {
+      audio._liveAudioGraph = LiveAudioGraph.attach(audio);
+    }
+    this.detachStripViz(audio);
+    if (stripCanvas && audio._liveAudioGraph && useWebAudio &&
+        typeof StripVisualizer !== 'undefined') {
+      audio._stripViz = StripVisualizer.create(audio._liveAudioGraph, stripCanvas);
+    }
+    const viz = audio._stripViz;
+    const vizWrap = document.querySelector('.tune-in-visualizer-wrap');
+
+    const setPlayButtonPlaying = (playing) => {
+      btn.classList.toggle('is-playing', playing);
+      btn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    };
+
+    const setLiveStatus = (live) => {
+      status.classList.toggle('is-live', live);
+      if (dot) dot.classList.toggle('is-live', live);
+    };
+
+    const syncVizFromAudio = () => {
+      if (!viz || !useWebAudio) return;
+      const heardLive = audio.dataset.wantLive === '1' && !audio.paused;
+      if (heardLive) viz.start();
+      else viz.stop();
+
+      if (vizWrap && typeof GlobalLivePlayer !== 'undefined') {
+        const pres = GlobalLivePlayer.getPlaybackPresentation(viewingSlug);
+        vizWrap.classList.toggle(
+          'is-heard-other',
+          pres.browsingOther && pres.heardLive
+        );
+      }
+    };
+
+    const setIdleUi = (message = 'Ready') => {
+      setPlayButtonPlaying(false);
+      status.textContent = message;
+      setLiveStatus(false);
+    };
+
+    const setConnectingUi = (message = 'Connecting…') => {
+      setPlayButtonPlaying(false);
+      status.textContent = message;
+      setLiveStatus(false);
+    };
+
+    const setPlayingUi = (playing) => {
+      setPlayButtonPlaying(playing);
+      if (playing) {
+        status.textContent = 'Live';
+        setLiveStatus(true);
+      } else {
+        setLiveStatus(false);
+      }
+    };
+
+    const syncStationUi = () => {
+      const session = typeof GlobalLivePlayer !== 'undefined'
+        ? GlobalLivePlayer.readSession()
+        : null;
+      const pres = typeof GlobalLivePlayer !== 'undefined'
+        ? GlobalLivePlayer.getPlaybackPresentation(viewingSlug)
+        : null;
+      const playingSlug = pres?.heardSlug ||
+        (typeof GlobalLivePlayer !== 'undefined'
+          ? GlobalLivePlayer.activePlayingSlug()
+          : (session?.slug || ''));
+      const onThisStation = Boolean(
+        viewingSlug &&
+        audio.dataset.wantLive === '1' &&
+        playingSlug === viewingSlug
+      );
+      const browsingOther = pres?.browsingOther ||
+        (typeof GlobalLivePlayer !== 'undefined'
+          && GlobalLivePlayer.isBrowsingOtherStation(viewingSlug));
+
+      if (onThisStation && !audio.paused) {
+        setPlayingUi(true);
+        timer.textContent = this.formatListenTime(audio.currentTime);
+      } else if (onThisStation && audio.dataset.wantLive === '1' && audio.paused) {
+        setConnectingUi('Connecting…');
+      } else if (browsingOther) {
+        const name = pres?.heardStationName ||
+          (session?.slug === playingSlug && session?.stationName) ||
+          'another station';
+        setIdleUi(`Playing ${name}`);
+        btn.setAttribute('aria-label', pageStationName
+          ? `Listen to ${pageStationName}`
+          : 'Play');
+        if (pres?.heardLive) {
+          timer.textContent = this.formatListenTime(audio.currentTime);
+        }
+      } else {
+        setIdleUi(audio.dataset.wantLive === '1' && audio.paused ? 'Paused' : 'Ready');
+      }
+      syncVizFromAudio();
+    };
+
+    audio._liveUi = {
+      playBtn: btn,
+      timer,
+      setIdleUi,
+      setConnectingUi,
+      setPlayingUi,
+      setStatusText: (text) => { status.textContent = text; },
+      setLiveDot: (on) => {
+        status.classList.toggle('is-live', on);
+        if (dot) dot.classList.toggle('is-live', on);
+      },
+      syncStationUi,
+      syncVizFromAudio,
+    };
+
+    const engine = audio._liveEngine;
+    if (!engine) return;
+
+    const savedVol = localStorage.getItem('radio-volume');
+    if (savedVol != null) {
+      vol.value = savedVol;
+    }
+    engine.setVolume(vol.value);
+
+    btn.addEventListener('click', async () => {
+      const session = typeof GlobalLivePlayer !== 'undefined'
+        ? GlobalLivePlayer.readSession()
+        : null;
+      const playingSlug = typeof GlobalLivePlayer !== 'undefined'
+        ? GlobalLivePlayer.activePlayingSlug()
+        : (session?.slug || '');
+      const onThis = Boolean(viewingSlug && playingSlug === viewingSlug);
+      const browsingOther = typeof GlobalLivePlayer !== 'undefined'
+        && GlobalLivePlayer.isBrowsingOtherStation(viewingSlug);
+
+      if (pageStation && typeof GlobalLivePlayer !== 'undefined' && browsingOther) {
+        const liveStation = typeof window.__alchemyCurrentStation === 'function'
+          ? window.__alchemyCurrentStation()
+          : pageStation;
+        await GlobalLivePlayer.switchToStation(liveStation || pageStation);
+        syncStationUi();
+        return;
+      }
+
+      if (pageStation && typeof GlobalLivePlayer !== 'undefined' && !onThis &&
+          audio.paused && session?.wantLive) {
+        const liveStation = typeof window.__alchemyCurrentStation === 'function'
+          ? window.__alchemyCurrentStation()
+          : pageStation;
+        await GlobalLivePlayer.switchToStation(liveStation || pageStation);
+        syncStationUi();
+        return;
+      }
+
+      engine.togglePlay();
+      syncStationUi();
+    }, { signal });
+
+    this.wireLiveVolumeControl(vol, audio, { signal });
+
+    ['play', 'pause', 'playing'].forEach((ev) => {
+      audio.addEventListener(ev, syncStationUi, { signal });
+    });
+
+    syncStationUi();
+  },
+
+  /** Custom live player — play/pause, tuned-in timer, vertical volume, spectrum visualizer. */
+  initLivePlayer(audio, options = {}) {
+    if (!audio) return;
+    this.initLivePlayerEngine(audio, options);
+    this.bindLivePlayerStationUi(audio);
   },
 
   _milkdropMod: null,
 
   async loadMilkdropFullscreen() {
     if (!this._milkdropMod) {
-      this._milkdropMod = await import('/static/butterchurn-fullscreen.js?v=12');
+      this._milkdropMod = await import('/static/butterchurn-fullscreen.js?v=13');
     }
     return this._milkdropMod;
   },

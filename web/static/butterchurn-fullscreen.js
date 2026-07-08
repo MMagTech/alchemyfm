@@ -774,6 +774,9 @@ export async function open(audio, getMeta) {
 
   document.body.classList.add('milkdrop-fullscreen-active');
   window.__milkdropActive = true;
+  if (typeof GlobalLivePlayer !== 'undefined') {
+    GlobalLivePlayer.syncMiniVizButton();
+  }
 }
 
 export function close() {
@@ -814,10 +817,9 @@ export function close() {
   s.root.remove();
 
   if (s.stripViz) {
-    if (!s.audio.paused && s.audio.dataset.wantLive === '1') {
-      s.stripViz.resume();
-    } else {
-      s.stripViz.suspendIdle();
-    }
+    s.audio._liveUi?.syncVizFromAudio?.();
+  }
+  if (typeof GlobalLivePlayer !== 'undefined') {
+    GlobalLivePlayer.syncMiniVizButton();
   }
 }

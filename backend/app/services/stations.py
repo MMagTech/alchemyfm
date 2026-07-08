@@ -3,7 +3,8 @@ from slugify import slugify
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import QueueItem, QueueItemStatus, Station
+from app.database import BroadcastSettings, QueueItem, QueueItemStatus, Station
+from app.services.broadcast_settings import get_broadcast_settings
 from app.schemas import (
     NowPlaying,
     StationAdmin,
@@ -47,19 +48,30 @@ def station_to_summary(
     request: Request | None = None,
     listeners: int = 0,
     on_air: bool = False,
+    *,
+    mount_stats: dict | None = None,
+    list_mode: bool = False,
+    broadcast: BroadcastSettings | None = None,
 ) -> StationSummary:
+    settings_row = broadcast or get_broadcast_settings(db)
     return StationSummary(
         slug=station.slug,
         name=station.name,
         description=_public_description(station.description),
         artwork_url=public_artwork_url(station, request),
         enabled=station.enabled,
-        now_playing=get_now_playing(db, station),
+        now_playing=get_now_playing(
+            db,
+            station,
+            mount_stats=mount_stats,
+            include_knowledge=not list_mode,
+        ),
         stream_url=public_stream_url(station, request),
         listeners=listeners,
         on_air=on_air,
         stream_epoch=get_stream_epoch(),
         knowledge_feature=settings.knowledge_feature,
+        artist_bio_enabled=bool(settings_row.artist_bio_enabled),
     )
 
 
@@ -69,9 +81,17 @@ def station_to_detail(
     request: Request | None = None,
     listeners: int = 0,
     on_air: bool = False,
+    *,
+    mount_stats: dict | None = None,
 ) -> StationDetail:
     summary = station_to_summary(
-        db, station, request, listeners=listeners, on_air=on_air
+        db,
+        station,
+        request,
+        listeners=listeners,
+        on_air=on_air,
+        mount_stats=mount_stats,
+        list_mode=False,
     )
     return StationDetail(
         **summary.model_dump(),

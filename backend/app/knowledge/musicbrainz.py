@@ -24,9 +24,12 @@ def _build_search_query(track: dict[str, Any]) -> str:
     title = str(track.get("title") or "").strip()
     artist = str(track.get("artist") or "").strip()
     album = str(track.get("album") or "").strip()
+    artist_mbid = str(track.get("artist_mbid") or "").strip()
     if title:
         parts.append(f'recording:"{_escape_lucene(title)}"')
-    if artist:
+    if artist_mbid:
+        parts.append(f"arid:{artist_mbid}")
+    elif artist:
         parts.append(f'artist:"{_escape_lucene(artist)}"')
     if album:
         parts.append(f'release:"{_escape_lucene(album)}"')
@@ -69,6 +72,7 @@ def _pick_recording(recordings: list[dict], track: dict[str, Any]) -> dict | Non
         return None
     title_needle = str(track.get("title") or "").strip().lower()
     artist_needle = str(track.get("artist") or "").strip().lower()
+    artist_mbid = str(track.get("artist_mbid") or "").strip().lower()
 
     def score(row: dict) -> int:
         s = 0
@@ -78,7 +82,11 @@ def _pick_recording(recordings: list[dict], track: dict[str, Any]) -> dict | Non
         if row_title == title_needle:
             s += 2
         for credit in row.get("artist-credit") or []:
-            name = str((credit.get("artist") or {}).get("name") or credit.get("name") or "").lower()
+            artist = credit.get("artist") or {}
+            name = str(artist.get("name") or credit.get("name") or "").lower()
+            aid = str(artist.get("id") or "").strip().lower()
+            if artist_mbid and aid == artist_mbid:
+                s += 10
             if artist_needle and artist_needle in name:
                 s += 2
             if name == artist_needle:
@@ -86,6 +94,39 @@ def _pick_recording(recordings: list[dict], track: dict[str, Any]) -> dict | Non
         return s
 
     return max(recordings, key=score)
+
+
+async def _artist_context(
+    client: httpx.AsyncClient,
+    artist_mbid: str,
+    fallback_name: str,
+) -> tuple[list[Snippet], list[str]]:
+    """Artist-level snippets and Wikipedia hints from a known MusicBrainz artist ID."""
+    artist_detail = await _get(
+        client,
+        f"/artist/{artist_mbid}?inc=url-rels&fmt=json",
+    )
+    if not artist_detail:
+        return [], []
+
+    wikipedia_urls = _wikipedia_urls_from_rels(artist_detail.get("relations") or [])
+    snippets: list[Snippet] = []
+    artist_name = str(artist_detail.get("name") or fallback_name).strip()
+    area = str(((artist_detail.get("area") or {}).get("name")) or "").strip()
+    life = ""
+    begin = (artist_detail.get("life-span") or {}).get("begin")
+    end = (artist_detail.get("life-span") or {}).get("end")
+    if begin:
+        life = f" Active {begin}" + (f"–{end}" if end else "–present") + "."
+    if area or life:
+        snippets.append(
+            {
+                "url": f"https://musicbrainz.org/artist/{artist_mbid}",
+                "title": f"{artist_name} — MusicBrainz",
+                "snippet": f"{artist_name}.{life} Origin: {area}.".strip(),
+            }
+        )
+    return snippets, wikipedia_urls
 
 
 def _wikipedia_urls_from_rels(relations: list[dict]) -> list[str]:
@@ -102,25 +143,37 @@ def _wikipedia_urls_from_rels(relations: list[dict]) -> list[str]:
 async def fetch_snippets(track: dict[str, Any]) -> tuple[list[Snippet], list[str]]:
     """Return MusicBrainz snippets and any linked Wikipedia URLs."""
     query = _build_search_query(track)
-    if not query:
+    artist_mbid = str(track.get("artist_mbid") or "").strip()
+    if not query and not artist_mbid:
         return [], []
 
     snippets: list[Snippet] = []
     wikipedia_urls: list[str] = []
 
     async with httpx.AsyncClient(timeout=20.0) as client:
-        search = await _get(
-            client,
-            f"/recording?query={quote(query, safe='')}&fmt=json&limit=5",
-        )
-        recordings = (search or {}).get("recordings") or []
-        recording = _pick_recording(recordings, track)
+        recording = None
+        if query:
+            search = await _get(
+                client,
+                f"/recording?query={quote(query, safe='')}&fmt=json&limit=5",
+            )
+            recordings = (search or {}).get("recordings") or []
+            recording = _pick_recording(recordings, track)
+
         if not recording:
-            return [], []
+            if artist_mbid:
+                artist_snippets, artist_wiki = await _artist_context(
+                    client,
+                    artist_mbid,
+                    str(track.get("artist") or ""),
+                )
+                snippets.extend(artist_snippets)
+                wikipedia_urls.extend(artist_wiki)
+            return snippets, list(dict.fromkeys(wikipedia_urls))
 
         mbid = str(recording.get("id") or "").strip()
         if not mbid:
-            return [], []
+            return snippets, list(dict.fromkeys(wikipedia_urls))
 
         detail = await _get(
             client,
@@ -167,35 +220,24 @@ async def fetch_snippets(track: dict[str, Any]) -> tuple[list[Snippet], list[str
 
         wikipedia_urls.extend(_wikipedia_urls_from_rels(detail.get("relations") or []))
 
-        artist_mbid = ""
-        for credit in detail.get("artist-credit") or []:
-            artist_mbid = str((credit.get("artist") or {}).get("id") or "").strip()
-            if artist_mbid:
-                break
-        if artist_mbid:
-            artist_detail = await _get(
+        resolved_artist_mbid = artist_mbid
+        if not resolved_artist_mbid:
+            for credit in detail.get("artist-credit") or []:
+                resolved_artist_mbid = str((credit.get("artist") or {}).get("id") or "").strip()
+                if resolved_artist_mbid:
+                    break
+        if resolved_artist_mbid:
+            artist_snippets, artist_wiki = await _artist_context(
                 client,
-                f"/artist/{artist_mbid}?inc=url-rels&fmt=json",
+                resolved_artist_mbid,
+                artist,
             )
-            if artist_detail:
-                wikipedia_urls.extend(
-                    _wikipedia_urls_from_rels(artist_detail.get("relations") or [])
-                )
-                artist_name = str(artist_detail.get("name") or artist).strip()
-                area = str(((artist_detail.get("area") or {}).get("name")) or "").strip()
-                life = ""
-                begin = (artist_detail.get("life-span") or {}).get("begin")
-                end = (artist_detail.get("life-span") or {}).get("end")
-                if begin:
-                    life = f" Active {begin}" + (f"–{end}" if end else "–present") + "."
-                if area or life:
-                    snippets.append(
-                        {
-                            "url": f"https://musicbrainz.org/artist/{artist_mbid}",
-                            "title": f"{artist_name} — MusicBrainz",
-                            "snippet": f"{artist_name}.{life} Origin: {area}.".strip(),
-                        }
-                    )
+            existing_urls = {s["url"] for s in snippets}
+            for row in artist_snippets:
+                if row["url"] not in existing_urls:
+                    snippets.append(row)
+                    existing_urls.add(row["url"])
+            wikipedia_urls.extend(artist_wiki)
 
     deduped_wiki = list(dict.fromkeys(wikipedia_urls))
     return snippets, deduped_wiki

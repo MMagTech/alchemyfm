@@ -46,6 +46,8 @@ async def enrich_item(item_id: str, settings: KnowledgeSettings) -> tuple[TrackK
 
 
 
+    artist_info = await navidrome_client.get_artist_bio(item_id)
+
     track = {
 
         "item_id": info.item_id,
@@ -57,6 +59,8 @@ async def enrich_item(item_id: str, settings: KnowledgeSettings) -> tuple[TrackK
         "album": info.album,
 
         "year": info.year,
+
+        "artist_mbid": artist_info.music_brainz_id,
 
     }
 

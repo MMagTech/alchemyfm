@@ -86,6 +86,10 @@
   padding: 0 0.1rem;
 }
 
+.tune-in-player-divider {
+  display: none;
+}
+
 .tune-in-player .live-volume-slider {
   width: 100%;
 }
@@ -190,9 +194,51 @@
 }
 
 .tune-in-visualizer-wrap {
-  margin-top: 1.15rem;
-  padding-top: 1rem;
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
   border-top: 1px solid var(--border-subtle);
+}
+
+.tune-in-visualizer-wrap.is-heard-other {
+  position: relative;
+}
+
+.tune-in-visualizer-wrap.is-heard-other::before {
+  content: 'Other station';
+  position: absolute;
+  top: 0.35rem;
+  right: 0.45rem;
+  z-index: 1;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.tune-in-visualizer-wrap.is-heard-other .tune-in-visualizer {
+  opacity: 0.88;
+}
+
+.tune-in-artist-bio {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--field) 88%, var(--surface));
+  border: 1px solid var(--border-subtle);
+  max-height: 11rem;
+}
+
+.tune-in-artist-bio-text {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: var(--bio-line-height);
+  color: var(--muted);
+}
+
+.tune-in-artist-bio-actions {
+  margin-top: 0.4rem;
 }
 
 .tune-in-visualizer {

@@ -110,9 +110,11 @@ const StripVisualizer = {
     };
 
     resize();
-    window.addEventListener('resize', resize);
+    const onResize = () => resize();
+    window.addEventListener('resize', onResize);
+    let ro = null;
     if (typeof ResizeObserver !== 'undefined' && canvas.parentElement) {
-      const ro = new ResizeObserver(() => resize());
+      ro = new ResizeObserver(() => resize());
       ro.observe(canvas.parentElement);
     }
 
@@ -157,6 +159,14 @@ const StripVisualizer = {
         cancelAnimationFrame(animId);
         beat = 0;
         animId = requestAnimationFrame(drawIdle);
+      },
+      destroy() {
+        stripSuspended = true;
+        stripLive = false;
+        cancelAnimationFrame(animId);
+        animId = null;
+        window.removeEventListener('resize', onResize);
+        ro?.disconnect();
       },
     };
 
