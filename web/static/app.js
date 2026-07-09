@@ -21,6 +21,34 @@ const RadioApp = {
     return this.escape(s).replace(/'/g, '&#39;');
   },
 
+  /** Horizontal marquee when label text overflows its container. */
+  syncOverflowMarquee(trackEl, options = {}) {
+    const innerSelector = options.innerSelector || '.marquee-inner';
+    const scrollingClass = options.scrollingClass || 'is-scrolling';
+    const inner = trackEl?.querySelector(innerSelector);
+    if (!inner) return;
+
+    trackEl.classList.remove(scrollingClass);
+    trackEl.style.removeProperty('--scroll-distance');
+    trackEl.style.removeProperty('--scroll-duration');
+
+    requestAnimationFrame(() => {
+      inner.style.display = 'inline-block';
+      const cs = getComputedStyle(trackEl);
+      const rootSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+      const fadePad = (options.fadePadRem ?? 1.1) * rootSize;
+      const available = trackEl.clientWidth - padX;
+      const overflow = inner.scrollWidth - available + fadePad;
+      inner.style.removeProperty('display');
+      if (overflow > 4) {
+        trackEl.classList.add(scrollingClass);
+        trackEl.style.setProperty('--scroll-distance', `-${overflow}px`);
+        trackEl.style.setProperty('--scroll-duration', `${Math.max(16, overflow / 11)}s`);
+      }
+    });
+  },
+
   /** Stable key for now-playing cover updates */
   trackKey(np) {
     if (!np) return '';
@@ -343,15 +371,24 @@ const RadioApp = {
       const base = baseStreamUrl();
       if (!base) return Promise.reject(new Error('No stream URL'));
       audio.dataset.streamSrc = base;
+      if (this.useStripWebAudio()) {
+        primeAudioGraph();
+      }
+      const mobileHandoff = this.isMobileStation();
+      const useCacheBust = bustCache && !mobileHandoff;
       let src = base;
-      if (bustCache) {
+      if (useCacheBust) {
         const url = new URL(base, location.origin);
         url.searchParams.set('t', String(Date.now()));
         src = url.href;
       }
       connectInFlight = true;
       audio._liveUi?.setConnectingUi?.(bustCache ? 'Reconnecting…' : 'Connecting…');
-      if (audio.src && audio.src !== src) {
+      const liveHandoff = mobileHandoff &&
+        audio.dataset.wantLive === '1' &&
+        audio.src &&
+        audio.src !== src;
+      if (audio.src && audio.src !== src && !liveHandoff) {
         audio.pause();
       }
       audio.src = src;

@@ -114,6 +114,31 @@
   padding-bottom: 0.85rem;
 }
 
+.tune-in-meta .operator-station-heart-meta-slot {
+  display: none !important;
+}
+
+.operator-station-heart-slot {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 0.15rem;
+}
+
+.operator-station-heart-slot[hidden] {
+  display: none !important;
+}
+
+.operator-station-heart-slot .operator-station-heart-row {
+  margin-top: 0;
+}
+
+.tune-in-player .operator-station-heart-row .operator-heart-btn {
+  width: 2.35rem;
+  height: 2.35rem;
+}
+
 .tune-in-player .live-player-center {
   flex: 1;
   min-width: 0;

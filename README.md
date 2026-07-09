@@ -19,7 +19,7 @@ Turn [AudioMuse](https://github.com/NeptuneHub/AudioMuse-AI) programming into **
 
 **Listeners** — station picker with play-from-grid, persistent mini-player while browsing, tune-in page with now playing / up next / recently played, per-listener color themes, and optional artist biography.
 
-**Operators** — admin UI to create stations, set mounts and programming sources, manage broadcast and appearance settings, and optional track trivia (Knowledge feature).
+**Operators** — admin UI to create stations, set mounts and programming sources, manage broadcast and appearance settings, optional track trivia (Knowledge feature), and **PWA operator heart**: triple-tap the wordmark on the listener UI to sign in, then heart on-air tracks (stars in Navidrome and adds to a playlist you pick in Appearance).
 
 ```
 AudioMuse ──▶ Backend ──▶ queue.m3u (per station) ──▶ Liquidsoap ──▶ Icecast ──▶ Listeners
@@ -128,6 +128,8 @@ Report vulnerabilities privately: **[SECURITY.md](SECURITY.md)** (not public iss
 | `GET /api/admin/stations` | All stations (admin) |
 | `POST /api/admin/stations` | Create station |
 | `POST /api/admin/stations/{id}/refresh-queue` | Manual queue refresh |
+| `GET /api/admin/navidrome/playlists` | Navidrome playlists (admin; Appearance picker) |
+| `POST /api/admin/navidrome/songs/{item_id}/heart` | Star/unstar on-air track; heart-on also appends to default playlist |
 
 ## Contributing
 

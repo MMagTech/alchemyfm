@@ -244,6 +244,8 @@ const GlobalLivePlayer = {
     this.syncMiniPlayButton(audio);
     this.syncMiniVizButton();
     this.startMiniPoll(activeSlug);
+    const { track } = this.miniElements();
+    if (track) this.syncMiniTrackMarquee(track);
   },
 
   syncMiniPlayButton(audio) {
@@ -254,7 +256,30 @@ const GlobalLivePlayer = {
     playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
   },
 
-  updateMiniMeta({ stationName, slug, np, artworkUrl, pending = false } = {}) {
+  setMiniTrackLabel(trackEl, label) {
+    if (!trackEl) return;
+    let inner = trackEl.querySelector('.live-mini-track-inner');
+    if (!inner) {
+      trackEl.innerHTML = '<span class="live-mini-track-inner"></span>';
+      inner = trackEl.querySelector('.live-mini-track-inner');
+    }
+    inner.textContent = label;
+    trackEl.title = label;
+    this.syncMiniTrackMarquee(trackEl);
+  },
+
+  syncMiniTrackMarquee(trackEl) {
+    if (!trackEl || typeof RadioApp === 'undefined') return;
+    if (!window.matchMedia('(max-width: 640px)').matches) {
+      trackEl.classList.remove('is-scrolling');
+      trackEl.style.removeProperty('--scroll-distance');
+      trackEl.style.removeProperty('--scroll-duration');
+      return;
+    }
+    RadioApp.syncOverflowMarquee(trackEl, { innerSelector: '.live-mini-track-inner' });
+  },
+
+  updateMiniMeta({ stationName, slug, np, artworkUrl, pending = false, forceGlitch = false } = {}) {
     const { station, track, art } = this.miniElements();
     if (!station || !track) return;
 
@@ -267,22 +292,18 @@ const GlobalLivePlayer = {
     }
 
     if (pending) {
-      track.textContent = 'Connecting…';
-      track.title = 'Connecting…';
+      this.setMiniTrackLabel(track, 'Connecting…');
       if (art) {
         art.dataset.coverUrl = '';
-        if (slug) art.dataset.stationSlug = slug;
         art.innerHTML = '<div class="live-mini-art-placeholder">♪</div>';
       }
       return;
     }
 
     if (np?.artist && np?.title) {
-      track.textContent = `${np.artist} — ${np.title}`;
-      track.title = track.textContent;
+      this.setMiniTrackLabel(track, `${np.artist} — ${np.title}`);
     } else {
-      track.textContent = 'Live';
-      track.title = 'Live';
+      this.setMiniTrackLabel(track, 'Live');
     }
 
     if (!art || !artworkUrl || typeof RadioApp === 'undefined') {
@@ -300,6 +321,7 @@ const GlobalLivePlayer = {
     const prevSlug = art.dataset.stationSlug || '';
     if (slug) art.dataset.stationSlug = slug;
     if (
+      forceGlitch ||
       (trackKey && prevTrackKey && prevTrackKey !== trackKey) ||
       (slug && prevSlug && prevSlug !== slug)
     ) {
@@ -308,6 +330,7 @@ const GlobalLivePlayer = {
     RadioApp.setCoverImage(art, artworkUrl, trackKey, {
       waitForLoad: true,
       forceGlitch: Boolean(
+        forceGlitch ||
         (trackKey && prevTrackKey && prevTrackKey !== trackKey) ||
         (slug && prevSlug && prevSlug !== slug)
       ),
@@ -317,15 +340,19 @@ const GlobalLivePlayer = {
     });
   },
 
-  applySwitchVisuals(station, { pending = false } = {}) {
+  applySwitchVisuals(station, { pending = false, switching = false } = {}) {
     if (pending) {
       this.updateMiniMeta({
         stationName: station?.name,
         slug: station?.slug,
         pending: true,
+        forceGlitch: switching,
       });
       if (typeof window.__alchemyOnStreamSwitchPending === 'function') {
         window.__alchemyOnStreamSwitchPending(station);
+      }
+      if (switching && station?.slug) {
+        AlchemyHome?.pulseCardSwitch?.(station.slug);
       }
       AlchemyHome?.syncAllCardPlayUi?.();
       return;
@@ -341,6 +368,7 @@ const GlobalLivePlayer = {
       slug: station.slug,
       np,
       artworkUrl,
+      forceGlitch: switching,
     });
     this.updateHeardMeta({
       slug: station.slug,
@@ -513,6 +541,19 @@ const GlobalLivePlayer = {
     ['play', 'pause', 'playing'].forEach((ev) => {
       audio.addEventListener(ev, onAudioChange, { signal });
     });
+
+    const onMiniLayout = () => {
+      const { track } = this.miniElements();
+      if (track) this.syncMiniTrackMarquee(track);
+    };
+    window.addEventListener('resize', onMiniLayout, { signal });
+    if (typeof ResizeObserver !== 'undefined') {
+      const { bar } = this.miniElements();
+      if (bar && !this._miniTrackResizeObs) {
+        this._miniTrackResizeObs = new ResizeObserver(onMiniLayout);
+        this._miniTrackResizeObs.observe(bar);
+      }
+    }
   },
 
   slugFromStreamSrc(src) {
@@ -671,9 +712,77 @@ const GlobalLivePlayer = {
       link.dataset.alchemyHomeStyle = href;
       head.appendChild(link);
     };
-    add('/static/home-desktop.css?v=15', '(min-width: 641px)');
-    add('/static/home-mobile.css?v=9', '(max-width: 640px)');
+    add('/static/home-desktop.css?v=16', '(min-width: 641px)');
+    add('/static/home-mobile.css?v=11', '(max-width: 640px)');
     this._homeStylesLoaded = true;
+  },
+
+  ensureStationStyles() {
+    if (this._stationStylesLoaded) return;
+    const head = document.head;
+    const add = (href, media) => {
+      if (head.querySelector(`link[data-alchemy-station-style="${href}"]`)) return;
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = href;
+      link.media = media;
+      link.dataset.alchemyStationStyle = href;
+      head.appendChild(link);
+    };
+    add('/static/station-desktop.css?v=13', '(min-width: 641px)');
+    add('/static/station-mobile.css?v=20', '(max-width: 640px)');
+    this._stationStylesLoaded = true;
+  },
+
+  loadScriptOnce(src, datasetKey) {
+    return new Promise((resolve, reject) => {
+      const existing = document.querySelector(`script[data-alchemy-script="${datasetKey}"]`);
+      if (existing) {
+        if (existing.dataset.loaded === '1') {
+          resolve();
+          return;
+        }
+        existing.addEventListener('load', () => resolve(), { once: true });
+        existing.addEventListener('error', reject, { once: true });
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = src;
+      script.dataset.alchemyScript = datasetKey;
+      script.onload = () => {
+        script.dataset.loaded = '1';
+        resolve();
+      };
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+  },
+
+  async ensureStationBoot() {
+    if (typeof window.__alchemyStationNavigate === 'function') return;
+
+    this.ensureStationStyles();
+
+    if (typeof LiveAudioGraph === 'undefined') {
+      await this.loadScriptOnce('/static/live-audio-graph.js?v=7', 'live-audio-graph');
+    }
+    if (typeof LiveTuningFx === 'undefined') {
+      await this.loadScriptOnce('/static/tuning-static.js?v=3', 'tuning-static');
+    }
+    if (typeof StripVisualizer === 'undefined') {
+      await this.loadScriptOnce('/static/strip-visualizer.js?v=3', 'strip-visualizer');
+    }
+
+    await this.loadScriptOnce('/static/station-boot.js?v=8', 'station-boot');
+  },
+
+  async ensureTuningReady() {
+    if (typeof LiveAudioGraph === 'undefined') {
+      await this.loadScriptOnce('/static/live-audio-graph.js?v=7', 'live-audio-graph');
+    }
+    if (typeof LiveTuningFx === 'undefined') {
+      await this.loadScriptOnce('/static/tuning-static.js?v=3', 'tuning-static');
+    }
   },
 
   homeMainMarkup() {
@@ -685,6 +794,16 @@ const GlobalLivePlayer = {
   },
 
   softNavigateToHome() {
+    if (this.isOnSoftHome()) {
+      return;
+    }
+
+    if (this.isHomePage() && !this.isStationPage()) {
+      this.persistListeningSession();
+      this.syncMiniVisibility();
+      return;
+    }
+
     if (!this.isStationPage()) {
       location.href = '/';
       return;
@@ -751,7 +870,7 @@ const GlobalLivePlayer = {
         return;
       }
       const script = document.createElement('script');
-      script.src = '/static/home-page.js?v=3';
+      script.src = '/static/home-page.js?v=5';
       script.dataset.alchemyHomePage = '1';
       script.onload = resolve;
       script.onerror = reject;
@@ -780,15 +899,19 @@ const GlobalLivePlayer = {
     const nav = document.querySelector('header nav');
     if (nav) nav.hidden = false;
 
-    const bioToggle = document.getElementById('artist-bio-toggle');
-    if (bioToggle) bioToggle.hidden = false;
-
     document.body.classList.remove('live-home-page');
     document.body.classList.add('live-station-page');
     document.title = 'Station — Alchemy FM';
 
     history.pushState({ alchemyfm: 'station', slug }, '', this.stationUrl(slug));
     this.syncMiniVisibility();
+
+    try {
+      await this.ensureStationBoot();
+    } catch {
+      location.href = this.stationUrl(slug);
+      return;
+    }
 
     if (typeof window.__alchemyStationNavigate === 'function') {
       window.__alchemyStationNavigate(slug);
@@ -818,18 +941,17 @@ const GlobalLivePlayer = {
       if (url.origin !== location.origin) return;
 
       const stationSlug = this.slugFromStationUrl(url);
-      const homeNav = this.isStationPage() && this.isListening() && this.isHomeNavUrl(url);
 
-      if (homeNav) {
+      if (this.isHomeNavUrl(url)) {
         e.preventDefault();
         this.softNavigateToHome();
         return;
       }
 
       if (stationSlug && this.isListening()) {
-        if (this.isOnSoftHome()) {
+        if (this.isOnSoftHome() || this.isStationPage()) {
           e.preventDefault();
-          this.softNavigateToStation(stationSlug);
+          void this.softNavigateToStation(stationSlug);
           return;
         }
         if (this.isHomePage() && !this.isStationPage()) {
@@ -1005,13 +1127,35 @@ const GlobalLivePlayer = {
     this.stopMiniPoll();
 
     const fromSlug = this.activePlayingSlug();
+    const isSwitch = Boolean(fromSlug && fromSlug !== station.slug);
     this.ensureEngine(audio);
+
+    if (RadioApp.useStripWebAudio?.() && typeof LiveAudioGraph !== 'undefined') {
+      if (!audio._liveAudioGraph) {
+        audio._liveAudioGraph = LiveAudioGraph.attach(audio);
+      }
+      audio._liveAudioGraph?.ensureGraph?.();
+      const ctx = audio._liveAudioGraph?.audioContext;
+      if (ctx?.state === 'suspended') {
+        try {
+          await ctx.resume();
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+
+    try {
+      await this.ensureTuningReady();
+    } catch {
+      /* tuning bed is optional */
+    }
 
     const tuningWait = typeof LiveTuningFx !== 'undefined'
       ? LiveTuningFx.startSwitch(audio, { fromSlug, toSlug: station.slug })
       : Promise.resolve();
 
-    this.applySwitchVisuals(station, { pending: true });
+    this.applySwitchVisuals(station, { pending: true, switching: isSwitch });
 
     let meta = station;
     try {
@@ -1035,7 +1179,7 @@ const GlobalLivePlayer = {
       wantLive: true,
     });
 
-    this.applySwitchVisuals(meta);
+    this.applySwitchVisuals(meta, { switching: isSwitch });
 
     this.ensureEngine(audio);
 

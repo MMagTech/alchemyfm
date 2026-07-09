@@ -130,7 +130,7 @@
 }
 
 .station-card-art-wrap .station-card-play-btn {
-  opacity: 1;
+  opacity: 0;
   inset: auto;
   top: auto;
   left: auto;
@@ -140,6 +140,12 @@
   height: 2.5rem;
   border-radius: 50%;
   background: transparent;
+  transition: opacity 0.15s ease;
+}
+
+.station-card-art-wrap:hover .station-card-play-btn,
+.station-card-art-wrap:focus-within .station-card-play-btn {
+  opacity: 1;
 }
 
 .station-card-art-wrap .station-card-play-icon {

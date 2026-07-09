@@ -154,6 +154,9 @@ const LiveAudioGraph = {
 
     const ensureGraph = () => {
       if (audioCtx) return;
+      if (typeof RadioApp !== 'undefined' && !RadioApp.useStripWebAudio()) {
+        return;
+      }
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return;
       audioCtx = new Ctx();

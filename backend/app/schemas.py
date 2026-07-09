@@ -44,6 +44,7 @@ class NowPlaying(BaseModel):
     artist_bio: str | None = None
     artist_bio_url: str | None = None
     knowledge: KnowledgeBlock | None = None
+    hearted: bool | None = None
 
 
 class StationSummary(BaseModel):
@@ -163,11 +164,13 @@ class IcecastRestartResponse(BaseModel):
 class AppearanceSettingsRead(BaseModel):
     default_theme: str = "violet"
     artist_bio_enabled: bool = True
+    default_navidrome_playlist_id: str = ""
 
 
 class AppearanceSettingsUpdate(BaseModel):
     default_theme: str
     artist_bio_enabled: bool = True
+    default_navidrome_playlist_id: str = ""
 
     @field_validator("default_theme")
     @classmethod

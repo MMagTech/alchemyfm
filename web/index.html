@@ -14,24 +14,24 @@
   <meta name="apple-mobile-web-app-title" content="Alchemy FM">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="/static/style.css?v=120">
+  <link rel="stylesheet" href="/static/style.css?v=128">
   <link rel="stylesheet" href="/static/themes.css?v=2">
   <link rel="stylesheet" href="/static/home-desktop.css?v=16" media="(min-width: 641px)">
-  <link rel="stylesheet" href="/static/home-mobile.css?v=10" media="(max-width: 640px)">
+  <link rel="stylesheet" href="/static/home-mobile.css?v=11" media="(max-width: 640px)">
   <script src="/static/themes.js?v=14"></script>
 </head>
 <body>
   <header>
     <h1 class="site-wordmark">
+      <button type="button" class="site-wordmark-icon" aria-label="Home">
+        <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">
+          <rect x="1.5" y="9" width="3" height="9" rx="1.2"/>
+          <rect x="6.5" y="6" width="3" height="12" rx="1.2"/>
+          <rect x="11.5" y="3" width="3" height="15" rx="1.2"/>
+          <rect x="16.5" y="7" width="3" height="11" rx="1.2"/>
+        </svg>
+      </button>
       <a href="/" class="site-wordmark-link">
-        <span class="site-wordmark-icon" aria-hidden="true">
-          <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" focusable="false">
-            <rect x="1.5" y="9" width="3" height="9" rx="1.2"/>
-            <rect x="6.5" y="6" width="3" height="12" rx="1.2"/>
-            <rect x="11.5" y="3" width="3" height="15" rx="1.2"/>
-            <rect x="16.5" y="7" width="3" height="11" rx="1.2"/>
-          </svg>
-        </span>
         <span class="site-wordmark-text"><span class="site-wordmark-name">Alchemy</span><span class="site-wordmark-fm">FM</span></span>
       </a>
     </h1>
@@ -81,11 +81,12 @@
       </div>
     </div>
   </div>
-  <script src="/static/live-audio-graph.js?v=6"></script>
-  <script src="/static/tuning-static.js?v=1"></script>
-  <script src="/static/global-live-player.js?v=19"></script>
-  <script src="/static/home-page.js?v=3"></script>
-  <script src="/static/app.js?v=38"></script>
+  <script src="/static/live-audio-graph.js?v=7"></script>
+  <script src="/static/tuning-static.js?v=3"></script>
+  <script src="/static/global-live-player.js?v=28"></script>
+  <script src="/static/home-page.js?v=5"></script>
+  <script src="/static/app.js?v=41"></script>
+  <script src="/static/admin-library-controls.js?v=14"></script>
   <script>
     AlchemyHome.mount();
   </script>

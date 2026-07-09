@@ -55,6 +55,14 @@
   gap: 0.7rem;
 }
 
+.operator-station-heart-slot {
+  display: none;
+}
+
+.tune-in-meta .operator-station-heart-meta-slot {
+  justify-content: flex-start;
+}
+
 .tune-in-player .live-play-btn {
   width: 42px;
   height: 42px;

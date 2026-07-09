@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 import httpx
 from sqlalchemy.orm import Session
 
+from app.auth import admin_user_from_request
 from app.services.broadcast_settings import get_broadcast_settings
 from app.services.icecast_config import stream_media_type
 from app.config import settings
@@ -13,7 +14,7 @@ from app.schemas import StationDetail, StationSummary
 from app.services.stream_urls import public_stream_url
 from app.services.icecast import _normalize_mount, fetch_all_mount_stats, fetch_mount_listeners
 from app.services.station_artwork import artwork_path
-from app.services.navidrome import attach_artist_bio
+from app.services.navidrome import attach_artist_bio, attach_operator_heart
 from app.services.stations import station_to_detail, station_to_summary
 
 router = APIRouter(prefix="/api/stations", tags=["stations"])
@@ -211,4 +212,9 @@ async def get_station(slug: str, request: Request, db: Session = Depends(get_db)
     )
     if detail.now_playing and get_broadcast_settings(db).artist_bio_enabled:
         detail.now_playing = await attach_artist_bio(detail.now_playing)
+    if detail.now_playing:
+        detail.now_playing = await attach_operator_heart(
+            detail.now_playing,
+            is_admin=bool(admin_user_from_request(request)),
+        )
     return detail

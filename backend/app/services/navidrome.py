@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import time
@@ -14,6 +15,12 @@ logger = logging.getLogger(__name__)
 
 ARTIST_BIO_CACHE_TTL_SEC = 86400
 ARTIST_BIO_EMPTY_CACHE_TTL_SEC = 3600
+
+
+@dataclass(frozen=True)
+class NavidromePlaylist:
+    id: str
+    name: str
 
 
 @dataclass(frozen=True)
@@ -97,6 +104,15 @@ class NavidromeClient:
         self.user = settings.navidrome_user
         self.password = settings.navidrome_password
         self._bio_cache: dict[str, tuple[ArtistBio, float]] = {}
+        self._star_cache: dict[str, tuple[bool, float]] = {}
+        self._http: httpx.AsyncClient | None = None
+        # Songs appended to each playlist this process lifetime (avoids slow getPlaylist).
+        self._playlist_appended: dict[str, set[str]] = {}
+
+    def _http_client(self) -> httpx.AsyncClient:
+        if self._http is None or self._http.is_closed:
+            self._http = httpx.AsyncClient(timeout=60.0)
+        return self._http
 
     def _auth_params(self) -> dict[str, str]:
         if not self.user or not self.password:
@@ -114,10 +130,10 @@ class NavidromeClient:
         params = self._auth_params()
         if extra:
             params.update(extra)
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.get(f"{self.base_url}/rest/{endpoint}.view", params=params)
-            response.raise_for_status()
-            payload = response.json()
+        client = self._http_client()
+        response = await client.get(f"{self.base_url}/rest/{endpoint}.view", params=params)
+        response.raise_for_status()
+        payload = response.json()
         subsonic = payload.get("subsonic-response") or {}
         if subsonic.get("status") != "ok":
             raise RuntimeError(f"Navidrome error: {subsonic.get('error') or subsonic}")
@@ -161,6 +177,102 @@ class NavidromeClient:
         except Exception:
             logger.warning("Failed to fetch cover art for %s", item_id)
             return None
+
+    async def get_song_raw(self, item_id: str) -> dict:
+        data = await self._request("getSong", {"id": item_id})
+        return data.get("song") or {}
+
+    def is_hearted(self, song: dict) -> bool:
+        return bool(song.get("starred"))
+
+    def _set_star_cache(self, item_id: str, hearted: bool) -> None:
+        self._star_cache[str(item_id)] = (hearted, time.time())
+
+    def _invalidate_star_cache(self, item_id: str) -> None:
+        self._star_cache.pop(str(item_id), None)
+
+    async def is_song_hearted(self, item_id: str) -> bool:
+        key = str(item_id)
+        cached = self._star_cache.get(key)
+        if cached and (time.time() - cached[1]) < 120:
+            return cached[0]
+        song = await self.get_song_raw(item_id)
+        hearted = self.is_hearted(song)
+        self._set_star_cache(key, hearted)
+        return hearted
+
+    async def star_song(self, item_id: str) -> None:
+        await self._request("star", {"id": item_id})
+        self._set_star_cache(item_id, True)
+
+    async def unstar_song(self, item_id: str) -> None:
+        await self._request("unstar", {"id": item_id})
+        self._set_star_cache(item_id, False)
+
+    async def list_playlists(self) -> list[NavidromePlaylist]:
+        data = await self._request("getPlaylists")
+        playlists = data.get("playlists") or {}
+        raw = playlists.get("playlist") or []
+        if isinstance(raw, dict):
+            raw = [raw]
+        result: list[NavidromePlaylist] = []
+        for pl in raw:
+            pl_id = str(pl.get("id") or "").strip()
+            if not pl_id:
+                continue
+            result.append(NavidromePlaylist(id=pl_id, name=str(pl.get("name") or "Untitled")))
+        return sorted(result, key=lambda p: p.name.lower())
+
+    async def get_playlist(self, playlist_id: str) -> dict:
+        data = await self._request("getPlaylist", {"id": playlist_id})
+        return data.get("playlist") or {}
+
+    async def song_in_playlist(self, playlist_id: str, item_id: str) -> bool:
+        playlist = await self.get_playlist(playlist_id)
+        entries = playlist.get("entry") or []
+        if isinstance(entries, dict):
+            entries = [entries]
+        return any(str(entry.get("id")) == str(item_id) for entry in entries)
+
+    async def append_song_to_playlist(self, playlist_id: str, item_id: str) -> None:
+        await self._request(
+            "updatePlaylist",
+            {"playlistId": playlist_id, "songIdToAdd": item_id},
+        )
+
+    async def add_song_to_playlist(self, playlist_id: str, item_id: str) -> bool:
+        """Append song if not already in playlist. Returns True if newly added."""
+        if await self.song_in_playlist(playlist_id, item_id):
+            return False
+        await self.append_song_to_playlist(playlist_id, item_id)
+        return True
+
+    async def heart_song_with_playlist(
+        self, item_id: str, playlist_id: str | None
+    ) -> bool:
+        """Star song and queue playlist append when configured. Returns playlist_added."""
+        await self.star_song(item_id)
+        if not playlist_id:
+            return False
+
+        appended = self._playlist_appended.setdefault(playlist_id, set())
+        if item_id in appended:
+            return False
+
+        appended.add(item_id)
+        asyncio.create_task(self._append_playlist_background(playlist_id, item_id))
+        return True
+
+    async def _append_playlist_background(self, playlist_id: str, item_id: str) -> None:
+        try:
+            await self.append_song_to_playlist(playlist_id, item_id)
+        except Exception:
+            logger.exception(
+                "Background playlist append failed for %s in %s",
+                item_id,
+                playlist_id,
+            )
+            self._playlist_appended.get(playlist_id, set()).discard(item_id)
 
     async def get_song(self, item_id: str) -> TrackInfo:
         data = await self._request("getSong", {"id": item_id})
@@ -253,3 +365,18 @@ async def attach_artist_bio(np: NowPlaying | None) -> NowPlaying | None:
     return np.model_copy(
         update={"artist_bio": bio.biography, "artist_bio_url": read_more}
     )
+
+
+async def attach_operator_heart(
+    np: NowPlaying | None,
+    *,
+    is_admin: bool,
+) -> NowPlaying | None:
+    if not np or not np.item_id or not is_admin:
+        return np
+    try:
+        hearted = await navidrome_client.is_song_hearted(np.item_id)
+    except Exception:
+        logger.warning("Failed to read heart state for %s", np.item_id)
+        return np
+    return np.model_copy(update={"hearted": hearted})

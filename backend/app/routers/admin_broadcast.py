@@ -39,6 +39,7 @@ def read_appearance_settings(db: Session = Depends(get_db)):
     return AppearanceSettingsRead(
         default_theme=theme,
         artist_bio_enabled=bool(row.artist_bio_enabled),
+        default_navidrome_playlist_id=row.default_navidrome_playlist_id or "",
     )
 
 
@@ -51,11 +52,13 @@ def save_appearance_settings(
         {
             "default_theme": payload.default_theme,
             "artist_bio_enabled": payload.artist_bio_enabled,
+            "default_navidrome_playlist_id": payload.default_navidrome_playlist_id or "",
         },
     )
     return AppearanceSettingsRead(
         default_theme=row.default_theme or "violet",
         artist_bio_enabled=bool(row.artist_bio_enabled),
+        default_navidrome_playlist_id=row.default_navidrome_playlist_id or "",
     )
 
 

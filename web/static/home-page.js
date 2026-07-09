@@ -65,26 +65,7 @@ const AlchemyHome = {
   },
 
   syncTrackMarquee(trackEl) {
-    const inner = trackEl.querySelector('.now-track-inner');
-    if (!inner) return;
-    trackEl.classList.remove('is-scrolling');
-    trackEl.style.removeProperty('--scroll-distance');
-    trackEl.style.removeProperty('--scroll-duration');
-    requestAnimationFrame(() => {
-      inner.style.display = 'inline-block';
-      const cs = getComputedStyle(trackEl);
-      const rootSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-      const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
-      const fadePad = 1.1 * rootSize;
-      const available = trackEl.clientWidth - padX;
-      const overflow = inner.scrollWidth - available + fadePad;
-      inner.style.removeProperty('display');
-      if (overflow > 4) {
-        trackEl.classList.add('is-scrolling');
-        trackEl.style.setProperty('--scroll-distance', `-${overflow}px`);
-        trackEl.style.setProperty('--scroll-duration', `${Math.max(16, overflow / 11)}s`);
-      }
-    });
+    RadioApp.syncOverflowMarquee(trackEl, { innerSelector: '.now-track-inner' });
   },
 
   setNowPlayingTrack(trackEl, np) {
@@ -141,6 +122,27 @@ const AlchemyHome = {
     document.querySelectorAll('.station-card[data-slug]').forEach((card) => {
       this.syncCardPlayUi(card);
     });
+  },
+
+  pulseCardSwitch(slug) {
+    if (!slug) return;
+    const card = document.querySelector(`[data-slug="${CSS.escape(slug)}"]`);
+    const artMount = card ? this.ensureArtMount(card) : null;
+    if (!artMount) return;
+
+    const frame = artMount.querySelector('.cover-frame');
+    if (frame) {
+      frame.classList.add('cover-switching');
+      const done = () => frame.classList.remove('cover-switching');
+      frame.addEventListener('animationend', done, { once: true });
+      setTimeout(done, 700);
+      return;
+    }
+
+    artMount.classList.add('cover-switching');
+    const done = () => artMount.classList.remove('cover-switching');
+    artMount.addEventListener('animationend', done, { once: true });
+    setTimeout(done, 700);
   },
 
   async handleCardPlay(slug) {

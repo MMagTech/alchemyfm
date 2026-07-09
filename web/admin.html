@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/icons/favicon.ico?v=2" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png?v=2">
   <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png?v=2">
-  <link rel="stylesheet" href="/static/style.css?v=90">
+  <link rel="stylesheet" href="/static/style.css?v=126">
   <link rel="stylesheet" href="/static/themes.css?v=2">
   <link rel="stylesheet" href="/static/admin-mobile.css?v=6" media="(max-width: 640px)">
   <script src="/static/themes.js?v=14"></script>
@@ -51,13 +51,20 @@
       <div class="admin-panel-head">
         <div>
           <h2>Appearance</h2>
-          <p class="admin-lede">Default theme and optional artist biography on station pages.</p>
+          <p class="admin-lede">Default theme, operator Heart Playlist, and optional artist biography on station pages.</p>
         </div>
       </div>
       <form id="appearance-form">
         <div class="appearance-theme-field">
           <label for="default_theme">Default station theme</label>
           <select id="default_theme" name="default_theme" required></select>
+        </div>
+        <div class="appearance-playlist-field">
+          <label for="default_navidrome_playlist_id">Heart Playlist (Navidrome)</label>
+          <select id="default_navidrome_playlist_id" name="default_navidrome_playlist_id">
+            <option value="">— Star only (no playlist) —</option>
+          </select>
+          <p class="hint appearance-hint">Create this playlist in Navidrome first. Heart in the listener PWA stars the track and adds it here.</p>
         </div>
         <div class="appearance-bio-field">
           <label class="appearance-checkbox">
@@ -386,6 +393,10 @@
             <dd>Theme new visitors see before they pick their own. Listeners can override it per browser from the station page header.</dd>
             <dt>Artist Biography</dt>
             <dd>When enabled, station pages can show a short artist bio above the visualizer (from Navidrome / Last.fm / Deezer metadata). Listeners can hide or show it with the <strong>Artist Bio</strong> toggle in the station header.</dd>
+            <dt>Heart Playlist</dt>
+            <dd>Navidrome playlist used when you heart a track from the listener PWA (home mini-player or station page). The playlist lives in Navidrome — Appearance only stores which one to target.</dd>
+            <dt>Operator Sign-In (PWA)</dt>
+            <dd><strong>Press and hold the colored logo button</strong> (the small square with bars, not the “Alchemy FM” text) for about one second on the home or station page. Sign in inside the installed PWA so the session cookie applies. A quick tap on the logo still goes home. Hearts appear only while your session is active (about 7 days), then you sign in again the same way.</dd>
           </dl>
         </section>
         <section class="admin-help-section">
@@ -405,7 +416,7 @@
             <dt>Home Grid</dt>
             <dd>Listeners can tune in directly from a station card on the home page.</dd>
             <dt>Mini-Player</dt>
-            <dd>Playback persists in a bottom bar while browsing between home and station pages.</dd>
+            <dd>Playback persists in a bottom bar while browsing between home and station pages. Operators see a heart on the mini-player when signed in.</dd>
             <dt>In-Browser Stream</dt>
             <dd>The website plays through a same-origin proxy (<code>/api/stations/{slug}/listen</code>) so the visualizer and volume controls work without CORS issues.</dd>
           </dl>
@@ -970,24 +981,53 @@
 
     document.getElementById('encode_format').addEventListener('change', updateEncodeFormatUi);
 
+    async function populateNavidromePlaylistSelect(selectedId = '') {
+      const sel = document.getElementById('default_navidrome_playlist_id');
+      if (!sel) return;
+      const keep = selectedId || sel.value || '';
+      sel.innerHTML = '<option value="">— Star only (no playlist) —</option>';
+      try {
+        const data = await adminFetchJSON('/api/admin/navidrome/playlists');
+        for (const pl of data.playlists || []) {
+          const opt = document.createElement('option');
+          opt.value = pl.id;
+          opt.textContent = pl.name;
+          sel.appendChild(opt);
+        }
+      } catch (err) {
+        RadioApp.showAdminToast(
+          `Could not load Navidrome playlists: ${err.message}`,
+          'error',
+          8000,
+          'appearance'
+        );
+      }
+      if (keep) sel.value = keep;
+    }
+
     async function loadAppearanceSettings() {
       try {
         const s = await adminFetchJSON('/api/admin/broadcast/appearance');
         const bio = document.getElementById('artist_bio_enabled');
         if (bio) bio.checked = s.artist_bio_enabled !== false;
+        await populateNavidromePlaylistSelect(s.default_navidrome_playlist_id || '');
       } catch (err) {
         RadioApp.showAdminToast(err.message, 'error', 8000, 'appearance');
       }
     }
 
-    async function saveAppearanceSettings({ default_theme, artist_bio_enabled }) {
+    async function saveAppearanceSettings({ default_theme, artist_bio_enabled, default_navidrome_playlist_id }) {
       if (!RadioThemes.isValid(default_theme)) {
         throw new Error('Pick a valid theme.');
       }
       const opts = {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ default_theme, artist_bio_enabled }),
+        body: JSON.stringify({
+          default_theme,
+          artist_bio_enabled,
+          default_navidrome_playlist_id: default_navidrome_playlist_id || '',
+        }),
       };
       let data;
       try {
@@ -1001,9 +1041,14 @@
       if (bio && data?.artist_bio_enabled !== undefined) {
         bio.checked = Boolean(data.artist_bio_enabled);
       }
+      const playlistSel = document.getElementById('default_navidrome_playlist_id');
+      if (playlistSel && data?.default_navidrome_playlist_id !== undefined) {
+        playlistSel.value = data.default_navidrome_playlist_id || '';
+      }
       return {
         default_theme: resolved,
         artist_bio_enabled: Boolean(data?.artist_bio_enabled),
+        default_navidrome_playlist_id: data?.default_navidrome_playlist_id || '',
       };
     }
 
@@ -1011,12 +1056,14 @@
       e.preventDefault();
       const default_theme = document.getElementById('default_theme').value;
       const artist_bio_enabled = document.getElementById('artist_bio_enabled')?.checked ?? true;
+      const default_navidrome_playlist_id = document.getElementById('default_navidrome_playlist_id')?.value || '';
       const btn = e.target.querySelector('button[type="submit"]');
       if (btn) btn.disabled = true;
       try {
         const { default_theme: savedTheme } = await saveAppearanceSettings({
           default_theme,
           artist_bio_enabled,
+          default_navidrome_playlist_id,
         });
         RadioThemes.setAdminDefaultSelect(savedTheme);
         RadioApp.showAdminToast(

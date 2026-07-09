@@ -14,7 +14,7 @@ from app.config import settings
 from app.database import SessionLocal, Station, init_db
 from app.schemas import BroadcastStatsRead, HealthResponse
 from app.middleware import SecurityHeadersMiddleware
-from app.routers import admin, admin_auth, admin_broadcast, admin_knowledge, audiomuse_admin, internal, stations
+from app.routers import admin, admin_auth, admin_broadcast, admin_knowledge, admin_navidrome, audiomuse_admin, internal, stations
 from app.knowledge.database import init_knowledge_db
 from app.knowledge.worker import start_knowledge_worker
 from app.services.broadcast_settings import apply_broadcast_settings, get_broadcast_settings
@@ -173,6 +173,7 @@ app.include_router(admin_auth.router)
 app.include_router(admin.router)
 app.include_router(admin_broadcast.router)
 app.include_router(admin_knowledge.router)
+app.include_router(admin_navidrome.router)
 app.include_router(audiomuse_admin.router)
 app.include_router(internal.router)
 
@@ -244,6 +245,11 @@ def admin_login_page():
         return _html_page("admin-login.html")
     except HTTPException:
         return {"error": "not found"}
+
+
+@app.get("/admin-login.html")
+def admin_login_page_alias():
+    return admin_login_page()
 
 
 @app.get("/admin/knowledge.html")
