@@ -24,7 +24,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.0.3"
+PLUGIN_VERSION = "2.1.0"
 
 ALCHEMY_FM_USER_AGENT = (
     "AlchemyFmBridge/2.0 AudioMuse-Plugin (+https://github.com/MMagTech/alchemyfm)"
@@ -455,7 +455,8 @@ def profile_from_form(form) -> dict[str, Any]:
         raise ChannelDesignerError("Channel name is required.")
 
     ptype = (form.get("programming_type") or "clap_query").strip()
-    slug = (form.get("slug") or "").strip() or _slugify(name)
+    editing_slug = (form.get("editing_slug") or "").strip()
+    slug = editing_slug or (form.get("slug") or "").strip() or _slugify(name)
     refresh_mode = (form.get("refresh_mode") or "similar_to_last").strip()
     if refresh_mode not in {key for key, _ in REFRESH_MODES}:
         raise ChannelDesignerError(f"Unsupported refresh mode: {refresh_mode}")
@@ -601,6 +602,70 @@ def _save_channel(
     )
     db.commit()
     cur.close()
+
+
+def _load_saved_channel(slug: str) -> tuple[dict[str, Any], list[str]] | None:
+    slug = slug.strip()
+    if not slug:
+        return None
+    db = get_db()
+    cur = db.cursor()
+    channels = table("channels")
+    try:
+        cur.execute(
+            "SELECT profile_json, preview_ids_json FROM " + channels + " WHERE slug = %s",
+            (slug,),
+        )
+        row = cur.fetchone()
+    except Exception:
+        db.rollback()
+        return None
+    finally:
+        cur.close()
+    if not row:
+        return None
+    try:
+        profile = json.loads(row[0] or "{}")
+        preview_ids = json.loads(row[1] or "[]")
+        if not isinstance(preview_ids, list):
+            preview_ids = []
+    except json.JSONDecodeError:
+        return None
+    return profile, [str(i) for i in preview_ids if i]
+
+
+def _preview_tracks_from_ids(item_ids: list[str]) -> list[dict[str, Any]]:
+    if not item_ids:
+        return []
+    try:
+        scores = get_score_data_by_ids(item_ids)
+    except Exception:
+        scores = []
+    by_id = {row["item_id"]: row for row in scores if row.get("item_id")}
+    tracks: list[dict[str, Any]] = []
+    for item_id in item_ids:
+        row = by_id.get(item_id) or {}
+        tracks.append(
+            {
+                "item_id": item_id,
+                "title": row.get("title") or "Unknown",
+                "author": row.get("author") or row.get("artist") or "Unknown",
+            }
+        )
+    return enrich_preview(tracks)
+
+
+def _apply_loaded_channel(
+    slug: str,
+) -> tuple[dict[str, Any], list[dict[str, Any]], str]:
+    loaded = _load_saved_channel(slug)
+    if not loaded:
+        raise ChannelDesignerError(f"No saved channel found for slug '{slug}'.")
+    profile, preview_ids = loaded
+    values = _form_values_from_profile(profile)
+    values["editing_slug"] = slug
+    preview_tracks = _preview_tracks_from_ids(preview_ids)
+    return values, preview_tracks, profile.get("station", {}).get("name") or slug
 
 
 def _record_channel_error(slug: str, message: str) -> None:
@@ -838,14 +903,37 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
 
 
 def _deploy_fields_html(values: dict[str, Any]) -> str:
+    editing_slug = (values.get("editing_slug") or "").strip()
+    slug_readonly = " readonly style='opacity:0.75'" if editing_slug else ""
+    slug_extra = ""
+    if editing_slug:
+        slug_extra = (
+            f"<input type='hidden' name='editing_slug' value='{html.escape(editing_slug)}'>"
+            "<p class='hint'>Slug is fixed after first deploy (Alchemy FM identifies stations by slug).</p>"
+        )
+    deploy_label = "Update on Alchemy FM" if editing_slug else "Deploy to Alchemy FM"
+    edit_banner = ""
+    if editing_slug:
+        edit_banner = (
+            f"<p style='margin:0 0 0.75rem;padding:0.5rem 0.75rem;background:#eff6ff;"
+            f"border:1px solid #93c5fd;border-radius:6px;'>"
+            f"Editing channel <strong>{html.escape(editing_slug)}</strong>. "
+            f"Change name, description, or queue settings, then click "
+            f"<strong>{html.escape(deploy_label)}</strong>."
+            f" <button type='submit' name='action' value='new_channel' formnovalidate "
+            f"style='margin-left:0.5rem;'>New channel</button></p>"
+        )
     return (
         "<fieldset style='border:1px solid #ddd;border-radius:8px;padding:1rem;margin-top:1rem;'>"
         "<legend><strong>2. Channel + deploy</strong> — station on Alchemy FM</legend>"
+        f"{edit_banner}"
         "<div style='display:grid;gap:0.75rem;'>"
         "<div><label>Channel name</label>"
         f"<input name='name' required value='{html.escape(str(values.get('name', '')))}'></div>"
         "<div><label>Slug</label>"
-        f"<input name='slug' placeholder='auto from name' value='{html.escape(str(values.get('slug', '')))}'></div>"
+        f"<input name='slug' placeholder='auto from name' "
+        f"value='{html.escape(str(values.get('slug', editing_slug or '')))}'{slug_readonly}>"
+        f"{slug_extra}</div>"
         "<div><label>Description</label>"
         f"<textarea name='description' maxlength='120' rows='2'>{html.escape(str(values.get('description', '')))}</textarea></div>"
         "<div><label>Icecast mount</label>"
@@ -868,7 +956,7 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
         f"{' checked' if values.get('bootstrap_queue', True) else ''}> Bootstrap queue immediately</label>"
         f"<input type='hidden' name='saved_anchor_id' value='{html.escape(str(values.get('saved_anchor_id', '')))}'>"
         "<div style='display:flex;gap:0.75rem;flex-wrap:wrap;margin-top:0.5rem;'>"
-        "<button type='submit' name='action' value='push'>Deploy to Alchemy FM</button>"
+        f"<button type='submit' name='action' value='push'>{html.escape(deploy_label)}</button>"
         "<button type='submit' name='action' value='test' formnovalidate>Test Alchemy connection</button>"
         "</div></div></fieldset>"
     )
@@ -886,6 +974,7 @@ def _channels_table_html() -> str:
         "<th style='text-align:left;padding:0.5rem;border-bottom:1px solid #ddd;'>Anchor</th>"
         "<th style='text-align:left;padding:0.5rem;border-bottom:1px solid #ddd;'>Last push</th>"
         "<th style='text-align:left;padding:0.5rem;border-bottom:1px solid #ddd;'>Status</th>"
+        "<th style='text-align:left;padding:0.5rem;border-bottom:1px solid #ddd;'></th>"
         "</tr></thead><tbody>"
     )
     for name, slug, profile_json, anchor_id, _station_id, _preview_at, pushed_at, action, error in rows:
@@ -911,6 +1000,12 @@ def _channels_table_html() -> str:
             f"<td style='padding:0.5rem;border-bottom:1px solid #eee;'>{html.escape(str(anchor_id or ''))}</td>"
             f"<td style='padding:0.5rem;border-bottom:1px solid #eee;'>{html.escape(str(pushed_at or ''))}</td>"
             f"<td style='padding:0.5rem;border-bottom:1px solid #eee;'>{status}</td>"
+            f"<td style='padding:0.5rem;border-bottom:1px solid #eee;'>"
+            f"<form method='post' style='display:inline;margin:0;'>"
+            f"<input type='hidden' name='action' value='edit'>"
+            f"<input type='hidden' name='load_slug' value='{html.escape(slug)}'>"
+            f"<button type='submit'>Edit</button></form>"
+            "</td>"
             "</tr>"
         )
     return body + "</tbody></table>"
@@ -1038,80 +1133,121 @@ def home():
         "bootstrap_queue": True,
     }
 
+    if request.method == "GET":
+        edit_slug = (request.args.get("edit") or "").strip()
+        if edit_slug:
+            try:
+                values, preview_tracks, channel_name = _apply_loaded_channel(edit_slug)
+                flash = _flash_html(f"Editing channel '{channel_name}'.", "ok")
+            except ChannelDesignerError as exc:
+                flash = _flash_html(str(exc), "error")
+
     if request.method == "POST":
         action = (request.form.get("action") or "preview").strip()
-        values.update({k: request.form.get(k, values.get(k, "")) for k in request.form})
-        values["enabled"] = request.form.get("enabled") == "on"
-        values["bootstrap_queue"] = request.form.get("bootstrap_queue") == "on"
 
-        pick_seed = (request.form.get("pick_seed") or "").strip()
-        if pick_seed:
-            values["seed_id"] = pick_seed
-            values["programming_type"] = "similar_seed"
-            if request.form.get("seed_search"):
-                values["seed_search_results"] = _search_tracks(request.form.get("seed_search") or "")
-        elif action == "search_seed":
-            values["seed_search_results"] = _search_tracks(request.form.get("seed_search") or "")
-        elif action == "test":
+        if action == "edit":
+            load_slug = (request.form.get("load_slug") or "").strip()
             try:
-                stations = _client().test_connection()
-                flash = _flash_html(f"Alchemy FM connected — {len(stations)} station(s) on air.", "ok")
+                values, preview_tracks, channel_name = _apply_loaded_channel(load_slug)
+                flash = _flash_html(f"Editing channel '{channel_name}'.", "ok")
             except ChannelDesignerError as exc:
                 flash = _flash_html(str(exc), "error")
+        elif action == "new_channel":
+            values = {
+                "programming_type": "clap_query",
+                "refresh_mode": "similar_to_last",
+                "preview_limit": PREVIEW_LIMIT_DEFAULT,
+                "queue_target": 30,
+                "refresh_threshold": 10,
+                "artist_separation_minutes": 90,
+                "enabled": True,
+                "bootstrap_queue": True,
+            }
+            preview_tracks = []
+            flash = _flash_html("New channel — fill in programming and deploy.", "ok")
         else:
-            try:
-                profile = profile_from_form(request.form)
-                values = _form_values_from_profile(profile)
+            values.update({k: request.form.get(k, values.get(k, "")) for k in request.form})
+            values["enabled"] = request.form.get("enabled") == "on"
+            values["bootstrap_queue"] = request.form.get("bootstrap_queue") == "on"
 
-                if action == "preview":
-                    raw = preview_programming(profile)
-                    if not raw:
-                        raise ChannelDesignerError("No tracks matched this programming.")
-                    preview_tracks = enrich_preview(raw)
-                    _save_channel(profile, preview_ids=[t["item_id"] for t in preview_tracks])
-                    flash = _flash_html(
-                        f"Preview ready — {len(preview_tracks)} tracks from AudioMuse. "
-                        "Review below, then deploy to Alchemy FM.",
-                        "ok",
-                    )
-                elif action == "push":
-                    raw = preview_programming(profile)
-                    if not raw:
-                        raise ChannelDesignerError(
-                            "No tracks to deploy. Preview programming first or broaden your criteria."
+            pick_seed = (request.form.get("pick_seed") or "").strip()
+            if pick_seed:
+                values["seed_id"] = pick_seed
+                values["programming_type"] = "similar_seed"
+                if request.form.get("seed_search"):
+                    values["seed_search_results"] = _search_tracks(request.form.get("seed_search") or "")
+            elif action == "search_seed":
+                values["seed_search_results"] = _search_tracks(request.form.get("seed_search") or "")
+            elif action == "test":
+                try:
+                    stations = _client().test_connection()
+                    flash = _flash_html(f"Alchemy FM connected — {len(stations)} station(s) on air.", "ok")
+                except ChannelDesignerError as exc:
+                    flash = _flash_html(str(exc), "error")
+            else:
+                try:
+                    profile = profile_from_form(request.form)
+                    values = _form_values_from_profile(profile)
+                    if (request.form.get("editing_slug") or "").strip():
+                        values["editing_slug"] = request.form.get("editing_slug").strip()
+
+                    if action == "preview":
+                        raw = preview_programming(profile)
+                        if not raw:
+                            raise ChannelDesignerError("No tracks matched this programming.")
+                        preview_tracks = enrich_preview(raw)
+                        _save_channel(profile, preview_ids=[t["item_id"] for t in preview_tracks])
+                        flash = _flash_html(
+                            f"Preview ready — {len(preview_tracks)} tracks from AudioMuse. "
+                            "Review below, then deploy to Alchemy FM.",
+                            "ok",
                         )
-                    preview_tracks = enrich_preview(raw)
-                    payload = channel_profile_to_alchemy_payload(profile, raw)
-                    slug = payload["slug"]
-                    station, push_action = _client().push_station(
-                        payload,
-                        slug=slug,
-                        bootstrap=bool(payload.get("bootstrap_queue")),
-                    )
-                    _save_channel(
-                        profile,
-                        preview_ids=[t["item_id"] for t in preview_tracks],
-                        station=station,
-                        action=push_action,
-                    )
-                    anchor_note = ""
-                    if profile["programming"]["type"] not in DIRECT_ALCHEMY_TYPES:
-                        anchor_note = f" Created Song Alchemy anchor {profile.get('anchor_id')} for 24/7 refill."
-                    flash = _flash_html(
-                        f"Channel '{station.get('name')}' {push_action} on Alchemy FM "
-                        f"(id {station.get('id')}).{anchor_note}",
-                        "ok",
-                    )
-                    logger.info(
-                        "alchemy_fm_bridge deployed slug=%s action=%s anchor=%s",
-                        slug,
-                        push_action,
-                        profile.get("anchor_id"),
-                    )
-            except ChannelDesignerError as exc:
-                slug = (request.form.get("slug") or _slugify(request.form.get("name") or "channel")).strip()
-                _record_channel_error(slug, str(exc))
-                flash = _flash_html(str(exc), "error")
+                    elif action == "push":
+                        raw = preview_programming(profile)
+                        if not raw:
+                            raise ChannelDesignerError(
+                                "No tracks to deploy. Preview programming first or broaden your criteria."
+                            )
+                        preview_tracks = enrich_preview(raw)
+                        payload = channel_profile_to_alchemy_payload(profile, raw)
+                        slug = payload["slug"]
+                        station, push_action = _client().push_station(
+                            payload,
+                            slug=slug,
+                            bootstrap=bool(payload.get("bootstrap_queue")),
+                        )
+                        _save_channel(
+                            profile,
+                            preview_ids=[t["item_id"] for t in preview_tracks],
+                            station=station,
+                            action=push_action,
+                        )
+                        anchor_note = ""
+                        if profile["programming"]["type"] not in DIRECT_ALCHEMY_TYPES:
+                            anchor_note = (
+                                f" Created Song Alchemy anchor {profile.get('anchor_id')} for 24/7 refill."
+                            )
+                        flash = _flash_html(
+                            f"Channel '{station.get('name')}' {push_action} on Alchemy FM "
+                            f"(id {station.get('id')}).{anchor_note}",
+                            "ok",
+                        )
+                        values = _form_values_from_profile(profile)
+                        values["editing_slug"] = slug
+                        logger.info(
+                            "alchemy_fm_bridge deployed slug=%s action=%s anchor=%s",
+                            slug,
+                            push_action,
+                            profile.get("anchor_id"),
+                        )
+                except ChannelDesignerError as exc:
+                    slug = (
+                        request.form.get("editing_slug")
+                        or request.form.get("slug")
+                        or _slugify(request.form.get("name") or "channel")
+                    ).strip()
+                    _record_channel_error(slug, str(exc))
+                    flash = _flash_html(str(exc), "error")
 
     body = (
         f"<p style='opacity:0.85;margin-bottom:1rem;'>Channel Designer v{PLUGIN_VERSION} — "

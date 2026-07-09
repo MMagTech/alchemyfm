@@ -6,6 +6,14 @@
   "targets": ["flask"],
   "versions": [
     {
+      "version": "2.1.0",
+      "min_core_version": "2.5.0",
+      "changelog": "Edit saved channels: load profile, change name/settings, update on Alchemy FM by slug.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "2e84e282623db3b0bac72ff2b6c9637f"
+    },
+    {
       "version": "2.0.3",
       "min_core_version": "2.5.0",
       "changelog": "Fix anchor blend, similar-seed pick, and mood cluster dropdown population.",
