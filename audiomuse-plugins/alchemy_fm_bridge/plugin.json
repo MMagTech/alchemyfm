@@ -2,11 +2,32 @@
   "id": "alchemy_fm_bridge",
   "name": "Alchemy FM Channel Designer",
   "author": "MMagTech",
-  "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy \u2014 preview programming, then deploy to Alchemy FM.",
-  "targets": [
-    "flask"
-  ],
+  "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy — preview programming, then deploy to Alchemy FM.",
   "versions": [
+    {
+      "version": "2.3.2",
+      "min_core_version": "2.5.0",
+      "changelog": "Replace live host examples in settings with generic placeholders; fix plugin.json catalog entry for 2.3.0.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "99bcc66fe2e4ecce070858dde6caf9f4"
+    },
+    {
+      "version": "2.3.1",
+      "min_core_version": "2.5.0",
+      "changelog": "Redesigned station list as cards, dedicated edit toolbar, GET-based edit links, list-first layout, clearer badges and actions.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "c5136d358028a150bff16250e1cde409"
+    },
+    {
+      "version": "2.3.0",
+      "min_core_version": "2.5.0",
+      "changelog": "Living channels (on_song_analyzed + nightly cron pool refresh), tempo/energy filters, audition history. Runs on worker + flask.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "1a36fcd449eebe74deb33bae312ba1c8"
+    },
     {
       "version": "2.2.0",
       "min_core_version": "2.5.0",
@@ -34,7 +55,7 @@
     {
       "version": "2.0.2",
       "min_core_version": "2.5.0",
-      "changelog": "Catalog refresh publish \u2014 v2 Channel Designer (CLAP, lyrics, moods, preview, deploy).",
+      "changelog": "Catalog refresh publish — v2 Channel Designer (CLAP, lyrics, moods, preview, deploy).",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
       "checksum": "238d2ed40646759fc7b3e44bd4136479"

@@ -880,7 +880,7 @@ const GlobalLivePlayer = {
 
   homeMainMarkup() {
     return `
-      <p class="subtitle">Curated stations on the air. Everyone tuned in hears the same track.</p>
+      <p class="subtitle">Designed in AudioMuse. Live on Alchemy FM.</p>
       <div id="stations" class="station-grid">
         <p class="empty">Loading stations…</p>
       </div>`;
