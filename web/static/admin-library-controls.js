@@ -428,6 +428,15 @@ const AdminLibraryControls = {
     return this._currentItemId || btn?.dataset?.itemId || null;
   },
 
+  rememberItemId(btn, itemId) {
+    if (!itemId) return;
+    if (btn?.id === 'operator-mini-heart') {
+      this._miniItemId = itemId;
+    } else {
+      this._currentItemId = itemId;
+    }
+  },
+
   syncHeartFromPoll(btn, np) {
     let itemId = this.itemId(np);
     if (!itemId) {
@@ -442,6 +451,7 @@ const AdminLibraryControls = {
       this.syncHeartButton(btn, itemId, hearted);
       return;
     }
+    this.rememberItemId(btn, itemId);
     const hearted = this.heartedForSync(itemId, np);
     this.syncHeartButton(btn, itemId, hearted);
     if (hearted !== null) {
@@ -454,7 +464,10 @@ const AdminLibraryControls = {
     this._heartState.set(itemId, hearted);
     this.persistHeartCache();
     document.querySelectorAll(`.operator-heart-btn[data-item-id="${CSS.escape(itemId)}"]`)
-      .forEach((el) => this.syncHeartButton(el, itemId, hearted));
+      .forEach((el) => {
+        this.rememberItemId(el, itemId);
+        this.syncHeartButton(el, itemId, hearted);
+      });
   },
 
   async fetchHearted(itemId, { force = false } = {}) {
@@ -512,7 +525,6 @@ const AdminLibraryControls = {
   async syncStationHeart(np) {
     if (!this._admin) return;
     const btn = this.ensureStationHeartRow();
-    this._currentItemId = this.itemId(np);
     this.syncHeartFromPoll(btn, np);
   },
 
@@ -524,7 +536,6 @@ const AdminLibraryControls = {
       return;
     }
 
-    this._miniItemId = this.itemId(np);
     this.syncHeartFromPoll(btn, np);
   },
 
