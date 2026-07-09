@@ -508,7 +508,7 @@ def _remote_stations_html() -> str:
     return "<h3>Stations on Alchemy FM</h3><ul>" + "".join(items) + "</ul>"
 
 
-@bp.route("/")
+@bp.route("/", methods=["GET", "POST"])
 def home():
     flash = ""
     values: dict[str, Any] = {
