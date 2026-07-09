@@ -182,21 +182,7 @@ const GlobalLivePlayer = {
   },
 
   browserStreamUrl(station) {
-    const slug = typeof station === 'string' ? station : station.slug;
-    const proxy = new URL(
-      `/api/stations/${encodeURIComponent(slug)}/listen`,
-      location.origin
-    ).href;
-    const direct = typeof station === 'object' ? station.stream_url : '';
-    if (direct) {
-      try {
-        const url = new URL(direct);
-        if (url.origin === location.origin) return url.href;
-      } catch {
-        /* use proxy */
-      }
-    }
-    return proxy;
+    return RadioApp.browserStreamUrl(station);
   },
 
   ensureShell() {
@@ -876,7 +862,7 @@ const GlobalLivePlayer = {
       await this.loadScriptOnce('/static/strip-visualizer.js?v=3', 'strip-visualizer');
     }
 
-    await this.loadScriptOnce('/static/station-boot.js?v=9', 'station-boot');
+    await this.loadScriptOnce('/static/station-boot.js?v=10', 'station-boot');
   },
 
   async ensureTuningReady() {
