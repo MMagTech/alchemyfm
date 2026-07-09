@@ -936,6 +936,19 @@ const RadioApp = {
     }
   },
 
+  /**
+   * In-browser playback URL. Always the same-origin /listen proxy so Safari's
+   * bytes=0-1 probe is answered locally (no extra Icecast listener). External
+   * players and "Copy stream link" still use station.stream_url (direct mount).
+   */
+  browserStreamUrl(station) {
+    const slug = typeof station === 'string' ? station : station.slug;
+    return new URL(
+      `/api/stations/${encodeURIComponent(slug)}/listen`,
+      location.origin
+    ).href;
+  },
+
   isMobileStation() {
     if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) return true;
     return window.matchMedia('(max-width: 640px)').matches;

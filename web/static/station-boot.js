@@ -144,21 +144,7 @@
     }
 
     function browserStreamUrl(station) {
-      const slug = typeof station === 'string' ? station : station.slug;
-      const proxy = new URL(
-        `/api/stations/${encodeURIComponent(slug)}/listen`,
-        location.origin
-      ).href;
-      const direct = typeof station === 'object' ? station.stream_url : '';
-      if (direct) {
-        try {
-          const url = new URL(direct);
-          if (url.origin === location.origin) return url.href;
-        } catch {
-          /* use proxy */
-        }
-      }
-      return proxy;
+      return RadioApp.browserStreamUrl(station);
     }
 
     function renderShell(s) {

@@ -62,10 +62,9 @@ Only **`ALCHEMYFM_HOST`** is required in `.env`. To change labels (middleware, c
 
 ## Cloudflare / long-lived streams
 
-If `alchemyfm.example.com` is **proxied** (orange cloud), live audio through `/api/stations/{slug}/listen` can stall or fail. Prefer:
+If `alchemyfm.example.com` is **proxied** (orange cloud), live audio through `/api/stations/{slug}/listen` can stall or fail. Prefer **gray-cloud** the hostname (DNS only) so the in-browser player can use the `/listen` proxy reliably.
 
-1. **Gray-cloud** the hostname (DNS only), or
-2. Let the in-browser player use the **direct mount URL** (`https://host/mount`) — same origin as the site when Traefik routes mounts to Icecast; the web UI picks this automatically when `stream_url` matches the page origin.
+The in-browser player always uses `/api/stations/{slug}/listen` (not the direct mount URL) so Safari's short `Range: bytes=0-1` probe does not register as a second Icecast listener. External players and **Copy stream link** still use the direct mount (`https://host/mount`).
 
 Icecast router already sets `responseForwarding.flushInterval=1s`. The backend web service uses the same flush interval in `docker-compose.traefik.yml` for the listen proxy.
 
