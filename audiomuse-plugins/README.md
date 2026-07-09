@@ -15,6 +15,9 @@ Third-party [AudioMuse-AI](https://github.com/NeptuneHub/AudioMuse-AI) plugins m
 | Mood cluster browse | `GET /api/mood_centroids` + `GET /api/similar_tracks` |
 | Song Alchemy anchors | `GET /api/anchors`, `POST /api/alchemy` |
 | Preview enrichment | `get_score_data_by_ids()` — tempo, energy, mood |
+| Tempo/energy filters | Narrow preview and living pool by BPM and energy |
+| Living channels | `on_song_analyzed` auto-pool + nightly cron refresh |
+| Audition history | Last 20 preview runs per channel |
 | 24/7 deploy bridge | Blends preview → saves anchor → pushes `alchemy_anchor` station |
 
 CLAP, lyrics, and mood channels are **auditioned in AudioMuse**, then compiled into a Song Alchemy anchor so Alchemy FM can refill queues around the clock.
@@ -28,7 +31,7 @@ GitHub is live immediately; AudioMuse caches the catalog (~1 hour, or until you 
    https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/manifest.json
    ```
 2. **Remove** that repository → **Add** it again → **Catalog → Refresh catalog**
-3. If already installed at v1.x: check **Installed** tab (not Catalog) for **Update to v2.x**
+3. If already installed at an older version: check **Installed** tab (not Catalog) for **Update**
 4. Click **Apply now (restart)** after install/update
 5. Requires AudioMuse core **2.5.0+** (`min_core_version` in plugin.json)
 
@@ -44,11 +47,13 @@ If the catalog still shows v1, wait 5 minutes (GitHub CDN cache) and refresh aga
 
 ### Workflow
 
-1. **Settings** — Alchemy FM URL + admin credentials (`https://alchemyfm.mmagtech.com`, etc.)
+1. **Settings** — Alchemy FM URL + admin credentials (e.g. `https://alchemyfm.example.com` or a LAN URL like `http://192.168.1.100:8080`)
 2. **Alchemy FM** menu — Channel Designer
 3. Pick programming type (CLAP, lyrics, mood, anchor, or seed)
-4. **Preview programming** — review tracks with BPM / energy / mood
-5. **Deploy to Alchemy FM** — creates/updates station + optional bootstrap
+4. Optional: set tempo/energy filters and enable **Living channel**
+5. **Preview programming** — review tracks with BPM / energy / mood
+6. **Deploy to Alchemy FM** — creates/updates station + optional bootstrap
+7. Enable **Administration → Scheduled Tasks → plugin.alchemy_fm_bridge.refresh_living** for nightly pool refresh
 
 ### Local development
 
@@ -61,9 +66,16 @@ python -m http.server 8000
 
 Add `sourceUrl` to your test `plugin.json` version entry pointing at `http://<lan-ip>:8000/alchemy_fm_bridge.zip` (omit `checksum` for local installs).
 
-### Roadmap (v2.1+)
+### Living channels (v2.3+)
 
-- Cron refresh: re-score library against saved channel profiles
-- `on_song_analyzed` hook: auto-add new matches to channel pools
+When **Living channel** is enabled on a saved profile:
+
+- **`on_song_analyzed`** (worker): newly analyzed songs that pass tempo/energy filters are added to the channel pool.
+- **`refresh_living`** (cron, default 03:00 daily, disabled until enabled): re-runs programming, updates the pool, records audition history, and optionally updates the Alchemy FM station + queue.
+
+Set **AudioMuse API URL** in plugin settings if the worker cannot reach the web UI host (use a LAN address the worker can reach, e.g. `http://192.168.1.100:8387`).
+
+### Roadmap (v2.4+)
+
 - Navidrome bootstrap playlists via `create_or_replace_playlist`
 - Direct Alchemy FM `clap_query` / `lyrics_query` source types (no anchor bridge)

@@ -3,8 +3,31 @@
   "name": "Alchemy FM Channel Designer",
   "author": "MMagTech",
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy — preview programming, then deploy to Alchemy FM.",
-  "targets": ["flask"],
   "versions": [
+    {
+      "version": "2.3.2",
+      "min_core_version": "2.5.0",
+      "changelog": "Replace live host examples in settings with generic placeholders; fix plugin.json catalog entry for 2.3.0.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "99bcc66fe2e4ecce070858dde6caf9f4"
+    },
+    {
+      "version": "2.3.1",
+      "min_core_version": "2.5.0",
+      "changelog": "Redesigned station list as cards, dedicated edit toolbar, GET-based edit links, list-first layout, clearer badges and actions.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "c5136d358028a150bff16250e1cde409"
+    },
+    {
+      "version": "2.3.0",
+      "min_core_version": "2.5.0",
+      "changelog": "Living channels (on_song_analyzed + nightly cron pool refresh), tempo/energy filters, audition history. Runs on worker + flask.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "1a36fcd449eebe74deb33bae312ba1c8"
+    },
     {
       "version": "2.2.0",
       "min_core_version": "2.5.0",
@@ -52,30 +75,6 @@
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
       "checksum": "fc71a331264688402a3024c8f85333f4"
-    },
-    {
-      "version": "1.0.2",
-      "min_core_version": "2.5.0",
-      "changelog": "Fix 405 Method Not Allowed when pushing or testing — home route now accepts POST.",
-      "imageUrl": "",
-      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": "a468b1e95a3a92aa7c5a4a66b7e16c59"
-    },
-    {
-      "version": "1.0.1",
-      "min_core_version": "2.5.0",
-      "changelog": "Fix plugin load error: ship single-file zip (AudioMuse could not import alchemy_client module).",
-      "imageUrl": "",
-      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": "39d9a7d88f521c3353c3a612cf16e207"
-    },
-    {
-      "version": "1.0.0",
-      "min_core_version": "2.5.0",
-      "changelog": "Initial release: configure Alchemy FM URL and admin credentials, design stations from anchors or seed tracks, and idempotently create/update/bootstrap stations.",
-      "imageUrl": "",
-      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": "21e64a3136c593e58d52cc22a399c14f"
     }
   ]
 }

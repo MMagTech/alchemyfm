@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from flask import Blueprint, request, redirect
+from flask import Blueprint, request, redirect, url_for
 
 from plugin.api import (
     get_db,
@@ -24,10 +24,11 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.2.0"
+PLUGIN_VERSION = "2.3.2"
+PLUGIN_ID = "alchemy_fm_bridge"
 
 ALCHEMY_FM_USER_AGENT = (
-    "AlchemyFmBridge/2.0 AudioMuse-Plugin (+https://github.com/MMagTech/alchemyfm)"
+    "AlchemyFmBridge/2.3 AudioMuse-Plugin (+https://github.com/MMagTech/alchemyfm)"
 )
 
 # ---------------------------------------------------------------------------
@@ -142,6 +143,12 @@ class AlchemyFmClient:
     def delete_station(self, station_id: int) -> None:
         self._request("DELETE", f"/api/admin/stations/{int(station_id)}")
 
+    def refresh_queue(self, station_id: int) -> dict[str, Any]:
+        result = self._request("POST", f"/api/admin/stations/{int(station_id)}/refresh-queue")
+        if not isinstance(result, dict):
+            raise ChannelDesignerError("Unexpected response when refreshing station queue")
+        return result
+
     def push_station(
         self,
         payload: dict[str, Any],
@@ -170,7 +177,26 @@ class AlchemyFmClient:
 
 
 def _audiomuse_base_url() -> str:
-    return request.host_url.rstrip("/")
+    custom = (get_setting("audiomuse_api_url") or "").strip().rstrip("/")
+    if custom:
+        return custom
+    try:
+        from plugin.api import config as plugin_config
+
+        host = getattr(plugin_config, "AUDIOMUSE_CONTROL_HOST", "") or ""
+        port = getattr(plugin_config, "AUDIOMUSE_CONTROL_PORT", "") or ""
+        if host and port:
+            return f"http://{host}:{port}".rstrip("/")
+    except Exception:
+        pass
+    try:
+        from flask import has_request_context
+
+        if has_request_context():
+            return request.host_url.rstrip("/")
+    except Exception:
+        pass
+    return "http://127.0.0.1:8000"
 
 
 def _audiomuse_token() -> str:
@@ -240,6 +266,8 @@ PROGRAMMING_TYPES = (
     ("alchemy_anchor", "Song Alchemy anchor"),
     ("similar_seed", "Similar to seed track"),
 )
+
+PROGRAMMING_TYPE_LABELS = {key: label for key, label in PROGRAMMING_TYPES}
 
 REFRESH_MODES = (
     ("similar_to_last", "Similar to last played (recommended)"),
@@ -369,6 +397,72 @@ def enrich_preview(tracks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return enriched
 
 
+def _parse_optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _filters_from_form(form) -> dict[str, Any]:
+    return {
+        "tempo_min": _parse_optional_float(form.get("filter_tempo_min")),
+        "tempo_max": _parse_optional_float(form.get("filter_tempo_max")),
+        "energy_min": _parse_optional_float(form.get("filter_energy_min")),
+        "energy_max": _parse_optional_float(form.get("filter_energy_max")),
+    }
+
+
+def _living_from_form(form) -> dict[str, Any]:
+    return {
+        "enabled": form.get("living_enabled") == "on",
+        "auto_add_on_analyze": form.get("living_auto_add") == "on",
+        "auto_refresh_alchemy": form.get("living_auto_refresh") == "on",
+    }
+
+
+def _filters_active(filters: dict[str, Any] | None) -> bool:
+    if not filters:
+        return False
+    return any(filters.get(key) is not None for key in ("tempo_min", "tempo_max", "energy_min", "energy_max"))
+
+
+def track_passes_filters(track: dict[str, Any], filters: dict[str, Any] | None) -> bool:
+    if not _filters_active(filters):
+        return True
+    tempo = track.get("tempo")
+    energy = track.get("energy")
+    if tempo is None and energy is None:
+        analysis = track.get("analysis") or {}
+        tempo = analysis.get("tempo")
+        energy = analysis.get("energy")
+    if filters.get("tempo_min") is not None:
+        if tempo is None or float(tempo) < float(filters["tempo_min"]):
+            return False
+    if filters.get("tempo_max") is not None:
+        if tempo is None or float(tempo) > float(filters["tempo_max"]):
+            return False
+    if filters.get("energy_min") is not None:
+        if energy is None or float(energy) < float(filters["energy_min"]):
+            return False
+    if filters.get("energy_max") is not None:
+        if energy is None or float(energy) > float(filters["energy_max"]):
+            return False
+    return True
+
+
+def apply_track_filters(tracks: list[dict[str, Any]], profile: dict[str, Any]) -> list[dict[str, Any]]:
+    filters = profile.get("filters") or {}
+    if not _filters_active(filters):
+        return tracks
+    return [track for track in tracks if track_passes_filters(track, filters)]
+
+
 def _centroid_from_alchemy_response(data: Any) -> list[float] | None:
     if not isinstance(data, dict):
         return None
@@ -484,6 +578,8 @@ def profile_from_form(form) -> dict[str, Any]:
     return {
         "programming": programming,
         "refresh": {"mode": refresh_mode},
+        "filters": _filters_from_form(form),
+        "living": _living_from_form(form),
         "station": {
             "name": name,
             "slug": slug,
@@ -525,6 +621,40 @@ def migrate(db) -> None:
         "last_action TEXT, "
         "last_error TEXT NOT NULL DEFAULT ''"
         ")"
+    )
+    pool = table("channel_pool")
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS "
+        + pool
+        + " ("
+        "id SERIAL PRIMARY KEY, "
+        "channel_slug TEXT NOT NULL, "
+        "item_id TEXT NOT NULL, "
+        "source TEXT NOT NULL DEFAULT 'preview', "
+        "added_at TEXT, "
+        "UNIQUE(channel_slug, item_id)"
+        ")"
+    )
+    auditions = table("auditions")
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS "
+        + auditions
+        + " ("
+        "id SERIAL PRIMARY KEY, "
+        "channel_slug TEXT NOT NULL, "
+        "run_at TEXT NOT NULL, "
+        "track_count INTEGER NOT NULL DEFAULT 0, "
+        "track_ids_json TEXT NOT NULL DEFAULT '[]'"
+        ")"
+    )
+    cur.execute(
+        "INSERT INTO cron (name, task_type, cron_expr, enabled) VALUES (%s, %s, %s, FALSE) "
+        "ON CONFLICT (task_type) DO NOTHING",
+        (
+            f"plugin.{PLUGIN_ID}.refresh_living",
+            f"plugin.{PLUGIN_ID}.refresh_living",
+            "0 3 * * *",
+        ),
     )
     # Legacy table from v1 — keep for upgrades
     profiles = table("profiles")
@@ -696,6 +826,8 @@ def _profile_from_remote_station(station: dict[str, Any]) -> dict[str, Any]:
     return {
         "programming": programming,
         "refresh": {"mode": continuation},
+        "filters": {},
+        "living": {"enabled": False, "auto_add_on_analyze": False, "auto_refresh_alchemy": False},
         "station": {
             "name": station.get("name") or "",
             "slug": station.get("slug") or "",
@@ -714,21 +846,39 @@ def _profile_from_remote_station(station: dict[str, Any]) -> dict[str, Any]:
 def _apply_loaded_channel(
     slug: str,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], str]:
+    slug = slug.strip()
+    station_remote: dict[str, Any] | None = None
+    try:
+        station_remote = _client().find_station_by_slug(slug)
+    except ChannelDesignerError:
+        station_remote = None
+
     loaded = _load_saved_channel(slug)
     if loaded:
         profile, preview_ids = loaded
         values = _form_values_from_profile(profile)
         values["editing_slug"] = slug
+        values["profile_source"] = "saved"
         preview_tracks = _preview_tracks_from_ids(preview_ids)
-        return values, preview_tracks, profile.get("station", {}).get("name") or slug
-
-    station = _client().find_station_by_slug(slug)
-    if not station:
+        channel_name = profile.get("station", {}).get("name") or slug
+    elif station_remote:
+        profile = _profile_from_remote_station(station_remote)
+        values = _form_values_from_profile(profile)
+        values["editing_slug"] = slug
+        values["profile_source"] = "remote"
+        preview_tracks = []
+        channel_name = profile.get("station", {}).get("name") or slug
+    else:
         raise ChannelDesignerError(f"No channel found locally or on Alchemy FM for slug '{slug}'.")
-    profile = _profile_from_remote_station(station)
-    values = _form_values_from_profile(profile)
-    values["editing_slug"] = slug
-    return values, [], profile.get("station", {}).get("name") or slug
+
+    if station_remote:
+        values["edit_station_id"] = int(station_remote.get("id") or 0)
+        values["edit_on_air"] = bool(station_remote.get("enabled"))
+        values["edit_queued"] = station_remote.get("queued_count", station_remote.get("queued", "?"))
+        values["edit_description"] = station_remote.get("description") or values.get("description", "")
+    if (profile.get("living") or {}).get("enabled"):
+        values["edit_pool_count"] = _pool_count(slug)
+    return values, preview_tracks, channel_name
 
 
 def _record_channel_error(slug: str, message: str) -> None:
@@ -763,16 +913,295 @@ def _channel_rows() -> list[tuple]:
         cur.close()
 
 
+def _record_audition(slug: str, item_ids: list[str]) -> None:
+    slug = slug.strip()
+    if not slug:
+        return
+    db = get_db()
+    cur = db.cursor()
+    auditions = table("auditions")
+    cur.execute(
+        "INSERT INTO "
+        + auditions
+        + " (channel_slug, run_at, track_count, track_ids_json) "
+        "VALUES (%s, to_char(now(), 'YYYY-MM-DD HH24:MI:SS'), %s, %s)",
+        (slug, len(item_ids), json.dumps(item_ids)),
+    )
+    cur.execute(
+        "DELETE FROM "
+        + auditions
+        + " WHERE id NOT IN ("
+        "SELECT id FROM "
+        + auditions
+        + " WHERE channel_slug = %s ORDER BY id DESC LIMIT 20"
+        ")",
+        (slug,),
+    )
+    db.commit()
+    cur.close()
+
+
+def _add_to_pool(slug: str, item_ids: list[str], *, source: str = "preview") -> int:
+    slug = slug.strip()
+    if not slug or not item_ids:
+        return 0
+    db = get_db()
+    cur = db.cursor()
+    pool = table("channel_pool")
+    added = 0
+    for item_id in item_ids:
+        cur.execute(
+            "INSERT INTO "
+            + pool
+            + " (channel_slug, item_id, source, added_at) "
+            "VALUES (%s, %s, %s, to_char(now(), 'YYYY-MM-DD HH24:MI:SS')) "
+            "ON CONFLICT (channel_slug, item_id) DO NOTHING",
+            (slug, str(item_id), source),
+        )
+        if cur.rowcount:
+            added += 1
+    db.commit()
+    cur.close()
+    return added
+
+
+def _pool_item_ids(slug: str, *, limit: int = 200) -> list[str]:
+    slug = slug.strip()
+    if not slug:
+        return []
+    db = get_db()
+    cur = db.cursor()
+    pool = table("channel_pool")
+    try:
+        cur.execute(
+            "SELECT item_id FROM "
+            + pool
+            + " WHERE channel_slug = %s ORDER BY added_at DESC NULLS LAST, id DESC LIMIT %s",
+            (slug, int(limit)),
+        )
+        return [str(row[0]) for row in cur.fetchall() if row and row[0]]
+    except Exception:
+        db.rollback()
+        return []
+    finally:
+        cur.close()
+
+
+def _pool_count(slug: str) -> int:
+    slug = slug.strip()
+    if not slug:
+        return 0
+    db = get_db()
+    cur = db.cursor()
+    try:
+        cur.execute(
+            "SELECT COUNT(*) FROM " + table("channel_pool") + " WHERE channel_slug = %s",
+            (slug,),
+        )
+        row = cur.fetchone()
+        return int(row[0]) if row else 0
+    except Exception:
+        db.rollback()
+        return 0
+    finally:
+        cur.close()
+
+
+def _living_channel_profiles() -> list[tuple[str, dict[str, Any], int | None]]:
+    rows = _channel_rows()
+    living: list[tuple[str, dict[str, Any], int | None]] = []
+    for row in rows:
+        slug = str(row[1] or "")
+        try:
+            profile = json.loads(row[2] or "{}")
+        except json.JSONDecodeError:
+            continue
+        living_cfg = profile.get("living") or {}
+        if not living_cfg.get("enabled"):
+            continue
+        alchemy_id = row[4]
+        living.append((slug, profile, int(alchemy_id) if alchemy_id else None))
+    return living
+
+
+def _audition_rows(slug: str | None = None, *, limit: int = 10) -> list[tuple]:
+    db = get_db()
+    cur = db.cursor()
+    auditions = table("auditions")
+    try:
+        if slug:
+            cur.execute(
+                "SELECT channel_slug, run_at, track_count, track_ids_json FROM "
+                + auditions
+                + " WHERE channel_slug = %s ORDER BY id DESC LIMIT %s",
+                (slug.strip(), int(limit)),
+            )
+        else:
+            cur.execute(
+                "SELECT channel_slug, run_at, track_count, track_ids_json FROM "
+                + auditions
+                + " ORDER BY id DESC LIMIT %s",
+                (int(limit),),
+            )
+        return cur.fetchall()
+    except Exception:
+        db.rollback()
+        return []
+    finally:
+        cur.close()
+
+
+def on_song_analyzed(song: dict[str, Any]) -> None:
+    item_id = str(song.get("item_id") or "").strip()
+    if not item_id:
+        return
+    analysis = song.get("analysis") or {}
+    track = {
+        "item_id": item_id,
+        "tempo": analysis.get("tempo"),
+        "energy": analysis.get("energy"),
+    }
+    for slug, profile, _alchemy_id in _living_channel_profiles():
+        living_cfg = profile.get("living") or {}
+        if not living_cfg.get("auto_add_on_analyze"):
+            continue
+        if not track_passes_filters(track, profile.get("filters")):
+            continue
+        added = _add_to_pool(slug, [item_id], source="analyze")
+        if added:
+            logger.info(
+                "alchemy_fm_bridge living pool +1 slug=%s item_id=%s",
+                slug,
+                item_id,
+            )
+
+
+def refresh_living_channels() -> None:
+    channels = _living_channel_profiles()
+    if not channels:
+        logger.info("alchemy_fm_bridge refresh_living: no living channels configured")
+        return
+
+    client: AlchemyFmClient | None = None
+    for slug, profile, alchemy_station_id in channels:
+        try:
+            raw = preview_programming(profile)
+            filtered = apply_track_filters(enrich_preview(raw), profile)
+            item_ids = [t["item_id"] for t in filtered]
+            if not item_ids:
+                logger.warning("alchemy_fm_bridge refresh_living: no tracks for slug=%s", slug)
+                continue
+
+            _record_audition(slug, item_ids)
+            added = _add_to_pool(slug, item_ids, source="cron")
+            _save_channel(profile, preview_ids=item_ids)
+
+            living_cfg = profile.get("living") or {}
+            if not living_cfg.get("auto_refresh_alchemy") or not alchemy_station_id:
+                logger.info(
+                    "alchemy_fm_bridge refresh_living slug=%s pool=%s added=%s",
+                    slug,
+                    len(item_ids),
+                    added,
+                )
+                continue
+
+            payload = channel_profile_to_alchemy_payload(profile, filtered or raw)
+            if client is None:
+                try:
+                    client = _client()
+                except ChannelDesignerError as exc:
+                    logger.warning("alchemy_fm_bridge refresh_living: Alchemy FM unavailable: %s", exc)
+                    continue
+
+            update_fields = {
+                key: value
+                for key, value in payload.items()
+                if key not in ("slug", "bootstrap_queue")
+            }
+            client.update_station(int(alchemy_station_id), update_fields)
+            client.refresh_queue(int(alchemy_station_id))
+            logger.info(
+                "alchemy_fm_bridge refresh_living slug=%s updated station=%s pool=%s",
+                slug,
+                alchemy_station_id,
+                _pool_count(slug),
+            )
+        except ChannelDesignerError as exc:
+            _record_channel_error(slug, str(exc))
+            logger.warning("alchemy_fm_bridge refresh_living slug=%s failed: %s", slug, exc)
+        except Exception:
+            logger.exception("alchemy_fm_bridge refresh_living slug=%s failed", slug)
+
+
 # ---------------------------------------------------------------------------
 # UI helpers
 # ---------------------------------------------------------------------------
 
 
 def _flash_html(message: str, level: str = "ok") -> str:
-    css = "background:#ecfdf5;border:1px solid #6ee7b7;color:#065f46"
-    if level != "ok":
-        css = "background:#fef2f2;border:1px solid #fca5a5;color:#991b1b"
-    return f'<p style="padding:0.75rem 1rem;border-radius:8px;{css}">{html.escape(message)}</p>'
+    level_class = "afm-flash-ok" if level == "ok" else "afm-flash-error"
+    return f'<p class="afm-flash {level_class}">{html.escape(message)}</p>'
+
+
+def _page_styles() -> str:
+    return """
+<style>
+.afm-shell { max-width: 58rem; margin: 0 auto; }
+.afm-lede { color: var(--muted, #64748b); margin: 0 0 1.25rem; line-height: 1.55; }
+.afm-flash { padding: 0.75rem 1rem; border-radius: 10px; margin: 0 0 1rem; }
+.afm-flash-ok { background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; }
+.afm-flash-error { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
+.afm-section { margin: 0 0 1.75rem; }
+.afm-section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 0.85rem; flex-wrap: wrap; }
+.afm-section-title { margin: 0; font-size: 1.15rem; }
+.afm-section-note { margin: 0.15rem 0 0; color: var(--muted, #64748b); font-size: 0.92rem; }
+.afm-station-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.85rem; }
+.afm-station-card { border: 1px solid #dbe3ef; border-radius: 12px; padding: 0.95rem 1rem; background: #fff; display: grid; gap: 0.65rem; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); }
+.afm-station-card.is-editing { border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb, 0 8px 24px rgba(37, 99, 235, 0.12); }
+.afm-station-card-head { display: flex; justify-content: space-between; gap: 0.75rem; align-items: flex-start; }
+.afm-station-name { margin: 0; font-size: 1rem; line-height: 1.3; }
+.afm-station-slug { color: var(--muted, #64748b); font-size: 0.84rem; margin-top: 0.15rem; }
+.afm-station-programming { margin: 0; font-size: 0.9rem; line-height: 1.45; color: #334155; }
+.afm-station-programming strong { display: block; font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b; margin-bottom: 0.15rem; }
+.afm-station-stats { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.afm-station-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.15rem; }
+.afm-badge { display: inline-flex; align-items: center; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; line-height: 1.4; }
+.afm-badge-live { background: #dcfce7; color: #166534; }
+.afm-badge-off { background: #f1f5f9; color: #475569; }
+.afm-badge-queue { background: #eff6ff; color: #1d4ed8; }
+.afm-badge-saved { background: #f5f3ff; color: #6d28d9; }
+.afm-badge-remote { background: #fff7ed; color: #c2410c; }
+.afm-badge-living { background: #ecfeff; color: #0e7490; }
+.afm-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; padding: 0.48rem 0.85rem; border-radius: 8px; border: 1px solid #cbd5e1; background: #fff; color: #0f172a; font: inherit; cursor: pointer; text-decoration: none; line-height: 1.2; }
+.afm-btn:hover { background: #f8fafc; }
+.afm-btn-primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+.afm-btn-primary:hover { background: #1d4ed8; }
+.afm-btn-secondary { background: #f8fafc; }
+.afm-btn-danger { background: #fff; border-color: #fecaca; color: #b91c1c; }
+.afm-btn-danger:hover { background: #fef2f2; }
+.afm-edit-bar { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; flex-wrap: wrap; padding: 1rem 1.1rem; margin: 0 0 1rem; border: 1px solid #bfdbfe; border-radius: 14px; background: linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%); }
+.afm-edit-eyebrow { display: block; font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: #2563eb; margin-bottom: 0.2rem; }
+.afm-edit-title { margin: 0; font-size: 1.35rem; line-height: 1.2; }
+.afm-edit-meta { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.55rem; align-items: center; }
+.afm-edit-slug { color: #475569; font-size: 0.9rem; }
+.afm-edit-actions { display: flex; gap: 0.55rem; flex-wrap: wrap; align-items: center; }
+.afm-designer-panel { border: 1px solid #dbe3ef; border-radius: 14px; padding: 1rem; background: #fff; }
+.afm-designer-panel + .afm-designer-panel { margin-top: 0.85rem; }
+.afm-designer-panel legend { font-size: 0.98rem; padding: 0 0.35rem; }
+.afm-designer-panel label { display: block; font-weight: 600; margin-bottom: 0.25rem; }
+.afm-designer-panel input[type="text"], .afm-designer-panel input[type="number"], .afm-designer-panel input[type="password"], .afm-designer-panel textarea, .afm-designer-panel select { width: 100%; max-width: 100%; box-sizing: border-box; }
+.afm-form-actions { display: flex; gap: 0.65rem; flex-wrap: wrap; margin-top: 0.35rem; }
+.afm-empty { color: var(--muted, #64748b); margin: 0; }
+.afm-designer-panel input.is-readonly { opacity: 0.75; }
+@media (max-width: 720px) {
+  .afm-station-grid { grid-template-columns: 1fr; }
+  .afm-edit-bar { padding: 0.9rem; }
+  .afm-edit-actions { width: 100%; }
+  .afm-edit-actions .afm-btn { flex: 1 1 auto; }
+}
+</style>
+"""
 
 
 def _select_options(options: list[tuple[str, str]], selected: str) -> str:
@@ -925,8 +1354,8 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
         )
 
     return (
-        "<fieldset style='border:1px solid #ddd;border-radius:8px;padding:1rem;'>"
-        "<legend><strong>1. Programming</strong> — how AudioMuse finds tracks</legend>"
+        "<fieldset class='afm-designer-panel'>"
+        "<legend><strong>Programming</strong> — how AudioMuse finds tracks</legend>"
         "<div><label>Programming type</label>"
         f"<select name='programming_type' id='programming_type'>"
         f"{_select_options(PROGRAMMING_TYPES, ptype)}</select></div>"
@@ -958,38 +1387,103 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
         "<div style='margin-top:0.75rem;'>"
         "<label>Preview size</label> "
         f"<input type='number' name='preview_limit' min='10' max='80' value='{html.escape(str(values.get('preview_limit', PREVIEW_LIMIT_DEFAULT)))}'>"
-        "</div>"
-        "<div style='margin-top:1rem;'>"
-        "<button type='submit' name='action' value='preview'>Preview programming</button>"
         "</div></fieldset>"
     )
 
 
+def _filters_fields_html(values: dict[str, Any]) -> str:
+    return (
+        "<fieldset class='afm-designer-panel'>"
+        "<legend><strong>Filters</strong> — narrow preview and living pool by analysis</legend>"
+        "<p class='hint'>Optional tempo and energy bounds apply to preview results and to songs "
+        "auto-added when living channels are enabled.</p>"
+        "<div style='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0.75rem;'>"
+        "<div><label>Tempo min (BPM)</label>"
+        f"<input type='number' name='filter_tempo_min' min='0' step='1' "
+        f"value='{html.escape(str(values.get('filter_tempo_min', '')))}' placeholder='any'></div>"
+        "<div><label>Tempo max (BPM)</label>"
+        f"<input type='number' name='filter_tempo_max' min='0' step='1' "
+        f"value='{html.escape(str(values.get('filter_tempo_max', '')))}' placeholder='any'></div>"
+        "<div><label>Energy min (0–1)</label>"
+        f"<input type='number' name='filter_energy_min' min='0' max='1' step='0.01' "
+        f"value='{html.escape(str(values.get('filter_energy_min', '')))}' placeholder='any'></div>"
+        "<div><label>Energy max (0–1)</label>"
+        f"<input type='number' name='filter_energy_max' min='0' max='1' step='0.01' "
+        f"value='{html.escape(str(values.get('filter_energy_max', '')))}' placeholder='any'></div>"
+        "</div></fieldset>"
+    )
+
+
+def _living_fields_html(values: dict[str, Any]) -> str:
+    slug = (values.get("editing_slug") or values.get("slug") or "").strip()
+    pool_note = ""
+    if slug:
+        pool_note = (
+            f"<p class='hint'>Pool for <strong>{html.escape(slug)}</strong>: "
+            f"{_pool_count(slug)} track(s) tracked for evolution.</p>"
+        )
+    living_enabled = values.get("living_enabled", False)
+    auto_add = values.get("living_auto_add", living_enabled)
+    auto_refresh = values.get("living_auto_refresh", living_enabled)
+    return (
+        "<fieldset class='afm-designer-panel'>"
+        "<legend><strong>Living channel</strong> — evolve as your library grows</legend>"
+        "<p class='hint'>When enabled, newly analyzed songs that pass filters can join the channel pool. "
+        "The nightly cron task re-runs programming, refreshes the pool, and optionally updates Alchemy FM.</p>"
+        f"{pool_note}"
+        "<label><input type='checkbox' name='living_enabled'"
+        f"{' checked' if living_enabled else ''}> Enable living channel</label><br>"
+        "<label><input type='checkbox' name='living_auto_add'"
+        f"{' checked' if auto_add else ''}> Auto-add new analyzed songs that pass filters</label><br>"
+        "<label><input type='checkbox' name='living_auto_refresh'"
+        f"{' checked' if auto_refresh else ''}> Nightly refresh: re-score pool and push to Alchemy FM</label>"
+        "<p class='hint'>Enable the <code>plugin.alchemy_fm_bridge.refresh_living</code> schedule under "
+        "Administration → Scheduled Tasks (default: 03:00 daily, disabled until you turn it on).</p>"
+        "</fieldset>"
+    )
+
+
+def _audition_history_html(slug: str | None = None) -> str:
+    rows = _audition_rows(slug, limit=12)
+    if not rows:
+        hint = "Run a preview to record audition history."
+        if slug:
+            hint = f"No auditions recorded for {slug} yet. Preview programming to start."
+        return f"<p class='hint'>{html.escape(hint)}</p>"
+
+    body = (
+        "<table style='width:100%;border-collapse:collapse;font-size:0.92rem;margin-top:0.5rem;'>"
+        "<thead><tr>"
+        "<th style='text-align:left;padding:0.4rem 0.6rem;border-bottom:1px solid #ccc;'>When</th>"
+        "<th style='text-align:left;padding:0.4rem 0.6rem;border-bottom:1px solid #ccc;'>Channel</th>"
+        "<th style='text-align:left;padding:0.4rem 0.6rem;border-bottom:1px solid #ccc;'>Tracks</th>"
+        "</tr></thead><tbody>"
+    )
+    for channel_slug, run_at, track_count, _track_ids_json in rows:
+        body += (
+            "<tr>"
+            f"<td style='padding:0.4rem 0.6rem;border-bottom:1px solid #eee;'>{html.escape(str(run_at))}</td>"
+            f"<td style='padding:0.4rem 0.6rem;border-bottom:1px solid #eee;'>{html.escape(str(channel_slug))}</td>"
+            f"<td style='padding:0.4rem 0.6rem;border-bottom:1px solid #eee;'>{int(track_count)}</td>"
+            "</tr>"
+        )
+    return body + "</tbody></table>"
+
+
 def _deploy_fields_html(values: dict[str, Any]) -> str:
     editing_slug = (values.get("editing_slug") or "").strip()
-    slug_readonly = " readonly style='opacity:0.75'" if editing_slug else ""
+    slug_readonly = " readonly class='is-readonly'" if editing_slug else ""
     slug_extra = ""
     if editing_slug:
         slug_extra = (
             f"<input type='hidden' name='editing_slug' value='{html.escape(editing_slug)}'>"
             "<p class='hint'>Slug is fixed after first deploy (Alchemy FM identifies stations by slug).</p>"
         )
-    deploy_label = "Update on Alchemy FM" if editing_slug else "Deploy to Alchemy FM"
-    edit_banner = ""
-    if editing_slug:
-        edit_banner = (
-            f"<p style='margin:0 0 0.75rem;padding:0.5rem 0.75rem;background:#eff6ff;"
-            f"border:1px solid #93c5fd;border-radius:6px;'>"
-            f"Editing channel <strong>{html.escape(editing_slug)}</strong>. "
-            f"Change name, description, or queue settings, then click "
-            f"<strong>{html.escape(deploy_label)}</strong>."
-            f" <button type='submit' name='action' value='new_channel' formnovalidate "
-            f"style='margin-left:0.5rem;'>New channel</button></p>"
-        )
+    deploy_label = "Save changes to Alchemy FM" if editing_slug else "Deploy to Alchemy FM"
+    step_label = "Broadcast settings" if editing_slug else "2. Channel + deploy"
     return (
-        "<fieldset style='border:1px solid #ddd;border-radius:8px;padding:1rem;margin-top:1rem;'>"
-        "<legend><strong>2. Channel + deploy</strong> — station on Alchemy FM</legend>"
-        f"{edit_banner}"
+        "<fieldset class='afm-designer-panel'>"
+        f"<legend><strong>{html.escape(step_label)}</strong> — station on Alchemy FM</legend>"
         "<div style='display:grid;gap:0.75rem;'>"
         "<div><label>Channel name</label>"
         f"<input name='name' required value='{html.escape(str(values.get('name', '')))}'></div>"
@@ -1018,89 +1512,185 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
         "<label><input type='checkbox' name='bootstrap_queue'"
         f"{' checked' if values.get('bootstrap_queue', True) else ''}> Bootstrap queue immediately</label>"
         f"<input type='hidden' name='saved_anchor_id' value='{html.escape(str(values.get('saved_anchor_id', '')))}'>"
-        "<div style='display:flex;gap:0.75rem;flex-wrap:wrap;margin-top:0.5rem;'>"
-        f"<button type='submit' name='action' value='push'>{html.escape(deploy_label)}</button>"
-        "<button type='submit' name='action' value='test' formnovalidate>Test Alchemy connection</button>"
+        "<div class='afm-form-actions'>"
+        f"<button type='submit' name='action' value='push' class='afm-btn afm-btn-primary'>{html.escape(deploy_label)}</button>"
+        "<button type='submit' name='action' value='preview' class='afm-btn afm-btn-secondary'>Preview programming</button>"
+        "<button type='submit' name='action' value='test' formnovalidate class='afm-btn afm-btn-secondary'>Test connection</button>"
         "</div></div></fieldset>"
     )
 
 
-def _programming_label(profile: dict[str, Any] | None, station: dict[str, Any]) -> str:
+def _programming_detail(profile: dict[str, Any] | None, station: dict[str, Any]) -> tuple[str, str, bool, bool]:
+    has_saved = profile is not None
+    living = bool((profile or {}).get("living", {}).get("enabled"))
     if profile:
         programming = profile.get("programming") or {}
         ptype = programming.get("type", "?")
-        query = (
+        type_label = PROGRAMMING_TYPE_LABELS.get(ptype, ptype.replace("_", " ").title())
+        detail = (
             programming.get("query")
             or programming.get("seed_id")
             or programming.get("anchor_id")
             or programming.get("mood")
             or ""
         )
-        return f"{ptype}: {query}"[:72]
-    source_type = station.get("source_type") or "?"
-    source_ref = station.get("source_ref") or ""
-    return f"{source_type}: {source_ref}"[:72]
+        if ptype == "mood_centroid":
+            mood = programming.get("mood") or ""
+            cluster = programming.get("centroid_index")
+            detail = f"{mood} · cluster {cluster}" if cluster is not None else mood
+        return type_label, str(detail)[:96], living, has_saved
+    source_type = str(station.get("source_type") or "?")
+    source_ref = str(station.get("source_ref") or "")
+    type_label = PROGRAMMING_TYPE_LABELS.get(source_type, source_type.replace("_", " ").title())
+    return type_label, source_ref[:96], False, False
 
 
-def _alchemy_stations_table_html() -> str:
+def _programming_label(profile: dict[str, Any] | None, station: dict[str, Any]) -> str:
+    type_label, detail, _, _ = _programming_detail(profile, station)
+    return f"{type_label}: {detail}"[:72]
+
+
+def _edit_toolbar_html(values: dict[str, Any]) -> str:
+    editing_slug = (values.get("editing_slug") or "").strip()
+    if not editing_slug:
+        return ""
+    name = (values.get("name") or editing_slug).strip()
+    source = values.get("profile_source") or "remote"
+    source_badge = (
+        '<span class="afm-badge afm-badge-saved">Saved design</span>'
+        if source == "saved"
+        else '<span class="afm-badge afm-badge-remote">Alchemy FM only</span>'
+    )
+    on_air_badge = (
+        '<span class="afm-badge afm-badge-live">On air</span>'
+        if values.get("edit_on_air")
+        else '<span class="afm-badge afm-badge-off">Off air</span>'
+    )
+    queued = values.get("edit_queued", "?")
+    extra_badges = ""
+    if values.get("living_enabled") or values.get("edit_pool_count"):
+        pool_count = values.get("edit_pool_count", _pool_count(editing_slug))
+        extra_badges = f'<span class="afm-badge afm-badge-living">Living · {pool_count} in pool</span>'
+    station_id = values.get("edit_station_id")
+    id_note = f" · id {station_id}" if station_id else ""
+    return (
+        f'<div class="afm-edit-bar" id="designer">'
+        "<div>"
+        '<span class="afm-edit-eyebrow">Editing station</span>'
+        f'<h2 class="afm-edit-title">{html.escape(name)}</h2>'
+        '<div class="afm-edit-meta">'
+        f'<span class="afm-edit-slug">{html.escape(editing_slug)}{html.escape(id_note)}</span>'
+        f"{source_badge}{on_air_badge}"
+        f'<span class="afm-badge afm-badge-queue">{html.escape(str(queued))} queued</span>'
+        f"{extra_badges}"
+        "</div>"
+        "</div>"
+        '<div class="afm-edit-actions">'
+        f'<a href="{html.escape(url_for("alchemy_fm_bridge.home"))}" class="afm-btn afm-btn-secondary">← All stations</a>'
+        '<button type="submit" form="afm-designer-form" name="action" value="new_channel" formnovalidate '
+        'class="afm-btn afm-btn-secondary">New channel</button>'
+        '<button type="submit" form="afm-designer-form" name="action" value="push" '
+        'class="afm-btn afm-btn-primary">Save changes</button>'
+        "</div></div>"
+    )
+
+
+def _stations_section_html(editing_slug: str | None = None) -> str:
     try:
         stations = _client().test_connection()
     except ChannelDesignerError as exc:
-        return f"<p>Could not load Alchemy FM stations: {html.escape(str(exc))}</p>"
-
-    if not stations:
-        return "<p>No stations on Alchemy FM yet. Design a channel above and deploy.</p>"
-
-    local = _local_channels_by_slug()
-    body = (
-        "<table style='width:100%;border-collapse:collapse;margin-top:1rem;font-size:0.92rem;'>"
-        "<thead><tr>"
-        "<th style='text-align:left;padding:0.5rem;border-bottom:1px solid #ddd;'>Station</th>"
-        "<th style='text-align:left;padding:0.5rem;border-bottom:1px solid #ddd;'>Programming</th>"
-        "<th style='text-align:left;padding:0.5rem;border-bottom:1px solid #ddd;'>On air</th>"
-        "<th style='text-align:left;padding:0.5rem;border-bottom:1px solid #ddd;'>Queued</th>"
-        "<th style='text-align:left;padding:0.5rem;border-bottom:1px solid #ddd;'>Actions</th>"
-        "</tr></thead><tbody>"
-    )
-    for station in sorted(stations, key=lambda s: str(s.get("name") or s.get("slug") or "")):
-        slug = str(station.get("slug") or "")
-        name = str(station.get("name") or slug or "Station")
-        station_id = int(station.get("id") or 0)
-        on_air = "yes" if station.get("enabled") else "no"
-        queued = str(station.get("queued_count", station.get("queued", "?")))
-        profile = None
-        if slug in local:
-            try:
-                profile = json.loads(local[slug][2] or "{}")
-            except json.JSONDecodeError:
-                profile = None
-        prog = html.escape(_programming_label(profile, station))
-        confirm_msg = f"Delete station {name} ({slug})? This removes it from Alchemy FM permanently."
-        body += (
-            "<tr>"
-            f"<td style='padding:0.5rem;border-bottom:1px solid #eee;'><strong>{html.escape(name)}</strong><br>"
-            f"<span style='opacity:0.7'>{html.escape(slug)} · id {station_id}</span></td>"
-            f"<td style='padding:0.5rem;border-bottom:1px solid #eee;'>{prog}</td>"
-            f"<td style='padding:0.5rem;border-bottom:1px solid #eee;'>{html.escape(on_air)}</td>"
-            f"<td style='padding:0.5rem;border-bottom:1px solid #eee;'>{html.escape(queued)}</td>"
-            "<td style='padding:0.5rem;border-bottom:1px solid #eee;white-space:nowrap;'>"
-            f"<form method='post' style='display:inline;margin:0 0.35rem 0 0;'>"
-            f"<input type='hidden' name='action' value='edit'>"
-            f"<input type='hidden' name='load_slug' value='{html.escape(slug)}'>"
-            f"<button type='submit'>Edit</button></form>"
-            f"<form method='post' style='display:inline;margin:0;' "
-            f"onsubmit='return confirm({json.dumps(confirm_msg)});'>"
-            f"<input type='hidden' name='action' value='delete'>"
-            f"<input type='hidden' name='station_id' value='{station_id}'>"
-            f"<input type='hidden' name='delete_slug' value='{html.escape(slug)}'>"
-            f"<button type='submit'>Delete</button></form>"
-            "</td></tr>"
+        return (
+            '<section class="afm-section">'
+            f'<p class="afm-empty">Could not load Alchemy FM stations: {html.escape(str(exc))}</p>'
+            "</section>"
         )
-    return body + "</tbody></table>"
+
+    editing_slug = (editing_slug or "").strip().lower()
+    local = _local_channels_by_slug()
+    if not stations:
+        cards = '<p class="afm-empty">No stations yet. Use the designer below to create your first channel.</p>'
+    else:
+        cards = ['<div class="afm-station-grid">']
+        for station in sorted(stations, key=lambda s: str(s.get("name") or s.get("slug") or "")):
+            slug = str(station.get("slug") or "")
+            slug_key = slug.lower()
+            name = str(station.get("name") or slug or "Station")
+            station_id = int(station.get("id") or 0)
+            queued = str(station.get("queued_count", station.get("queued", "?")))
+            profile = None
+            if slug in local:
+                try:
+                    profile = json.loads(local[slug][2] or "{}")
+                except json.JSONDecodeError:
+                    profile = None
+            type_label, detail, living, has_saved = _programming_detail(profile, station)
+            is_editing = slug_key == editing_slug
+            card_class = "afm-station-card is-editing" if is_editing else "afm-station-card"
+            on_air_badge = (
+                '<span class="afm-badge afm-badge-live">On air</span>'
+                if station.get("enabled")
+                else '<span class="afm-badge afm-badge-off">Off air</span>'
+            )
+            profile_badge = (
+                '<span class="afm-badge afm-badge-saved">Saved design</span>'
+                if has_saved
+                else '<span class="afm-badge afm-badge-remote">Remote only</span>'
+            )
+            living_badge = '<span class="afm-badge afm-badge-living">Living</span>' if living else ""
+            edit_href = html.escape(url_for("alchemy_fm_bridge.home", edit=slug) + "#designer")
+            edit_label = "Continue editing" if is_editing else "Edit station"
+            edit_btn_class = "afm-btn afm-btn-primary" if is_editing else "afm-btn afm-btn-secondary"
+            confirm_msg = f"Delete station {name} ({slug})? This removes it from Alchemy FM permanently."
+            cards.append(
+                f'<article class="{card_class}">'
+                '<div class="afm-station-card-head">'
+                f"<div><h3 class='afm-station-name'>{html.escape(name)}</h3>"
+                f"<div class='afm-station-slug'>{html.escape(slug)} · id {station_id}</div></div>"
+                f"{on_air_badge}"
+                "</div>"
+                f"<p class='afm-station-programming'><strong>{html.escape(type_label)}</strong>"
+                f"{html.escape(detail or '—')}</p>"
+                f'<div class="afm-station-stats">{profile_badge}'
+                f'<span class="afm-badge afm-badge-queue">{html.escape(queued)} queued</span>'
+                f"{living_badge}</div>"
+                '<div class="afm-station-actions">'
+                f'<a href="{edit_href}" class="{edit_btn_class}">{html.escape(edit_label)}</a>'
+                f'<form method="post" style="margin:0;" onsubmit="return confirm({json.dumps(confirm_msg)});">'
+                f'<input type="hidden" name="action" value="delete">'
+                f'<input type="hidden" name="station_id" value="{station_id}">'
+                f'<input type="hidden" name="delete_slug" value="{html.escape(slug)}">'
+                '<button type="submit" class="afm-btn afm-btn-danger">Delete</button>'
+                "</form></div></article>"
+            )
+        cards.append("</div>")
+        cards = "".join(cards)
+
+    title = "Other stations" if editing_slug else "Your stations"
+    note = (
+        "Switch stations without losing your place — each opens in the designer above."
+        if editing_slug
+        else "Pick a station to edit, or create a new channel below."
+    )
+    new_channel = ""
+    if not editing_slug:
+        new_channel = (
+            f'<a href="{html.escape(url_for("alchemy_fm_bridge.home", new="1") + "#designer")}" '
+            'class="afm-btn afm-btn-primary">+ New channel</a>'
+        )
+    return (
+        f'<section class="afm-section" id="stations">'
+        '<div class="afm-section-head">'
+        f"<div><h2 class='afm-section-title'>{html.escape(title)}</h2>"
+        f"<p class='afm-section-note'>{html.escape(note)}</p></div>"
+        f"{new_channel}"
+        "</div>"
+        f"{cards}"
+        "</section>"
+    )
 
 
 def _channels_table_html() -> str:
-    return _alchemy_stations_table_html()
+    return _stations_section_html()
 
 
 def _form_values_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
@@ -1122,6 +1712,15 @@ def _form_values_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
         "preview_limit": programming.get("limit", PREVIEW_LIMIT_DEFAULT),
         "saved_anchor_id": profile.get("anchor_id") or "",
     }
+    filters = profile.get("filters") or {}
+    for key in ("tempo_min", "tempo_max", "energy_min", "energy_max"):
+        val = filters.get(key)
+        if val is not None:
+            values[f"filter_{key}"] = val
+    living = profile.get("living") or {}
+    values["living_enabled"] = bool(living.get("enabled"))
+    values["living_auto_add"] = bool(living.get("auto_add_on_analyze", living.get("enabled")))
+    values["living_auto_refresh"] = bool(living.get("auto_refresh_alchemy", living.get("enabled")))
     if ptype == "clap_query":
         values["clap_query"] = programming.get("query", "")
     elif ptype == "lyrics_query":
@@ -1200,6 +1799,10 @@ def _page_script(mood_centroids: dict[str, Any] | None = None) -> str:
     moodSelect.addEventListener('change', fillClusters);
     fillClusters();
   }}
+  if (location.hash === '#designer') {{
+    const target = document.getElementById('designer');
+    if (target) target.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+  }}
 }})();
 </script>
 """
@@ -1230,33 +1833,20 @@ def home():
         if edit_slug:
             try:
                 values, preview_tracks, channel_name = _apply_loaded_channel(edit_slug)
-                flash = _flash_html(f"Editing channel '{channel_name}'.", "ok")
             except ChannelDesignerError as exc:
                 flash = _flash_html(str(exc), "error")
+        elif request.args.get("new"):
+            flash = _flash_html("New channel — design programming, preview tracks, then deploy.", "ok")
 
     if request.method == "POST":
         action = (request.form.get("action") or "preview").strip()
 
         if action == "edit":
             load_slug = (request.form.get("load_slug") or "").strip()
-            try:
-                values, preview_tracks, channel_name = _apply_loaded_channel(load_slug)
-                flash = _flash_html(f"Editing channel '{channel_name}'.", "ok")
-            except ChannelDesignerError as exc:
-                flash = _flash_html(str(exc), "error")
+            if load_slug:
+                return redirect(url_for("alchemy_fm_bridge.home", edit=load_slug) + "#designer")
         elif action == "new_channel":
-            values = {
-                "programming_type": "clap_query",
-                "refresh_mode": "similar_to_last",
-                "preview_limit": PREVIEW_LIMIT_DEFAULT,
-                "queue_target": 30,
-                "refresh_threshold": 10,
-                "artist_separation_minutes": 90,
-                "enabled": True,
-                "bootstrap_queue": True,
-            }
-            preview_tracks = []
-            flash = _flash_html("New channel — fill in programming and deploy.", "ok")
+            return redirect(url_for("alchemy_fm_bridge.home", new=1) + "#designer")
         elif action == "delete":
             try:
                 station_id = int(request.form.get("station_id") or "0")
@@ -1278,6 +1868,9 @@ def home():
             values.update({k: request.form.get(k, values.get(k, "")) for k in request.form})
             values["enabled"] = request.form.get("enabled") == "on"
             values["bootstrap_queue"] = request.form.get("bootstrap_queue") == "on"
+            values["living_enabled"] = request.form.get("living_enabled") == "on"
+            values["living_auto_add"] = request.form.get("living_auto_add") == "on"
+            values["living_auto_refresh"] = request.form.get("living_auto_refresh") == "on"
 
             pick_seed = (request.form.get("pick_seed") or "").strip()
             if pick_seed:
@@ -1304,8 +1897,17 @@ def home():
                         raw = preview_programming(profile)
                         if not raw:
                             raise ChannelDesignerError("No tracks matched this programming.")
-                        preview_tracks = enrich_preview(raw)
-                        _save_channel(profile, preview_ids=[t["item_id"] for t in preview_tracks])
+                        preview_tracks = apply_track_filters(enrich_preview(raw), profile)
+                        if not preview_tracks:
+                            raise ChannelDesignerError(
+                                "Tracks matched programming but none passed your tempo/energy filters."
+                            )
+                        slug = profile["station"]["slug"]
+                        item_ids = [t["item_id"] for t in preview_tracks]
+                        _record_audition(slug, item_ids)
+                        if (profile.get("living") or {}).get("enabled"):
+                            _add_to_pool(slug, item_ids, source="preview")
+                        _save_channel(profile, preview_ids=item_ids)
                         flash = _flash_html(
                             f"Preview ready — {len(preview_tracks)} tracks from AudioMuse. "
                             "Review below, then deploy to Alchemy FM.",
@@ -1317,9 +1919,17 @@ def home():
                             raise ChannelDesignerError(
                                 "No tracks to deploy. Preview programming first or broaden your criteria."
                             )
-                        preview_tracks = enrich_preview(raw)
-                        payload = channel_profile_to_alchemy_payload(profile, raw)
+                        preview_tracks = apply_track_filters(enrich_preview(raw), profile)
+                        if not preview_tracks:
+                            raise ChannelDesignerError(
+                                "No tracks passed your filters. Relax tempo/energy bounds or preview again."
+                            )
+                        payload = channel_profile_to_alchemy_payload(profile, preview_tracks)
                         slug = payload["slug"]
+                        item_ids = [t["item_id"] for t in preview_tracks]
+                        _record_audition(slug, item_ids)
+                        if (profile.get("living") or {}).get("enabled"):
+                            _add_to_pool(slug, item_ids, source="preview")
                         station, push_action = _client().push_station(
                             payload,
                             slug=slug,
@@ -1327,7 +1937,7 @@ def home():
                         )
                         _save_channel(
                             profile,
-                            preview_ids=[t["item_id"] for t in preview_tracks],
+                            preview_ids=item_ids,
                             station=station,
                             action=push_action,
                         )
@@ -1358,23 +1968,55 @@ def home():
                     _record_channel_error(slug, str(exc))
                     flash = _flash_html(str(exc), "error")
 
-    body = (
-        f"<p style='opacity:0.85;margin-bottom:1rem;'>Channel Designer v{PLUGIN_VERSION} — "
-        "use AudioMuse intelligence (CLAP, lyrics, moods, anchors) to audition programming, "
-        "then deploy a live station to <strong>Alchemy FM</strong>.</p>"
-        f"{flash}"
-        "<form method='post' style='max-width:52rem;display:grid;gap:0.5rem;'>"
-        f"{_programming_fields_html(values)}"
-        f"{_deploy_fields_html(values)}"
-        "</form>"
-        "<fieldset style='border:1px solid #ddd;border-radius:8px;padding:1rem;margin-top:1.5rem;'>"
+    editing_slug = (values.get("editing_slug") or "").strip()
+    stations_html = _stations_section_html(editing_slug or None)
+    edit_bar = _edit_toolbar_html(values)
+    designer_anchor = "" if editing_slug else '<div id="designer"></div>'
+    designer_heading = (
+        "<div class='afm-section-head' style='margin-top:0.5rem;'>"
+        "<div><h2 class='afm-section-title'>Channel designer</h2>"
+        "<p class='afm-section-note'>Program the vibe, preview tracks, then deploy to Alchemy FM.</p></div>"
+        "</div>"
+        if not editing_slug
+        else ""
+    )
+    preview_block = (
+        "<fieldset class='afm-designer-panel'>"
         "<legend><strong>Preview</strong></legend>"
         f"{_preview_table_html(preview_tracks)}"
         "</fieldset>"
-        "<h3 style='margin-top:2rem;'>Stations on Alchemy FM</h3>"
-        "<p class='hint' style='margin:0 0 0.5rem;'>All live stations from your Alchemy FM instance. "
-        "Edit loads into the designer above; Delete removes the station from Alchemy FM.</p>"
-        f"{_channels_table_html()}"
+    )
+    audition_block = (
+        "<fieldset class='afm-designer-panel'>"
+        "<legend><strong>Audition history</strong></legend>"
+        f"{_audition_history_html(editing_slug or None)}"
+        "</fieldset>"
+    )
+    designer_form = (
+        f"{designer_anchor}"
+        f"{designer_heading}"
+        "<form method='post' id='afm-designer-form' class='afm-designer-form' style='display:grid;gap:0.5rem;'>"
+        f"{_programming_fields_html(values)}"
+        f"{_filters_fields_html(values)}"
+        f"{_living_fields_html(values)}"
+        f"{_deploy_fields_html(values)}"
+        "</form>"
+        f"{preview_block}"
+        f"{audition_block}"
+    )
+
+    if editing_slug:
+        main_flow = f"{edit_bar}{designer_form}{stations_html}"
+    else:
+        main_flow = f"{stations_html}{designer_form}"
+
+    body = (
+        f"{_page_styles()}"
+        '<div class="afm-shell">'
+        f"<p class='afm-lede'>Channel Designer v{PLUGIN_VERSION} — design in AudioMuse, broadcast on Alchemy FM.</p>"
+        f"{flash}"
+        f"{main_flow}"
+        "</div>"
         f"{_page_script(_mood_centroids_data())}"
     )
     return render_page(body, title="Alchemy FM Channel Designer")
@@ -1391,19 +2033,23 @@ def settings():
         token = request.form.get("audiomuse_api_token")
         if token:
             set_setting("audiomuse_api_token", token.strip())
+        api_url = request.form.get("audiomuse_api_url")
+        if api_url is not None:
+            set_setting("audiomuse_api_url", api_url.strip().rstrip("/"))
         return redirect(manage_plugins_url())
 
     alchemyfm_url = get_setting("alchemyfm_url", "")
     alchemyfm_username = get_setting("alchemyfm_username", "admin")
     audiomuse_api_token = get_setting("audiomuse_api_token", "")
+    audiomuse_api_url = get_setting("audiomuse_api_url", "")
     body = (
         "<form method='post' style='display:grid;gap:1rem;max-width:36rem;'>"
         "<p>Connect to your Alchemy FM broadcast instance. Credentials match "
         "<code>ADMIN_USERNAME</code> / <code>ADMIN_PASSWORD</code> in Alchemy FM.</p>"
-        "<p class='hint'><strong>Cloudflare / public URL:</strong> If you use "
-        "<code>https://alchemyfm.mmagtech.com</code>, allow server-to-server access to "
-        "<code>/api/admin/*</code> from your AudioMuse host (WAF skip rule or bypass "
-        "Bot Fight Mode). Otherwise use a LAN/direct URL that does not go through Cloudflare.</p>"
+        "<p class='hint'><strong>Cloudflare / public URL:</strong> If Alchemy FM is behind Cloudflare, allow "
+        "server-to-server access to <code>/api/admin/*</code> from your AudioMuse host (WAF skip rule or "
+        "bypass Bot Fight Mode). Otherwise use a LAN/direct URL that does not go through Cloudflare "
+        "(e.g. <code>http://192.168.1.100:8080</code>).</p>"
         "<div><label>Alchemy FM URL</label>"
         f"<input name='alchemyfm_url' required placeholder='https://alchemyfm.example.com' "
         f"value='{html.escape(alchemyfm_url)}'></div>"
@@ -1415,6 +2061,12 @@ def settings():
         "<div><label>AudioMuse API token (optional)</label>"
         f"<input name='audiomuse_api_token' type='password' autocomplete='new-password' "
         f"placeholder='Only if AudioMuse auth is enabled' value='{html.escape(audiomuse_api_token)}'></div>"
+        "<div><label>AudioMuse API URL (optional, for worker/cron)</label>"
+        f"<input name='audiomuse_api_url' placeholder='http://192.168.1.100:8387' "
+        f"value='{html.escape(audiomuse_api_url)}'>"
+        "<p class='hint'>Living-channel cron and <code>on_song_analyzed</code> run on the worker and "
+        "need a URL the worker can reach (LAN IP, not <code>localhost</code>). Leave blank to use "
+        "AudioMuse control host/port from the environment.</p></div>"
         "<button type='submit'>Save</button>"
         "</form>"
     )
@@ -1425,3 +2077,5 @@ def register(ctx):
     ctx.on_install(migrate)
     ctx.add_blueprint(bp)
     ctx.add_menu_item("Alchemy FM", "alchemy_fm_bridge.home", admin_only=True)
+    ctx.on_song_analyzed(on_song_analyzed)
+    ctx.add_cron_task("refresh_living", refresh_living_channels)
