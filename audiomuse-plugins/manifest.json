@@ -2,9 +2,9 @@
   "plugins": [
     {
       "id": "alchemy_fm_bridge",
-      "name": "Alchemy FM Bridge",
+      "name": "Alchemy FM Channel Designer",
       "author": "MMagTech",
-      "description": "Push live radio stations from AudioMuse programming to any Alchemy FM instance.",
+      "description": "Design live radio channels in AudioMuse (CLAP, lyrics, moods) and deploy to Alchemy FM.",
       "pluginUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge/plugin.json"
     }
   ]

@@ -1,53 +1,55 @@
 # AudioMuse plugins for Alchemy FM
 
-Third-party [AudioMuse-AI](https://github.com/NeptuneHub/AudioMuse-AI) plugins maintained alongside the [Alchemy FM](https://github.com/mmagtech/alchemyfm) radio stack.
+Third-party [AudioMuse-AI](https://github.com/NeptuneHub/AudioMuse-AI) plugins maintained alongside the [Alchemy FM](https://github.com/MMagTech/alchemyfm) radio stack.
 
-## Alchemy FM Bridge (`alchemy_fm_bridge`)
+## Alchemy FM Channel Designer (`alchemy_fm_bridge`)
 
-Design a station in AudioMuse and push it to a running Alchemy FM backend:
+**v2** turns AudioMuse into a programming studio for live radio. Design a channel with AudioMuse intelligence, preview tracks with analysis data, then deploy to Alchemy FM.
 
-### Install from GitHub (recommended)
+### What it does (that Alchemy FM admin alone cannot)
 
-1. In AudioMuse: **Plugins → Repositories → Add**
+| Capability | AudioMuse API |
+|------------|---------------|
+| Sonic vibe search | `POST /api/clap/search` |
+| Lyrics theme search | `POST /api/lyrics/search/text` |
+| Mood cluster browse | `GET /api/mood_centroids` + `GET /api/similar_tracks` |
+| Song Alchemy anchors | `GET /api/anchors`, `POST /api/alchemy` |
+| Preview enrichment | `get_score_data_by_ids()` — tempo, energy, mood |
+| 24/7 deploy bridge | Blends preview → saves anchor → pushes `alchemy_anchor` station |
+
+CLAP, lyrics, and mood channels are **auditioned in AudioMuse**, then compiled into a Song Alchemy anchor so Alchemy FM can refill queues around the clock.
+
+### Install from GitHub
+
+1. **Plugins → Repositories → Add**
    ```
    https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/manifest.json
    ```
 2. **Plugins → Catalog → Refresh catalog**
-3. Install **Alchemy FM Bridge** → **Apply now (restart)**
+3. Install **Alchemy FM Channel Designer** → **Apply now (restart)**
 
-### Configure and push
+### Workflow
 
-1. Open **Alchemy FM Bridge → Settings** and set:
-   - **Alchemy FM URL** — e.g. `http://192.168.1.10:8080`
-   - **Admin username / password** — same as `ADMIN_USERNAME` / `ADMIN_PASSWORD` in Alchemy FM `.env`
-2. Open **Alchemy FM** in the AudioMuse menu.
-3. Pick a Song Alchemy anchor or search for a similar-seed track, then **Push to Alchemy FM**.
+1. **Settings** — Alchemy FM URL + admin credentials (`https://alchemyfm.mmagtech.com`, etc.)
+2. **Alchemy FM** menu — Channel Designer
+3. Pick programming type (CLAP, lyrics, mood, anchor, or seed)
+4. **Preview programming** — review tracks with BPM / energy / mood
+5. **Deploy to Alchemy FM** — creates/updates station + optional bootstrap
 
-Pushes are **idempotent by slug**: if a station with the same slug already exists on Alchemy FM, the plugin updates it instead of creating a duplicate. Optional bootstrap fills the queue immediately after push.
-
-### Local development / testing (optional)
-
-Use this only if you are hacking on the plugin before pushing to GitHub:
+### Local development
 
 ```bash
 cd audiomuse-plugins/alchemy_fm_bridge
-zip -j ../alchemy_fm_bridge.zip __init__.py alchemy_client.py
+zip -j ../alchemy_fm_bridge.zip __init__.py
 cd ..
 python -m http.server 8000
 ```
 
-1. Add `sourceUrl` to the `1.0.0` entry in `alchemy_fm_bridge/plugin.json` pointing at `http://<your-lan-ip>:8000/alchemy_fm_bridge.zip`.
-2. In AudioMuse: **Plugins → Repositories → Add** `http://<your-lan-ip>:8000/manifest.json`.
-3. Install from the Catalog tab and apply the restart.
+Add `sourceUrl` to your test `plugin.json` version entry pointing at `http://<lan-ip>:8000/alchemy_fm_bridge.zip` (omit `checksum` for local installs).
 
-Use a LAN IP the AudioMuse container can reach — not `localhost`.
+### Roadmap (v2.1+)
 
-### Publishing to the community catalog
-
-To list in [NeptuneHub/AudioMuse-AI-plugins](https://github.com/NeptuneHub/AudioMuse-AI-plugins):
-
-1. Fork that repo and add this plugin under `plugins/AlchemyFmBridge/`.
-2. Run their build workflow to produce version zips and checksums.
-3. Open a pull request per their [catalog policy](https://github.com/NeptuneHub/AudioMuse-AI-plugins#adding-a-plugin).
-
-Alchemy FM itself needs **no code changes** for v1 — the plugin uses the existing admin API (`/api/admin/stations`).
+- Cron refresh: re-score library against saved channel profiles
+- `on_song_analyzed` hook: auto-add new matches to channel pools
+- Navidrome bootstrap playlists via `create_or_replace_playlist`
+- Direct Alchemy FM `clap_query` / `lyrics_query` source types (no anchor bridge)

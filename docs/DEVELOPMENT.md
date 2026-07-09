@@ -104,11 +104,11 @@ The backend writes to stdout (visible via `docker compose logs backend`) and to 
 
 Liquidsoap and Icecast logs remain in their container stdout / internal log files unless you configure Docker log rotation separately.
 
-## AudioMuse plugin (Alchemy FM Bridge)
+## AudioMuse plugin (Channel Designer)
 
-The [`audiomuse-plugins/`](../audiomuse-plugins/) folder ships an [AudioMuse-AI plugin](https://github.com/NeptuneHub/AudioMuse-AI/blob/main/docs/PLUGIN.md) that pushes stations to Alchemy FM from inside AudioMuse. No backend changes are required — it calls the existing admin API with HTTP Basic auth.
+The [`audiomuse-plugins/`](../audiomuse-plugins/) folder ships an [AudioMuse-AI plugin](https://github.com/NeptuneHub/AudioMuse-AI/blob/main/docs/PLUGIN.md) — **Alchemy FM Channel Designer** (v2). It uses AudioMuse intelligence (CLAP, lyrics, mood centroids, Song Alchemy) to preview programming, then deploys live stations to Alchemy FM via the admin API. No Alchemy FM backend changes are required for v2.
 
-See [audiomuse-plugins/README.md](../audiomuse-plugins/README.md) for install and local testing.
+See [audiomuse-plugins/README.md](../audiomuse-plugins/README.md) for install and workflow.
 
 ## CI
 

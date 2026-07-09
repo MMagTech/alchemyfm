@@ -1,10 +1,18 @@
 {
   "id": "alchemy_fm_bridge",
-  "name": "Alchemy FM Bridge",
+  "name": "Alchemy FM Channel Designer",
   "author": "MMagTech",
-  "description": "Push live radio stations from AudioMuse programming (Song Alchemy anchors or similar seeds) to any Alchemy FM instance via its admin API.",
+  "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy — preview programming, then deploy to Alchemy FM.",
   "targets": ["flask"],
   "versions": [
+    {
+      "version": "2.0.0",
+      "min_core_version": "2.5.0",
+      "changelog": "Pivot to AudioMuse-native channel designer: CLAP sonic search, lyrics themes, mood centroids, preview with tempo/energy/mood, auto Song Alchemy anchor for 24/7 Alchemy FM deploy.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "fc71a331264688402a3024c8f85333f4"
+    },
     {
       "version": "1.0.2",
       "min_core_version": "2.5.0",
