@@ -1,0 +1,15 @@
+{
+  "id": "alchemy_fm_bridge",
+  "name": "Alchemy FM Bridge",
+  "author": "MMagTech",
+  "description": "Push live radio stations from AudioMuse programming (Song Alchemy anchors or similar seeds) to any Alchemy FM instance via its admin API.",
+  "targets": ["flask"],
+  "versions": [
+    {
+      "version": "1.0.0",
+      "min_core_version": "2.5.0",
+      "changelog": "Initial release: configure Alchemy FM URL and admin credentials, design stations from anchors or seed tracks, and idempotently create/update/bootstrap stations.",
+      "imageUrl": ""
+    }
+  ]
+}

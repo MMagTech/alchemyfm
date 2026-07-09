@@ -21,6 +21,7 @@ alchemyfm/
 ├── liquidsoap/           Per-station playback scripts + supervisor
 ├── icecast/              Icecast config
 ├── docs/                 Deployment and design notes
+├── audiomuse-plugins/    AudioMuse-AI plugins (e.g. Alchemy FM Bridge)
 ├── docker-compose.yml    Local dev (bind-mounts ./web)
 └── scripts/              Ad-hoc maintenance scripts
 ```
