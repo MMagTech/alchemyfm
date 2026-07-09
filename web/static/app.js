@@ -235,15 +235,31 @@ const RadioApp = {
       }
     };
 
-    setHandler('play', () => onPlay?.());
-    setHandler('pause', () => onPause?.());
-    setHandler('stop', () => onPause?.());
-    if (skip.onNext || skip.onPrevious) {
-      setHandler('nexttrack', skip.onNext ? () => skip.onNext() : null);
-      setHandler('previoustrack', skip.onPrevious ? () => skip.onPrevious() : null);
-    } else {
-      setHandler('previoustrack', null);
-      setHandler('nexttrack', null);
+    const wireHandlers = () => {
+      setHandler('play', () => onPlay?.());
+      setHandler('pause', () => onPause?.());
+      setHandler('stop', () => onPause?.());
+      if (skip.onNext || skip.onPrevious) {
+        setHandler('nexttrack', skip.onNext ? () => skip.onNext() : null);
+        setHandler('previoustrack', skip.onPrevious ? () => skip.onPrevious() : null);
+        // iOS/CarPlay show skip-10s buttons for live streams; map them to station change.
+        setHandler('seekforward', skip.onNext ? () => skip.onNext() : null);
+        setHandler('seekbackward', skip.onPrevious ? () => skip.onPrevious() : null);
+        setHandler('seekto', null);
+      } else {
+        setHandler('previoustrack', null);
+        setHandler('nexttrack', null);
+        setHandler('seekforward', null);
+        setHandler('seekbackward', null);
+        setHandler('seekto', null);
+      }
+    };
+
+    wireHandlers();
+
+    // iOS may ignore handlers registered before playback starts.
+    if (audio && (skip.onNext || skip.onPrevious)) {
+      audio.addEventListener('playing', wireHandlers);
     }
   },
 
