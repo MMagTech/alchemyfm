@@ -31,7 +31,7 @@ GitHub is live immediately; AudioMuse caches the catalog (~1 hour, or until you 
    https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/manifest.json
    ```
 2. **Remove** that repository → **Add** it again → **Catalog → Refresh catalog**
-3. If already installed at v1.x: check **Installed** tab (not Catalog) for **Update to v2.x**
+3. If already installed at an older version: check **Installed** tab (not Catalog) for **Update**
 4. Click **Apply now (restart)** after install/update
 5. Requires AudioMuse core **2.5.0+** (`min_core_version` in plugin.json)
 
