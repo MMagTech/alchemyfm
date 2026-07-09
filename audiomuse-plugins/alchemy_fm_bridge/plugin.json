@@ -8,10 +8,10 @@
     {
       "version": "2.0.3",
       "min_core_version": "2.5.0",
-      "changelog": "Fix anchor creation: read add_centroid_vector from /api/alchemy (was looking for wrong key).",
+      "changelog": "Fix anchor blend (add_centroid_vector) and similar-seed pick from search results.",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": "c660f212f875d92333e9415ceb634343"
+      "checksum": "791af1e240b3ecbb50a21b719ec17213"
     },
     {
       "version": "2.0.2",

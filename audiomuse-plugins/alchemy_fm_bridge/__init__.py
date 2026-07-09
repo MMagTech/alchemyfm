@@ -471,7 +471,9 @@ def profile_from_form(form) -> dict[str, Any]:
     elif ptype == "alchemy_anchor":
         programming["anchor_id"] = (form.get("anchor_id") or "").strip()
     elif ptype == "similar_seed":
-        programming["seed_id"] = (form.get("seed_id") or "").strip()
+        programming["seed_id"] = (
+            (form.get("seed_id") or form.get("pick_seed") or "").strip()
+        )
     else:
         raise ChannelDesignerError(f"Unsupported programming type: {ptype}")
 
@@ -987,8 +989,9 @@ def home():
         if pick_seed:
             values["seed_id"] = pick_seed
             values["programming_type"] = "similar_seed"
-
-        if action == "search_seed":
+            if request.form.get("seed_search"):
+                values["seed_search_results"] = _search_tracks(request.form.get("seed_search") or "")
+        elif action == "search_seed":
             values["seed_search_results"] = _search_tracks(request.form.get("seed_search") or "")
         elif action == "test":
             try:
