@@ -870,7 +870,7 @@ const GlobalLivePlayer = {
       await this.loadScriptOnce('/static/live-audio-graph.js?v=8', 'live-audio-graph');
     }
     if (typeof LiveTuningFx === 'undefined') {
-      await this.loadScriptOnce('/static/tuning-static.js?v=4', 'tuning-static');
+      await this.loadScriptOnce('/static/tuning-static.js?v=5', 'tuning-static');
     }
     if (typeof StripVisualizer === 'undefined') {
       await this.loadScriptOnce('/static/strip-visualizer.js?v=3', 'strip-visualizer');
@@ -884,7 +884,7 @@ const GlobalLivePlayer = {
       await this.loadScriptOnce('/static/live-audio-graph.js?v=8', 'live-audio-graph');
     }
     if (typeof LiveTuningFx === 'undefined') {
-      await this.loadScriptOnce('/static/tuning-static.js?v=4', 'tuning-static');
+      await this.loadScriptOnce('/static/tuning-static.js?v=5', 'tuning-static');
     }
   },
 
