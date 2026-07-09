@@ -80,6 +80,10 @@ services:
       - "host.docker.internal:host-gateway"
     depends_on:
       - icecast
+    # LAN API access (e.g. AudioMuse plugin on another host). Traefik still serves HTTPS on 443.
+    # Remove this `ports` block if you only use the public hostname.
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
     networks:
       - proxy
     labels:

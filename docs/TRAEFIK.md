@@ -24,7 +24,7 @@ Labels are baked into `docker-compose.traefik.yml` (proxy network, `websecure`, 
 
 2. In **Compose Manager**, add stack `alchemyfm` using `docker-compose.traefik.yml` (copy to `/mnt/user/appdata/alchemyfm/` or paste from the repo).
 
-3. **Pull** and **Up**. Do **not** publish host ports `8080`/`8000` on the router — Traefik handles `443`.
+3. **Pull** and **Up**. Do **not** forward host port **8080** on your router — Traefik handles public **443**. The optional `BACKEND_PORT` publish is for **LAN only** (e.g. AudioMuse plugin push from another machine on your network).
 
 4. Open `https://radio.example.com` and verify a station’s **Copy stream link** uses `https://radio.example.com/yourmount`.
 
@@ -98,6 +98,24 @@ cd /mnt/user/appdata/alchemyfm
 docker compose --env-file .env -f docker-compose.traefik.yml pull
 docker compose --env-file .env -f docker-compose.traefik.yml up -d
 ```
+
+## AudioMuse plugin (LAN API)
+
+`docker-compose.traefik.yml` publishes **`BACKEND_PORT`** on the Docker host (default **8080**) so the AudioMuse **Alchemy FM** plugin can call `/api/admin/*` without going through Cloudflare or CrowdSec.
+
+In plugin settings use:
+
+```
+http://<your-unraid-lan-ip>:8080
+```
+
+(set `BACKEND_PORT` in `.env` if you use a different host port). Recreate the stack after changing `.env`:
+
+```bash
+docker compose --env-file .env -f docker-compose.traefik.yml up -d
+```
+
+Public listeners still use `https://ALCHEMYFM_HOST`. Do not port-forward **8080** on your router.
 
 ## LAN-only testing (no Traefik)
 
