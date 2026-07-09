@@ -6,3 +6,6 @@ venv/
 *.db
 /data/
 .DS_Store
+alchemyfm-backup/
+cookies.txt
+login_out.txt
