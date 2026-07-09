@@ -106,16 +106,16 @@ docker compose --env-file .env -f docker-compose.traefik.yml up -d
 In plugin settings use:
 
 ```
-http://<your-unraid-lan-ip>:8080
+http://<your-unraid-lan-ip>:9246
 ```
 
-(set `BACKEND_PORT` in `.env` if you use a different host port). Recreate the stack after changing `.env`:
+(set `BACKEND_PORT` in `.env` if you use a different host port; default for Traefik compose is **9246**). Recreate the stack after changing `.env`:
 
 ```bash
 docker compose --env-file .env -f docker-compose.traefik.yml up -d
 ```
 
-Public listeners still use `https://ALCHEMYFM_HOST`. Do not port-forward **8080** on your router.
+Public listeners still use `https://ALCHEMYFM_HOST`. Do not port-forward **9246** on your router.
 
 ## LAN-only testing (no Traefik)
 
