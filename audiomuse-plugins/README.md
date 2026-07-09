@@ -47,7 +47,7 @@ If the catalog still shows v1, wait 5 minutes (GitHub CDN cache) and refresh aga
 
 ### Workflow
 
-1. **Settings** — Alchemy FM URL + admin credentials (`https://alchemyfm.mmagtech.com`, etc.)
+1. **Settings** — Alchemy FM URL + admin credentials (e.g. `https://alchemyfm.example.com` or a LAN URL like `http://192.168.1.100:8080`)
 2. **Alchemy FM** menu — Channel Designer
 3. Pick programming type (CLAP, lyrics, mood, anchor, or seed)
 4. Optional: set tempo/energy filters and enable **Living channel**
@@ -73,7 +73,7 @@ When **Living channel** is enabled on a saved profile:
 - **`on_song_analyzed`** (worker): newly analyzed songs that pass tempo/energy filters are added to the channel pool.
 - **`refresh_living`** (cron, default 03:00 daily, disabled until enabled): re-runs programming, updates the pool, records audition history, and optionally updates the Alchemy FM station + queue.
 
-Set **AudioMuse API URL** in plugin settings if the worker cannot reach the web UI host (use your LAN IP, e.g. `http://192.168.1.10:8387`).
+Set **AudioMuse API URL** in plugin settings if the worker cannot reach the web UI host (use a LAN address the worker can reach, e.g. `http://192.168.1.100:8387`).
 
 ### Roadmap (v2.4+)
 

@@ -24,7 +24,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.3.1"
+PLUGIN_VERSION = "2.3.2"
 PLUGIN_ID = "alchemy_fm_bridge"
 
 ALCHEMY_FM_USER_AGENT = (
@@ -2046,10 +2046,10 @@ def settings():
         "<form method='post' style='display:grid;gap:1rem;max-width:36rem;'>"
         "<p>Connect to your Alchemy FM broadcast instance. Credentials match "
         "<code>ADMIN_USERNAME</code> / <code>ADMIN_PASSWORD</code> in Alchemy FM.</p>"
-        "<p class='hint'><strong>Cloudflare / public URL:</strong> If you use "
-        "<code>https://alchemyfm.mmagtech.com</code>, allow server-to-server access to "
-        "<code>/api/admin/*</code> from your AudioMuse host (WAF skip rule or bypass "
-        "Bot Fight Mode). Otherwise use a LAN/direct URL that does not go through Cloudflare.</p>"
+        "<p class='hint'><strong>Cloudflare / public URL:</strong> If Alchemy FM is behind Cloudflare, allow "
+        "server-to-server access to <code>/api/admin/*</code> from your AudioMuse host (WAF skip rule or "
+        "bypass Bot Fight Mode). Otherwise use a LAN/direct URL that does not go through Cloudflare "
+        "(e.g. <code>http://192.168.1.100:8080</code>).</p>"
         "<div><label>Alchemy FM URL</label>"
         f"<input name='alchemyfm_url' required placeholder='https://alchemyfm.example.com' "
         f"value='{html.escape(alchemyfm_url)}'></div>"
@@ -2062,7 +2062,7 @@ def settings():
         f"<input name='audiomuse_api_token' type='password' autocomplete='new-password' "
         f"placeholder='Only if AudioMuse auth is enabled' value='{html.escape(audiomuse_api_token)}'></div>"
         "<div><label>AudioMuse API URL (optional, for worker/cron)</label>"
-        f"<input name='audiomuse_api_url' placeholder='http://192.168.1.10:8387' "
+        f"<input name='audiomuse_api_url' placeholder='http://192.168.1.100:8387' "
         f"value='{html.escape(audiomuse_api_url)}'>"
         "<p class='hint'>Living-channel cron and <code>on_song_analyzed</code> run on the worker and "
         "need a URL the worker can reach (LAN IP, not <code>localhost</code>). Leave blank to use "
