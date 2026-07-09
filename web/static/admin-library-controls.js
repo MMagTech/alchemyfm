@@ -11,7 +11,9 @@ const AdminLibraryControls = {
   _busy: false,
   _currentItemId: null,
   _miniItemId: null,
+  _heartPin: null,
   _HEART_CACHE_KEY: 'alchemyfm-heart-cache-v1',
+  _HEART_PIN_MS: 180000,
 
   HEART_SVG: `<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" focusable="false">
     <path fill="currentColor" d="M10 17.5l-1.1-1C4.6 12.4 2 10.1 2 7a4 4 0 0 1 7-2.2A4 4 0 0 1 16 7c0 3.1-2.6 5.4-6.9 9.5L10 17.5z"/>
@@ -106,6 +108,7 @@ const AdminLibraryControls = {
     this._admin = false;
     this._currentItemId = null;
     this._miniItemId = null;
+    this._heartPin = null;
     this._heartInFlight.clear();
     this._busy = false;
     this.ensureStationHeartRow();
@@ -402,13 +405,50 @@ const AdminLibraryControls = {
     return typeof np?.hearted === 'boolean' ? np.hearted : null;
   },
 
-  /** Prefer in-flight/local heart state over stale poll data (Safari GET cache). */
+  pinHeart(itemId, hearted) {
+    this._heartPin = {
+      itemId: String(itemId),
+      hearted: Boolean(hearted),
+      until: Date.now() + this._HEART_PIN_MS,
+    };
+  },
+
+  clearHeartPinIfTrackChanged(itemId) {
+    if (!this._heartPin || !itemId) return;
+    if (this._heartPin.itemId !== String(itemId)) {
+      this._heartPin = null;
+    }
+  },
+
+  activeHeartPin(itemId) {
+    const pin = this._heartPin;
+    if (!pin || Date.now() >= pin.until) {
+      this._heartPin = null;
+      return null;
+    }
+    if (itemId && pin.itemId !== String(itemId)) return null;
+    return pin;
+  },
+
+  /** Prefer user intent and in-flight state over poll snapshots. */
   heartedForSync(itemId, np) {
     if (!itemId) return null;
+
+    const pin = this.activeHeartPin(itemId);
+    const fromPoll = this.heartedFromNp(np);
+
+    if (pin) {
+      if (fromPoll === true && pin.hearted === true) {
+        this._heartPin = null;
+        return true;
+      }
+      return pin.hearted;
+    }
+
     if (this._heartInFlight.has(itemId)) {
       return this._heartInFlight.get(itemId);
     }
-    const fromPoll = this.heartedFromNp(np);
+
     if (fromPoll === null) {
       return this._heartState.has(itemId) ? this._heartState.get(itemId) : null;
     }
@@ -439,23 +479,32 @@ const AdminLibraryControls = {
 
   syncHeartFromPoll(btn, np) {
     let itemId = this.itemId(np);
+    if (itemId) {
+      this.clearHeartPinIfTrackChanged(itemId);
+    }
+
     if (!itemId) {
       if (!btn) return;
-      itemId = this.lastKnownItemId(btn);
-      if (!itemId) {
-        this.syncHeartButton(btn, null);
+      const pin = this.activeHeartPin();
+      if (pin) {
+        this.syncHeartButton(btn, pin.itemId, pin.hearted);
         return;
       }
+      itemId = this.lastKnownItemId(btn);
+      if (!itemId) return;
       const hearted = this.heartedForSync(itemId, null);
       if (hearted === null) return;
       this.syncHeartButton(btn, itemId, hearted);
       return;
     }
+
     this.rememberItemId(btn, itemId);
     const hearted = this.heartedForSync(itemId, np);
+    if (hearted === null) return;
     this.syncHeartButton(btn, itemId, hearted);
-    if (hearted !== null) {
-      this.applyHeartState(itemId, hearted);
+    if (hearted === true) {
+      this._heartState.set(itemId, true);
+      this.persistHeartCache();
     }
   },
 
@@ -463,11 +512,12 @@ const AdminLibraryControls = {
     if (!itemId) return;
     this._heartState.set(itemId, hearted);
     this.persistHeartCache();
-    document.querySelectorAll(`.operator-heart-btn[data-item-id="${CSS.escape(itemId)}"]`)
-      .forEach((el) => {
-        this.rememberItemId(el, itemId);
-        this.syncHeartButton(el, itemId, hearted);
-      });
+    document.querySelectorAll('.operator-heart-btn').forEach((el) => {
+      const elId = el.dataset.itemId;
+      if (elId && elId !== String(itemId)) return;
+      this.rememberItemId(el, itemId);
+      this.syncHeartButton(el, itemId, hearted);
+    });
   },
 
   async fetchHearted(itemId, { force = false } = {}) {
@@ -505,6 +555,13 @@ const AdminLibraryControls = {
   syncHeartButton(btn, itemId, hearted = null) {
     if (!btn) return;
     if (!itemId) {
+      const pin = this.activeHeartPin();
+      if (pin) {
+        this.syncHeartButton(btn, pin.itemId, pin.hearted);
+        return;
+      }
+      const fallbackId = this.lastKnownItemId(btn);
+      if (fallbackId) return;
       btn.hidden = true;
       btn.removeAttribute('aria-busy');
       btn.setAttribute('aria-pressed', 'false');
@@ -560,7 +617,11 @@ const AdminLibraryControls = {
 
     this._busy = true;
     this._heartInFlight.set(itemId, next);
-    this.applyHeartState(itemId, next);
+    this.pinHeart(itemId, next);
+    this.syncHeartButton(btn, itemId, next);
+    this._heartState.set(itemId, next);
+    this.persistHeartCache();
+    this.rememberItemId(btn, itemId);
     this.setHeartBusy(itemId, true);
 
     try {
@@ -587,12 +648,14 @@ const AdminLibraryControls = {
         throw new Error(msg);
       }
       const hearted = Boolean(data.hearted);
+      this.pinHeart(itemId, hearted);
       this.applyHeartState(itemId, hearted);
 
       if (hearted && data.playlist_configured === false) {
         this.showHint('No Playlist Set', 'playlist');
       }
     } catch (err) {
+      this.pinHeart(itemId, previous);
       this.applyHeartState(itemId, previous);
       this.showHint(err.message || 'Heart action failed', 'error');
     } finally {
