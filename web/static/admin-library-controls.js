@@ -379,7 +379,7 @@ const AdminLibraryControls = {
       orig(opts);
       if (!this._admin) return;
       if (opts.pending) return;
-      this.syncMiniHeart(opts.np || null);
+      this.syncMiniHeart(opts.np ?? null);
     };
   },
 
@@ -421,12 +421,37 @@ const AdminLibraryControls = {
     return false;
   },
 
+  lastKnownItemId(btn) {
+    if (btn?.id === 'operator-mini-heart') {
+      return this._miniItemId || btn.dataset.itemId || null;
+    }
+    return this._currentItemId || btn?.dataset?.itemId || null;
+  },
+
+  rememberItemId(btn, itemId) {
+    if (!itemId) return;
+    if (btn?.id === 'operator-mini-heart') {
+      this._miniItemId = itemId;
+    } else {
+      this._currentItemId = itemId;
+    }
+  },
+
   syncHeartFromPoll(btn, np) {
-    const itemId = this.itemId(np);
+    let itemId = this.itemId(np);
     if (!itemId) {
-      this.syncHeartButton(btn, null);
+      if (!btn) return;
+      itemId = this.lastKnownItemId(btn);
+      if (!itemId) {
+        this.syncHeartButton(btn, null);
+        return;
+      }
+      const hearted = this.heartedForSync(itemId, null);
+      if (hearted === null) return;
+      this.syncHeartButton(btn, itemId, hearted);
       return;
     }
+    this.rememberItemId(btn, itemId);
     const hearted = this.heartedForSync(itemId, np);
     this.syncHeartButton(btn, itemId, hearted);
     if (hearted !== null) {
@@ -439,7 +464,10 @@ const AdminLibraryControls = {
     this._heartState.set(itemId, hearted);
     this.persistHeartCache();
     document.querySelectorAll(`.operator-heart-btn[data-item-id="${CSS.escape(itemId)}"]`)
-      .forEach((el) => this.syncHeartButton(el, itemId, hearted));
+      .forEach((el) => {
+        this.rememberItemId(el, itemId);
+        this.syncHeartButton(el, itemId, hearted);
+      });
   },
 
   async fetchHearted(itemId, { force = false } = {}) {
@@ -497,7 +525,6 @@ const AdminLibraryControls = {
   async syncStationHeart(np) {
     if (!this._admin) return;
     const btn = this.ensureStationHeartRow();
-    this._currentItemId = this.itemId(np);
     this.syncHeartFromPoll(btn, np);
   },
 
@@ -509,7 +536,6 @@ const AdminLibraryControls = {
       return;
     }
 
-    this._miniItemId = this.itemId(np);
     this.syncHeartFromPoll(btn, np);
   },
 
