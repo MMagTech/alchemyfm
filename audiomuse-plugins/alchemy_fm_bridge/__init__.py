@@ -24,7 +24,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.0.2"
+PLUGIN_VERSION = "2.0.3"
 
 ALCHEMY_FM_USER_AGENT = (
     "AlchemyFmBridge/2.0 AudioMuse-Plugin (+https://github.com/MMagTech/alchemyfm)"
@@ -366,6 +366,16 @@ def enrich_preview(tracks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return enriched
 
 
+def _centroid_from_alchemy_response(data: Any) -> list[float] | None:
+    if not isinstance(data, dict):
+        return None
+    for key in ("add_centroid_vector", "centroid"):
+        vec = data.get(key)
+        if isinstance(vec, list) and vec:
+            return [float(x) for x in vec]
+    return None
+
+
 def _blend_centroid_from_tracks(tracks: list[dict[str, Any]], *, n_results: int = 50) -> list[float]:
     blend_ids = [t["item_id"] for t in tracks[:ANCHOR_BLEND_TRACKS]]
     if not blend_ids:
@@ -377,10 +387,13 @@ def _blend_centroid_from_tracks(tracks: list[dict[str, Any]], *, n_results: int 
             "n": n_results,
         },
     )
-    centroid = data.get("centroid") if isinstance(data, dict) else None
-    if not isinstance(centroid, list) or not centroid:
-        raise ChannelDesignerError("AudioMuse did not return a blend centroid for this programming.")
-    return [float(x) for x in centroid]
+    centroid = _centroid_from_alchemy_response(data)
+    if not centroid:
+        raise ChannelDesignerError(
+            "AudioMuse could not build an anchor centroid from the preview tracks. "
+            "Ensure those tracks are analyzed (embeddings in the library) and try Preview again."
+        )
+    return centroid
 
 
 def ensure_programming_anchor(profile: dict[str, Any], tracks: list[dict[str, Any]]) -> int:

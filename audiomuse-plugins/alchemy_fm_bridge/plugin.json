@@ -6,6 +6,14 @@
   "targets": ["flask"],
   "versions": [
     {
+      "version": "2.0.3",
+      "min_core_version": "2.5.0",
+      "changelog": "Fix anchor creation: read add_centroid_vector from /api/alchemy (was looking for wrong key).",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "c660f212f875d92333e9415ceb634343"
+    },
+    {
       "version": "2.0.2",
       "min_core_version": "2.5.0",
       "changelog": "Catalog refresh publish — v2 Channel Designer (CLAP, lyrics, moods, preview, deploy).",
