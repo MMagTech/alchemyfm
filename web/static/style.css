@@ -3333,11 +3333,8 @@ body.live-station-page .live-mini-player {
   background: color-mix(in srgb, var(--accent) 8%, var(--surface));
 }
 
-.admin-designer-callout-title {
-  margin: 0 0 0.45rem;
-  font-size: 0.92rem;
-  font-weight: 600;
-  color: var(--text);
+.admin-designer-callout .admin-group-title {
+  margin-bottom: 0.65rem;
 }
 
 .admin-designer-callout-body {
