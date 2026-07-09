@@ -446,7 +446,7 @@
             <li><strong>Station Silent After Edit</strong> — Confirm the station is enabled and check Docker logs for Liquidsoap. Mount changes restart only that station (~1–2s gap). Persistent backend log: <code>DATA_DIR/logs/backend.log</code> (inside the app data volume).</li>
             <li><strong>Seed Search Empty</strong> — AudioMuse must be running and reachable; hard-refresh admin after backend updates.</li>
             <li><strong>Listeners Stuck After Icecast Restart</strong> — Stream epoch bumps automatically; tuned-in web players reconnect within a few seconds.</li>
-            <li><strong>Listener Count Looks High on iPhone</strong> — Safari opens a short probe request before playback; the backend answers it without holding an extra Icecast connection. If counts still look wrong, check <code>backend.log</code> for duplicate stream opens.</li>
+            <li><strong>Listener Count Looks High (Safari / iPhone / remote access)</strong> — Safari opens a short <code>Range: bytes=0-1</code> probe before playback. The in-browser player uses <code>/api/stations/{slug}/listen</code> so the backend answers that probe without an extra Icecast connection. Counts can still read 2 if a listener uses the direct mount URL (external player + browser, or two tabs). At home on split ports (web <code>:8080</code>, Icecast <code>:8000</code>) the proxy path is used automatically; behind Traefik on one hostname, older builds preferred the direct mount and inflated counts — ensure the latest frontend is deployed. If counts still look wrong, check <code>backend.log</code> for <code>listen open … active=2</code>.</li>
           </ul>
         </section>
         <section class="admin-help-section">
