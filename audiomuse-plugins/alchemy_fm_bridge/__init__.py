@@ -664,16 +664,35 @@ def _anchors() -> list[dict[str, Any]]:
     return [a for a in anchors if isinstance(a, dict) and a.get("id")] if isinstance(anchors, list) else []
 
 
-def _mood_options(selected_mood: str, selected_index: str) -> tuple[str, str]:
+def _mood_centroids_data() -> dict[str, Any]:
     try:
         data = audiomuse_get("/api/mood_centroids")
+        return data if isinstance(data, dict) else {}
     except ChannelDesignerError:
+        return {}
+
+
+def _mood_cluster_label(meta: dict[str, Any], idx: int) -> str:
+    index = meta.get("index", idx)
+    label = f"Cluster {index}"
+    tags = meta.get("top_tags") or meta.get("tags") or meta.get("label")
+    if isinstance(tags, list) and tags:
+        label = ", ".join(str(t) for t in tags[:3])
+        n_songs = meta.get("n_songs")
+        if n_songs:
+            label += f" ({n_songs} tracks)"
+    elif isinstance(tags, str) and tags:
+        label = tags
+    return label
+
+
+def _mood_options(selected_mood: str, selected_index: str) -> tuple[str, str]:
+    data = _mood_centroids_data()
+    if not data:
         return (
             "<option value=''>Could not load moods</option>",
             "<option value=''>—</option>",
         )
-    if not isinstance(data, dict):
-        return ("<option value=''>No moods</option>", "<option value=''>—</option>")
 
     mood_opts = ['<option value="">Choose mood…</option>']
     for mood in sorted(data.keys()):
@@ -685,16 +704,13 @@ def _mood_options(selected_mood: str, selected_index: str) -> tuple[str, str]:
         centroids = data[selected_mood]
         if isinstance(centroids, list):
             for idx, meta in enumerate(centroids):
-                label = f"Cluster {idx}"
-                if isinstance(meta, dict):
-                    tags = meta.get("tags") or meta.get("top_tags") or meta.get("label")
-                    if isinstance(tags, list) and tags:
-                        label = ", ".join(str(t) for t in tags[:3])
-                    elif isinstance(tags, str) and tags:
-                        label = tags
-                sel = " selected" if str(idx) == str(selected_index) else ""
+                if not isinstance(meta, dict):
+                    continue
+                cluster_idx = meta.get("index", idx)
+                label = _mood_cluster_label(meta, idx)
+                sel = " selected" if str(cluster_idx) == str(selected_index) else ""
                 centroid_opts.append(
-                    f'<option value="{idx}"{sel}>{html.escape(label)}</option>'
+                    f'<option value="{cluster_idx}"{sel}>{html.escape(label)}</option>'
                 )
     return ("".join(mood_opts), "".join(centroid_opts))
 
@@ -798,8 +814,9 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
         "<p class='hint'>Semantic lyrics search — meaning and themes, not just keywords.</p></div>"
         f"<div id='field-mood'{hidden('mood_centroid')} style='margin-top:0.75rem;display:grid;gap:0.5rem;'>"
         "<div><label>Mood</label><select name='mood_name'>" + mood_opts + "</select></div>"
-        "<div><label>Cluster</label><select name='centroid_index'>" + centroid_opts + "</select></div>"
-        "<p class='hint'>Browse mood centroids from your library clustering.</p></div>"
+        "<div><label>Cluster</label><select name='centroid_index' id='centroid_index'>" + centroid_opts + "</select></div>"
+        "<p class='hint'>Each mood has sub-clusters from your library analysis — pick one that matches "
+        "the vibe (tags show the dominant traits in that cluster).</p></div>"
         f"<div id='field-anchor'{hidden('alchemy_anchor')} style='margin-top:0.75rem;'>"
         "<label>Song Alchemy anchor</label>"
         f"<select name='anchor_id'>{''.join(anchor_opts)}</select></div>"
@@ -932,29 +949,71 @@ def _form_values_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
     return values
 
 
-def _page_script() -> str:
-    return """
+def _page_script(mood_centroids: dict[str, Any] | None = None) -> str:
+    mood_json = json.dumps(mood_centroids or {})
+    return f"""
+<script type="application/json" id="mood-centroids-data">{mood_json}</script>
 <script>
-(function() {
+(function() {{
   const typeSelect = document.getElementById('programming_type');
-  if (!typeSelect) return;
-  const sections = {
+  const moodDataEl = document.getElementById('mood-centroids-data');
+  const moodData = moodDataEl ? JSON.parse(moodDataEl.textContent || '{{}}') : {{}};
+  const sections = {{
     clap_query: document.getElementById('field-clap'),
     lyrics_query: document.getElementById('field-lyrics'),
     mood_centroid: document.getElementById('field-mood'),
     alchemy_anchor: document.getElementById('field-anchor'),
     similar_seed: document.getElementById('field-seed'),
-  };
-  function sync() {
+  }};
+  function syncType() {{
+    if (!typeSelect) return;
     const t = typeSelect.value;
-    Object.entries(sections).forEach(([key, el]) => {
+    Object.entries(sections).forEach(([key, el]) => {{
       if (!el) return;
       el.hidden = key !== t;
-    });
-  }
-  typeSelect.addEventListener('change', sync);
-  sync();
-})();
+    }});
+  }}
+  function clusterLabel(meta, idx) {{
+    const index = meta.index != null ? meta.index : idx;
+    let label = 'Cluster ' + index;
+    const tags = meta.top_tags || meta.tags || meta.label;
+    if (Array.isArray(tags) && tags.length) {{
+      label = tags.slice(0, 3).join(', ');
+      if (meta.n_songs) label += ' (' + meta.n_songs + ' tracks)';
+    }} else if (typeof tags === 'string' && tags) {{
+      label = tags;
+    }}
+    return label;
+  }}
+  function fillClusters() {{
+    const moodSelect = document.querySelector('select[name="mood_name"]');
+    const clusterSelect = document.getElementById('centroid_index');
+    if (!moodSelect || !clusterSelect) return;
+    const mood = moodSelect.value;
+    const prev = clusterSelect.value;
+    clusterSelect.innerHTML = '<option value="">Choose cluster…</option>';
+    const list = moodData[mood];
+    if (!Array.isArray(list)) return;
+    list.forEach((meta, idx) => {{
+      if (!meta || typeof meta !== 'object') return;
+      const opt = document.createElement('option');
+      const clusterIdx = meta.index != null ? String(meta.index) : String(idx);
+      opt.value = clusterIdx;
+      opt.textContent = clusterLabel(meta, idx);
+      if (clusterIdx === prev) opt.selected = true;
+      clusterSelect.appendChild(opt);
+    }});
+  }}
+  if (typeSelect) {{
+    typeSelect.addEventListener('change', syncType);
+    syncType();
+  }}
+  const moodSelect = document.querySelector('select[name="mood_name"]');
+  if (moodSelect) {{
+    moodSelect.addEventListener('change', fillClusters);
+    fillClusters();
+  }}
+}})();
 </script>
 """
 
@@ -1069,7 +1128,7 @@ def home():
         "</fieldset>"
         "<h3 style='margin-top:2rem;'>Saved channels</h3>"
         f"{_channels_table_html()}"
-        f"{_page_script()}"
+        f"{_page_script(_mood_centroids_data())}"
     )
     return render_page(body, title="Alchemy FM Channel Designer")
 

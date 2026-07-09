@@ -8,10 +8,10 @@
     {
       "version": "2.0.3",
       "min_core_version": "2.5.0",
-      "changelog": "Fix anchor blend (add_centroid_vector) and similar-seed pick from search results.",
+      "changelog": "Fix anchor blend, similar-seed pick, and mood cluster dropdown population.",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": "791af1e240b3ecbb50a21b719ec17213"
+      "checksum": "d84451e824b2db494129aca025541c8d"
     },
     {
       "version": "2.0.2",
