@@ -876,7 +876,7 @@ const GlobalLivePlayer = {
       await this.loadScriptOnce('/static/strip-visualizer.js?v=3', 'strip-visualizer');
     }
 
-    await this.loadScriptOnce('/static/station-boot.js?v=8', 'station-boot');
+    await this.loadScriptOnce('/static/station-boot.js?v=9', 'station-boot');
   },
 
   async ensureTuningReady() {

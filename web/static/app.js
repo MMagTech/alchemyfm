@@ -416,6 +416,17 @@ const RadioApp = {
       }
     };
 
+    const streamUrlsMatch = (audioSrc, canonical) => {
+      if (!audioSrc || !canonical) return audioSrc === canonical;
+      try {
+        const a = new URL(audioSrc, location.origin);
+        const b = new URL(canonical, location.origin);
+        return a.origin === b.origin && a.pathname === b.pathname;
+      } catch {
+        return audioSrc === canonical;
+      }
+    };
+
     const connectStream = (bustCache = false) => {
       if (connectInFlight) return Promise.resolve();
       const base = baseStreamUrl();
@@ -432,25 +443,26 @@ const RadioApp = {
         url.searchParams.set('t', String(Date.now()));
         src = url.href;
       }
+      const prevSrc = audio.currentSrc || audio.src || '';
+      const sameStream = Boolean(prevSrc && streamUrlsMatch(prevSrc, src));
+
+      if (audio.dataset.wantLive === '1' && !audio.paused && sameStream && !useCacheBust) {
+        return Promise.resolve();
+      }
+
       connectInFlight = true;
       audio._liveUi?.setConnectingUi?.(bustCache ? 'Reconnecting…' : 'Connecting…');
-      const liveHandoff = mobileHandoff &&
-        audio.dataset.wantLive === '1' &&
-        audio.src &&
-        audio.src !== src;
-      if (audio.src && audio.src !== src && !liveHandoff) {
+
+      if (prevSrc && (!sameStream || bustCache)) {
         audio.pause();
+        audio.removeAttribute('src');
+        audio.load();
       }
-      const prevSrc = audio.currentSrc || audio.src || '';
-      if (!prevSrc || prevSrc !== src) {
+
+      if (!prevSrc || !sameStream) {
         resetListenTimer();
       }
       audio.src = src;
-      // A new src starts fetching immediately; load() resets the buffer and
-      // adds startup latency on live streams. Only force reload for same URL.
-      if (prevSrc && prevSrc === src) {
-        audio.load();
-      }
       this.configurePlaybackSession();
       return audio.play().finally(() => {
         connectInFlight = false;

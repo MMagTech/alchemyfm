@@ -260,19 +260,14 @@
           void GlobalLivePlayer.resumePlaybackForSession(session);
         } else {
           audio.dataset.streamSrc = listenUrl;
-          // Only prime the element src when it isn't already pointed at this
-          // stream. Reassigning while already live (src carries a cache-bust
-          // query) tears down the active connection and makes iOS open a fresh
-          // one while the previous upstream lingers -> duplicate listener.
-          if (!streamUrlsMatch(audio.src, listenUrl)) {
-            audio.src = listenUrl;
-          }
+          // Never assign audio.src while idle — iOS opens a stream connection on
+          // src alone; connectStream/reconnectLiveStream owns the live connect.
           RadioApp.bindLivePlayerStationUi(audio, {
             viewingSlug: s.slug,
             pageStationName: s.name,
             pageStation: s,
           });
-          if (onThisStation && audio.paused) {
+          if (onThisStation && audio.dataset.wantLive === '1' && audio.paused) {
             audio.reconnectLiveStream?.();
           }
         }
@@ -641,22 +636,13 @@
         audio.dataset.pageStreamSrc = listenUrl;
         audio.dataset.pageSlug = s.slug;
 
-        if (onThisStation && !streamUrlsMatch(audio.src, listenUrl)) {
-          const wasPlaying = !audio.paused || audio.dataset.wantLive === '1';
-          audio.dataset.streamSrc = listenUrl;
-          if (wasPlaying) {
-            audio.dataset.wantLive = '1';
+        audio.dataset.streamSrc = listenUrl;
+
+        if (onThisStation && audio.dataset.wantLive === '1') {
+          const srcMismatch = !streamUrlsMatch(audio.currentSrc || audio.src, listenUrl);
+          if (audio.error || (!audio.paused && srcMismatch)) {
             audio.reconnectLiveStream?.();
-          } else {
-            audio.src = listenUrl;
           }
-        } else if (!session?.wantLive) {
-          audio.dataset.streamSrc = listenUrl;
-          if (!streamUrlsMatch(audio.src, listenUrl)) {
-            audio.src = listenUrl;
-          }
-        } else if (audio.error && onThisStation && audio.dataset.wantLive === '1') {
-          audio.reconnectLiveStream?.();
         }
 
         if (onThisStation && s.stream_epoch != null) {

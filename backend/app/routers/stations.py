@@ -50,7 +50,7 @@ def _probe_range_end(range_header: str | None) -> int | None:
         end = int(end_s)
     except ValueError:
         return None
-    if start != 0 or end < 0 or (end - start) >= 64:
+    if start != 0 or end < 0 or (end - start) >= 1024:
         return None
     return end
 
@@ -100,6 +100,23 @@ def listen_m3u(slug: str, request: Request, db: Session = Depends(get_db)):
     url = public_stream_url(station, request)
     body = f"#EXTM3U\n#EXTINF:-1,{station.name}\n{url}\n"
     return PlainTextResponse(body, media_type="audio/x-mpegurl")
+
+
+@router.head("/{slug}/listen")
+async def listen_stream_head(slug: str, db: Session = Depends(get_db)):
+    """Metadata-only response for Safari/iOS sniff — no upstream Icecast connect."""
+    station = db.query(Station).filter(Station.slug == slug, Station.enabled.is_(True)).first()
+    if not station:
+        raise HTTPException(status_code=404, detail="Station not found")
+    media_type = stream_media_type(get_broadcast_settings(db).encode_format)
+    return Response(
+        status_code=200,
+        headers={
+            "Accept-Ranges": "bytes",
+            "Content-Type": media_type,
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get("/{slug}/listen")
@@ -176,7 +193,14 @@ async def listen_stream(slug: str, request: Request, db: Session = Depends(get_d
                 _active_listen_connections.pop(slug, None)
             logger.debug("listen close slug=%s active=%d", slug, max(remaining, 0))
 
-    return StreamingResponse(stream(), media_type=media_type)
+    return StreamingResponse(
+        stream(),
+        media_type=media_type,
+        headers={
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get("/{slug}/artwork")
