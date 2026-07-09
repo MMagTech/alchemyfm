@@ -3325,6 +3325,37 @@ body.live-station-page .live-mini-player {
   border: none;
 }
 
+.admin-designer-callout {
+  margin-bottom: 1.15rem;
+  padding: 0.95rem 1.05rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: calc(var(--radius) - 2px);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.admin-designer-callout-title {
+  margin: 0 0 0.45rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.admin-designer-callout-body {
+  margin: 0 0 0.55rem;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.admin-designer-callout-body:last-child {
+  margin-bottom: 0;
+}
+
+.admin-designer-callout strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .admin-details > summary {
   cursor: pointer;
   font-size: 1.05rem;
