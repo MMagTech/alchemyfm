@@ -228,7 +228,7 @@ const RadioApp = {
     }
   },
 
-  wireMediaSessionControls(audio, onPlay, onPause, skip = {}) {
+  wireMediaSessionControls(audio, onPlay, onPause, skip = {}, onStop = null) {
     if (!('mediaSession' in navigator)) return;
 
     const setHandler = (action, fn) => {
@@ -242,7 +242,7 @@ const RadioApp = {
     const wireHandlers = () => {
       setHandler('play', () => onPlay?.());
       setHandler('pause', () => onPause?.());
-      setHandler('stop', () => onPause?.());
+      setHandler('stop', () => (onStop ?? onPause)?.());
       if (skip.onNext || skip.onPrevious) {
         setHandler('nexttrack', skip.onNext ? () => skip.onNext() : null);
         setHandler('previoustrack', skip.onPrevious ? () => skip.onPrevious() : null);
@@ -359,6 +359,7 @@ const RadioApp = {
     let lastProgressAt = 0;
     let listenElapsedMs = 0;
     let listenStartedAt = null;
+    let resumeDebounceTimer = null;
     audio._liveSessionNotify = options.onSessionChange;
 
     const listenSeconds = () => {
@@ -571,6 +572,32 @@ const RadioApp = {
       }
     };
 
+    const softPause = () => {
+      if (audio.paused) return;
+      audio.pause();
+      audio._liveUi?.setPlayingUi?.(false);
+      audio._liveUi?.setStatusText?.('Paused');
+    };
+
+    const hardStop = () => {
+      setWantLive(false);
+      audio.pause();
+      audio._liveUi?.setIdleUi?.('Paused');
+    };
+
+    const resumeIfWanted = () => {
+      if (audio.dataset.wantLive !== '1' || !audio.paused || connectInFlight) return;
+      reconnectAttempt = 0;
+      clearTimeout(reconnectTimer);
+      primeAudioGraph();
+      connectStream(true).catch(() => scheduleReconnect());
+    };
+
+    const scheduleResumeIfWanted = () => {
+      clearTimeout(resumeDebounceTimer);
+      resumeDebounceTimer = setTimeout(() => resumeIfWanted(), 400);
+    };
+
     const skipOpts = this.isMobileStation()
       ? {
           onNext: () => { void GlobalLivePlayer?.switchToAdjacentStation?.(1); },
@@ -580,14 +607,20 @@ const RadioApp = {
 
     this.wireMediaSessionControls(
       audio,
-      () => {
-        if (audio.paused) togglePlay();
-      },
-      () => {
-        if (!audio.paused) togglePlay();
-      },
+      () => resumeIfWanted(),
+      () => softPause(),
       skipOpts,
+      () => hardStop(),
     );
+
+    if (!audio._liveInterruptionHooks) {
+      audio._liveInterruptionHooks = true;
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') scheduleResumeIfWanted();
+      });
+      window.addEventListener('pageshow', () => scheduleResumeIfWanted());
+      window.addEventListener('focus', () => scheduleResumeIfWanted());
+    }
 
     audio.addEventListener('play', () => {
       setWantLive(true);
