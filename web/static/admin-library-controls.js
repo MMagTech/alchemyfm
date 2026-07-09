@@ -379,7 +379,7 @@ const AdminLibraryControls = {
       orig(opts);
       if (!this._admin) return;
       if (opts.pending) return;
-      this.syncMiniHeart(opts.np || null);
+      this.syncMiniHeart(opts.np ?? null);
     };
   },
 
@@ -421,10 +421,25 @@ const AdminLibraryControls = {
     return false;
   },
 
+  lastKnownItemId(btn) {
+    if (btn?.id === 'operator-mini-heart') {
+      return this._miniItemId || btn.dataset.itemId || null;
+    }
+    return this._currentItemId || btn?.dataset?.itemId || null;
+  },
+
   syncHeartFromPoll(btn, np) {
-    const itemId = this.itemId(np);
+    let itemId = this.itemId(np);
     if (!itemId) {
-      this.syncHeartButton(btn, null);
+      if (!btn) return;
+      itemId = this.lastKnownItemId(btn);
+      if (!itemId) {
+        this.syncHeartButton(btn, null);
+        return;
+      }
+      const hearted = this.heartedForSync(itemId, null);
+      if (hearted === null) return;
+      this.syncHeartButton(btn, itemId, hearted);
       return;
     }
     const hearted = this.heartedForSync(itemId, np);

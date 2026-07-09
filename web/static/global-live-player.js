@@ -769,17 +769,21 @@ const GlobalLivePlayer = {
     });
 
     if (session) {
+      const heardNp = (this._heardMeta?.slug === session.slug && this._heardMeta?.np) || null;
+      const np = meta.nowPlaying ?? heardNp;
+      const artworkUrl = meta.artworkUrl ??
+        ((np && np.cover_url) || this._heardMeta?.artworkUrl || '');
       this.updateHeardMeta({
         slug: session.slug,
         stationName: session.stationName,
-        np: meta.nowPlaying,
-        artworkUrl: meta.artworkUrl,
+        np,
+        artworkUrl,
       });
       this.updateMiniMeta({
         stationName: session.stationName,
         slug: session.slug,
-        np: meta.nowPlaying,
-        artworkUrl: meta.artworkUrl,
+        np,
+        artworkUrl,
       });
       if (session.slug && typeof RadioApp !== 'undefined' &&
           (this.isHomePage() || this.isOnSoftHome())) {
