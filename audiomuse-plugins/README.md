@@ -19,7 +19,21 @@ Third-party [AudioMuse-AI](https://github.com/NeptuneHub/AudioMuse-AI) plugins m
 
 CLAP, lyrics, and mood channels are **auditioned in AudioMuse**, then compiled into a Song Alchemy anchor so Alchemy FM can refill queues around the clock.
 
-### Install from GitHub
+### Plugin not showing v2 in AudioMuse?
+
+GitHub is live immediately; AudioMuse caches the catalog (~1 hour, or until you refresh).
+
+1. **Plugins → Repositories** — confirm this URL is listed:
+   ```
+   https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/manifest.json
+   ```
+2. **Remove** that repository → **Add** it again → **Catalog → Refresh catalog**
+3. If already installed at v1.x: check **Installed** tab (not Catalog) for **Update to v2.x**
+4. Click **Apply now (restart)** after install/update
+5. Requires AudioMuse core **2.5.0+** (`min_core_version` in plugin.json)
+
+If the catalog still shows v1, wait 5 minutes (GitHub CDN cache) and refresh again.
+
 
 1. **Plugins → Repositories → Add**
    ```

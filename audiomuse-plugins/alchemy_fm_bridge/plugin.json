@@ -6,6 +6,14 @@
   "targets": ["flask"],
   "versions": [
     {
+      "version": "2.0.2",
+      "min_core_version": "2.5.0",
+      "changelog": "Catalog refresh publish — v2 Channel Designer (CLAP, lyrics, moods, preview, deploy).",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "238d2ed40646759fc7b3e44bd4136479"
+    },
+    {
       "version": "2.0.1",
       "min_core_version": "2.5.0",
       "changelog": "Detect Cloudflare blocks with a clear error message; add User-Agent on Alchemy FM API calls. Settings note for public URLs behind Cloudflare.",

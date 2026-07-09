@@ -24,7 +24,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.0.1"
+PLUGIN_VERSION = "2.0.2"
 
 ALCHEMY_FM_USER_AGENT = (
     "AlchemyFmBridge/2.0 AudioMuse-Plugin (+https://github.com/MMagTech/alchemyfm)"
