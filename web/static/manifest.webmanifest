@@ -1,7 +1,7 @@
 {
   "name": "Alchemy FM",
   "short_name": "Alchemy FM",
-  "description": "Curated stations on the air. Everyone tuned in hears the same track.",
+  "description": "Designed in AudioMuse. Live on Alchemy FM.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
