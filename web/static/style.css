@@ -759,6 +759,7 @@ main {
   .subtitle {
     white-space: normal;
     font-size: 0.95rem;
+    text-align: center;
   }
 }
 
