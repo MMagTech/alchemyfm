@@ -79,41 +79,6 @@
       </form>
     </section>
 
-    <section class="admin-panel admin-panel-primary">
-      <div class="admin-panel-head">
-        <div>
-          <h2>Stations</h2>
-          <p class="admin-lede">On-air channels. Changes apply within a few seconds.</p>
-        </div>
-        <button type="button" class="btn" id="show-create-station">Add Station</button>
-      </div>
-      <div class="admin-table-wrap">
-        <table class="admin-table">
-          <colgroup>
-            <col class="col-name">
-            <col class="col-mount">
-            <col class="col-source">
-            <col class="col-queue">
-            <col class="col-status">
-            <col class="col-actions">
-          </colgroup>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Mount</th>
-              <th>Source</th>
-              <th>Queue</th>
-              <th>Status</th>
-              <th class="actions-col">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="stations-body">
-            <tr><td colspan="6">Loading…</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
     <section class="admin-panel" id="broadcast-section">
       <div class="admin-panel-head">
         <div>
@@ -343,6 +308,41 @@
           </div>
         </form>
       </details>
+    </section>
+
+    <section class="admin-panel admin-panel-primary">
+      <div class="admin-panel-head">
+        <div>
+          <h2>Stations</h2>
+          <p class="admin-lede">On-air channels. Changes apply within a few seconds.</p>
+        </div>
+        <button type="button" class="btn" id="show-create-station">Add Station</button>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <colgroup>
+            <col class="col-name">
+            <col class="col-mount">
+            <col class="col-source">
+            <col class="col-queue">
+            <col class="col-status">
+            <col class="col-actions">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Mount</th>
+              <th>Source</th>
+              <th>Queue</th>
+              <th>Status</th>
+              <th class="actions-col">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="stations-body">
+            <tr><td colspan="6">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
   </main>
 
