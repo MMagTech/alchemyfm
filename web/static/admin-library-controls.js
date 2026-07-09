@@ -368,6 +368,8 @@ const AdminLibraryControls = {
     if (typeof GlobalLivePlayer !== 'undefined' && GlobalLivePlayer.isStationPage()) {
       btn.hidden = true;
     }
+    const track = document.getElementById('live-mini-track');
+    if (track) GlobalLivePlayer.syncMiniTrackMarquee(track);
   },
 
   hookMiniMeta() {
@@ -560,7 +562,7 @@ const AdminLibraryControls = {
       this.applyHeartState(itemId, hearted);
 
       if (hearted && data.playlist_configured === false) {
-        this.showHint('Track starred. Set a default Navidrome playlist in admin → Appearance.');
+        this.showHint('No Playlist Set', 'playlist');
       }
     } catch (err) {
       this.applyHeartState(itemId, previous);
@@ -572,21 +574,68 @@ const AdminLibraryControls = {
     }
   },
 
-  showHint(message, type = 'info') {
-    let el = document.getElementById('operator-hint');
-    if (!el) {
-      el = document.createElement('div');
-      el.id = 'operator-hint';
-      el.className = 'operator-hint';
-      el.setAttribute('role', 'status');
-      document.body.appendChild(el);
+  hintIcon(type) {
+    if (type === 'error') {
+      return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>';
     }
-    el.textContent = message;
-    el.className = `operator-hint operator-hint-${type} is-visible`;
+    if (type === 'playlist') {
+      return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6h12M9 12h12M9 18h12"/><circle cx="4" cy="6" r="1.25" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.25" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.25" fill="currentColor" stroke="none"/></svg>';
+    }
+    return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>';
+  },
+
+  dismissHint() {
+    const host = document.getElementById('operator-hint-host');
+    host?.classList.remove('is-visible');
     window.clearTimeout(this._hintTimer);
-    this._hintTimer = window.setTimeout(() => {
-      el.classList.remove('is-visible');
-    }, 5000);
+    this._hintTimer = null;
+  },
+
+  showHint(message, type = 'info') {
+    const autoMs = 5000;
+    let host = document.getElementById('operator-hint-host');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'operator-hint-host';
+      host.className = 'operator-hint-host';
+      host.setAttribute('aria-live', 'polite');
+      document.body.appendChild(host);
+    }
+
+    document.getElementById('operator-hint')?.remove();
+
+    host.replaceChildren();
+    host.className = `operator-hint-host is-visible operator-hint-host-${type}`;
+
+    const card = document.createElement('div');
+    card.className = `operator-hint-card operator-hint-${type}`;
+    card.setAttribute('role', 'status');
+
+    const icon = document.createElement('div');
+    icon.className = 'operator-hint-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.innerHTML = this.hintIcon(type);
+
+    const copy = document.createElement('p');
+    copy.className = 'operator-hint-message';
+    copy.textContent = message;
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'operator-hint-close';
+    close.setAttribute('aria-label', 'Dismiss');
+    close.textContent = '×';
+    close.addEventListener('click', () => this.dismissHint());
+
+    const progress = document.createElement('span');
+    progress.className = 'operator-hint-progress';
+    progress.style.animationDuration = `${autoMs}ms`;
+
+    card.append(icon, copy, close, progress);
+    host.appendChild(card);
+
+    window.clearTimeout(this._hintTimer);
+    this._hintTimer = window.setTimeout(() => this.dismissHint(), autoMs);
   },
 };
 

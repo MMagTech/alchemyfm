@@ -4,6 +4,7 @@
  */
 const GlobalLivePlayer = {
   STORAGE_KEY: 'alchemyfm-live-session',
+  STATIONS_CACHE_KEY: 'alchemyfm-stations-cache',
   _miniPollTimer: null,
   _miniUiAbort: null,
   _miniSwitching: false,
@@ -11,6 +12,29 @@ const GlobalLivePlayer = {
   _navClickAbort: null,
   _homeStylesLoaded: false,
   _heardMeta: null,
+  _playbackPrimed: false,
+  _stationList: null,
+  _stationSkipInFlight: false,
+
+  primePlayback() {
+    if (this._playbackPrimed || typeof RadioApp === 'undefined') return;
+    this._playbackPrimed = true;
+    const audio = this.getAudio();
+    if (!audio) return;
+    this.ensureEngine(audio);
+    if (RadioApp.useStripWebAudio?.() && typeof LiveAudioGraph !== 'undefined') {
+      if (!audio._liveAudioGraph) {
+        audio._liveAudioGraph = LiveAudioGraph.attach(audio);
+      }
+      const graph = audio._liveAudioGraph;
+      graph?.ensureGraph?.();
+      const ctx = graph?.audioContext;
+      if (ctx?.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+    }
+    RadioApp.configurePlaybackSession?.();
+  },
 
   isStationPage() {
     return /station(?:\.html)?$/i.test(location.pathname.replace(/\/$/, ''));
@@ -34,6 +58,76 @@ const GlobalLivePlayer = {
       return data;
     } catch {
       return null;
+    }
+  },
+
+  readStationsCache() {
+    try {
+      const raw = sessionStorage.getItem(this.STATIONS_CACHE_KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      return Array.isArray(data) ? data : null;
+    } catch {
+      return null;
+    }
+  },
+
+  writeStationsCache(stations) {
+    try {
+      if (stations?.length) {
+        sessionStorage.setItem(this.STATIONS_CACHE_KEY, JSON.stringify(stations));
+        this._stationList = stations;
+      }
+    } catch {}
+  },
+
+  async ensureStationList() {
+    if (this._stationList?.length) return this._stationList;
+
+    const fromHome = typeof AlchemyHome !== 'undefined'
+      ? AlchemyHome.readStationsCache?.()
+      : null;
+    if (fromHome?.length) {
+      this._stationList = fromHome;
+      return fromHome;
+    }
+
+    const cached = this.readStationsCache();
+    if (cached?.length) {
+      this._stationList = cached;
+      return cached;
+    }
+
+    if (typeof RadioApp === 'undefined') return [];
+
+    const stations = await RadioApp.fetchJSON('/api/stations');
+    if (stations?.length) {
+      this.writeStationsCache(stations);
+      if (typeof AlchemyHome !== 'undefined') {
+        AlchemyHome.writeStationsCache?.(stations);
+      }
+    }
+    return this._stationList || [];
+  },
+
+  async switchToAdjacentStation(delta) {
+    if (!delta || typeof RadioApp === 'undefined') return;
+    if (!RadioApp.isMobileStation?.()) return;
+    if (!this.isListening() && !this.readSession()?.wantLive) return;
+    if (this._stationSkipInFlight || this._miniSwitching) return;
+
+    const stations = await this.ensureStationList();
+    if (!stations.length) return;
+
+    this._stationSkipInFlight = true;
+    try {
+      const slug = this.activePlayingSlug() || this.readSession()?.slug;
+      let idx = stations.findIndex((s) => s.slug === slug);
+      if (idx < 0) idx = 0;
+      const nextIdx = (idx + delta + stations.length) % stations.length;
+      await this.switchToStation(stations[nextIdx]);
+    } finally {
+      this._stationSkipInFlight = false;
     }
   },
 
@@ -548,10 +642,19 @@ const GlobalLivePlayer = {
     };
     window.addEventListener('resize', onMiniLayout, { signal });
     if (typeof ResizeObserver !== 'undefined') {
-      const { bar } = this.miniElements();
-      if (bar && !this._miniTrackResizeObs) {
+      const { bar, track } = this.miniElements();
+      if (!this._miniTrackResizeObs) {
         this._miniTrackResizeObs = new ResizeObserver(onMiniLayout);
+      }
+      if (bar) {
         this._miniTrackResizeObs.observe(bar);
+      }
+      const meta = bar?.querySelector('.live-mini-meta');
+      if (meta) {
+        this._miniTrackResizeObs.observe(meta);
+      }
+      if (track) {
+        this._miniTrackResizeObs.observe(track);
       }
     }
   },
@@ -764,10 +867,10 @@ const GlobalLivePlayer = {
     this.ensureStationStyles();
 
     if (typeof LiveAudioGraph === 'undefined') {
-      await this.loadScriptOnce('/static/live-audio-graph.js?v=7', 'live-audio-graph');
+      await this.loadScriptOnce('/static/live-audio-graph.js?v=8', 'live-audio-graph');
     }
     if (typeof LiveTuningFx === 'undefined') {
-      await this.loadScriptOnce('/static/tuning-static.js?v=3', 'tuning-static');
+      await this.loadScriptOnce('/static/tuning-static.js?v=4', 'tuning-static');
     }
     if (typeof StripVisualizer === 'undefined') {
       await this.loadScriptOnce('/static/strip-visualizer.js?v=3', 'strip-visualizer');
@@ -778,10 +881,10 @@ const GlobalLivePlayer = {
 
   async ensureTuningReady() {
     if (typeof LiveAudioGraph === 'undefined') {
-      await this.loadScriptOnce('/static/live-audio-graph.js?v=7', 'live-audio-graph');
+      await this.loadScriptOnce('/static/live-audio-graph.js?v=8', 'live-audio-graph');
     }
     if (typeof LiveTuningFx === 'undefined') {
-      await this.loadScriptOnce('/static/tuning-static.js?v=3', 'tuning-static');
+      await this.loadScriptOnce('/static/tuning-static.js?v=4', 'tuning-static');
     }
   },
 
@@ -1009,6 +1112,11 @@ const GlobalLivePlayer = {
     const audio = this.getAudio();
     const session = this.readSession();
 
+    document.addEventListener('pointerdown', () => this.primePlayback(), {
+      once: true,
+      passive: true,
+    });
+
     this.bindSoftNavigation();
 
     if (this.isHomePage()) {
@@ -1123,6 +1231,10 @@ const GlobalLivePlayer = {
     const audio = this.getAudio();
     if (!audio || !station || typeof RadioApp === 'undefined') return;
 
+    if (RadioApp.isMobileStation?.()) {
+      void this.ensureStationList();
+    }
+
     this._miniSwitching = true;
     this.stopMiniPoll();
 
@@ -1145,52 +1257,56 @@ const GlobalLivePlayer = {
       }
     }
 
-    try {
-      await this.ensureTuningReady();
-    } catch {
-      /* tuning bed is optional */
+    let tuningWait = Promise.resolve();
+    if (isSwitch) {
+      try {
+        await this.ensureTuningReady();
+      } catch {
+        /* tuning bed is optional */
+      }
+      if (typeof LiveTuningFx !== 'undefined') {
+        tuningWait = LiveTuningFx.startSwitch(audio, { fromSlug, toSlug: station.slug });
+      }
     }
-
-    const tuningWait = typeof LiveTuningFx !== 'undefined'
-      ? LiveTuningFx.startSwitch(audio, { fromSlug, toSlug: station.slug })
-      : Promise.resolve();
 
     this.applySwitchVisuals(station, { pending: true, switching: isSwitch });
 
-    let meta = station;
-    try {
-      meta = await RadioApp.fetchJSON(
-        `/api/stations/${encodeURIComponent(station.slug)}`
-      );
-    } catch {
-      /* use page station snapshot */
-    }
-
-    const listenUrl = this.browserStreamUrl(meta);
+    const listenUrl = this.browserStreamUrl(station);
     audio.dataset.streamSrc = listenUrl;
     audio.dataset.pageStreamSrc = listenUrl;
-    audio.dataset.pageSlug = meta.slug;
+    audio.dataset.pageSlug = station.slug;
     audio.dataset.wantLive = '1';
 
     this.mergeSession({
-      slug: meta.slug,
-      stationName: meta.name,
+      slug: station.slug,
+      stationName: station.name,
       streamSrc: listenUrl,
       wantLive: true,
     });
 
-    this.applySwitchVisuals(meta, { switching: isSwitch });
-
-    this.ensureEngine(audio);
-
+    this.applySwitchVisuals(station, { switching: isSwitch });
     RadioApp.applySavedLiveVolume(audio);
-    try {
-      await audio._liveEngine.connectStream(true);
-    } catch {
-      audio.reconnectLiveStream?.();
-    }
 
+    const connectTask = audio._liveEngine.connectStream(isSwitch).catch(() => {
+      audio.reconnectLiveStream?.();
+    });
+
+    const metaTask = RadioApp.fetchJSON(
+      `/api/stations/${encodeURIComponent(station.slug)}`
+    ).then((meta) => {
+      this.applySwitchVisuals(meta, { switching: isSwitch });
+      if (meta.name && meta.name !== station.name) {
+        this.mergeSession({
+          slug: meta.slug,
+          stationName: meta.name,
+        });
+      }
+      return meta;
+    }).catch(() => station);
+
+    await connectTask;
     await tuningWait;
+    await metaTask;
 
     this._miniSwitching = false;
     this.syncMiniVisibility();

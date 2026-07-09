@@ -164,6 +164,7 @@ const AlchemyHome = {
 
     this._playInFlight = slug;
     this.syncAllCardPlayUi();
+    GlobalLivePlayer.primePlayback?.();
     try {
       await GlobalLivePlayer.switchToStation(station);
     } finally {
@@ -280,6 +281,9 @@ const AlchemyHome = {
     try {
       if (stations?.length) {
         sessionStorage.setItem(this._stationsCacheKey, JSON.stringify(stations));
+        if (typeof GlobalLivePlayer !== 'undefined') {
+          GlobalLivePlayer._stationList = stations;
+        }
       }
     } catch {}
   },

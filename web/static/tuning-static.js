@@ -5,8 +5,8 @@
  * Re-enable: localStorage.removeItem('alchemyfm-tuning-fx')
  */
 const LiveTuningFx = {
-  MIN_MS: 280,
-  MAX_MS: 1200,
+  MIN_MS: 120,
+  MAX_MS: 800,
   _cachedEnabled: null,
 
   isEnabled() {

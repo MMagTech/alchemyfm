@@ -162,7 +162,7 @@ async def listen_stream(slug: str, request: Request, db: Session = Depends(get_d
 
     async def stream():
         try:
-            async for chunk in resp.aiter_bytes(8192):
+            async for chunk in resp.aiter_bytes(32768):
                 if await request.is_disconnected():
                     break
                 yield chunk

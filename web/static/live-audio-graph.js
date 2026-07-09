@@ -237,7 +237,7 @@ const LiveAudioGraph = {
 
       streamFadeGain.gain.cancelScheduledValues(t);
       streamFadeGain.gain.setValueAtTime(streamFadeGain.gain.value, t);
-      streamFadeGain.gain.linearRampToValueAtTime(0, t + duckSec);
+      streamFadeGain.gain.linearRampToValueAtTime(0.32, t + duckSec);
 
       staticGain.gain.cancelScheduledValues(t);
       staticGain.gain.setValueAtTime(0, t);

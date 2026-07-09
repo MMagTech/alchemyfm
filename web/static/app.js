@@ -28,11 +28,17 @@ const RadioApp = {
     const inner = trackEl?.querySelector(innerSelector);
     if (!inner) return;
 
-    trackEl.classList.remove(scrollingClass);
-    trackEl.style.removeProperty('--scroll-distance');
-    trackEl.style.removeProperty('--scroll-duration');
+    const clearScroll = () => {
+      trackEl.classList.remove(scrollingClass);
+      trackEl.style.removeProperty('--scroll-distance');
+      trackEl.style.removeProperty('--scroll-duration');
+      inner.style.removeProperty('--scroll-distance');
+      inner.style.removeProperty('--scroll-duration');
+    };
 
-    requestAnimationFrame(() => {
+    clearScroll();
+
+    const measure = () => {
       inner.style.display = 'inline-block';
       const cs = getComputedStyle(trackEl);
       const rootSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
@@ -42,11 +48,19 @@ const RadioApp = {
       const overflow = inner.scrollWidth - available + fadePad;
       inner.style.removeProperty('display');
       if (overflow > 4) {
+        const distance = `-${overflow}px`;
+        const duration = `${Math.max(16, overflow / 11)}s`;
         trackEl.classList.add(scrollingClass);
-        trackEl.style.setProperty('--scroll-distance', `-${overflow}px`);
-        trackEl.style.setProperty('--scroll-duration', `${Math.max(16, overflow / 11)}s`);
+        // Vars on both nodes: Safari applies keyframe transforms only when the
+        // custom property lives on the animated element.
+        trackEl.style.setProperty('--scroll-distance', distance);
+        trackEl.style.setProperty('--scroll-duration', duration);
+        inner.style.setProperty('--scroll-distance', distance);
+        inner.style.setProperty('--scroll-duration', duration);
       }
-    });
+    };
+
+    requestAnimationFrame(() => requestAnimationFrame(measure));
   },
 
   /** Stable key for now-playing cover updates */
@@ -210,7 +224,7 @@ const RadioApp = {
     }
   },
 
-  wireMediaSessionControls(audio, onPlay, onPause) {
+  wireMediaSessionControls(audio, onPlay, onPause, skip = {}) {
     if (!('mediaSession' in navigator)) return;
 
     const setHandler = (action, fn) => {
@@ -224,8 +238,13 @@ const RadioApp = {
     setHandler('play', () => onPlay?.());
     setHandler('pause', () => onPause?.());
     setHandler('stop', () => onPause?.());
-    setHandler('previoustrack', null);
-    setHandler('nexttrack', null);
+    if (skip.onNext || skip.onPrevious) {
+      setHandler('nexttrack', skip.onNext ? () => skip.onNext() : null);
+      setHandler('previoustrack', skip.onPrevious ? () => skip.onPrevious() : null);
+    } else {
+      setHandler('previoustrack', null);
+      setHandler('nexttrack', null);
+    }
   },
 
   async copyText(text, button) {
@@ -318,7 +337,38 @@ const RadioApp = {
     let stallTimer = null;
     let connectInFlight = false;
     let lastProgressAt = 0;
+    let listenElapsedMs = 0;
+    let listenStartedAt = null;
     audio._liveSessionNotify = options.onSessionChange;
+
+    const listenSeconds = () => {
+      let ms = listenElapsedMs;
+      if (listenStartedAt !== null) {
+        ms += Date.now() - listenStartedAt;
+      }
+      return Math.max(0, Math.floor(ms / 1000));
+    };
+
+    const resetListenTimer = () => {
+      listenElapsedMs = 0;
+      listenStartedAt = null;
+      if (audio._liveUi?.timer) {
+        audio._liveUi.timer.textContent = '0:00';
+      }
+    };
+
+    const startListenTimer = () => {
+      if (listenStartedAt === null) {
+        listenStartedAt = Date.now();
+      }
+    };
+
+    const stopListenTimer = () => {
+      if (listenStartedAt !== null) {
+        listenElapsedMs += Date.now() - listenStartedAt;
+        listenStartedAt = null;
+      }
+    };
 
     const notifySession = (meta = {}) => {
       audio._liveSessionNotify?.(meta);
@@ -391,8 +441,16 @@ const RadioApp = {
       if (audio.src && audio.src !== src && !liveHandoff) {
         audio.pause();
       }
+      const prevSrc = audio.currentSrc || audio.src || '';
+      if (!prevSrc || prevSrc !== src) {
+        resetListenTimer();
+      }
       audio.src = src;
-      audio.load();
+      // A new src starts fetching immediately; load() resets the buffer and
+      // adds startup latency on live streams. Only force reload for same URL.
+      if (prevSrc && prevSrc === src) {
+        audio.load();
+      }
       this.configurePlaybackSession();
       return audio.play().finally(() => {
         connectInFlight = false;
@@ -416,9 +474,7 @@ const RadioApp = {
       audio.removeAttribute('src');
       audio.load();
       clearInterval(tick);
-      if (audio._liveUi?.timer) {
-        audio._liveUi.timer.textContent = '0:00';
-      }
+      resetListenTimer();
       audio._liveUi?.setIdleUi?.('Ready');
     };
 
@@ -465,7 +521,7 @@ const RadioApp = {
 
     const updateTimer = () => {
       if (!audio.paused && audio._liveUi?.timer) {
-        audio._liveUi.timer.textContent = this.formatListenTime(audio.currentTime);
+        audio._liveUi.timer.textContent = this.formatListenTime(listenSeconds());
       }
     };
 
@@ -483,6 +539,13 @@ const RadioApp = {
       }
     };
 
+    const skipOpts = this.isMobileStation()
+      ? {
+          onNext: () => { void GlobalLivePlayer?.switchToAdjacentStation?.(1); },
+          onPrevious: () => { void GlobalLivePlayer?.switchToAdjacentStation?.(-1); },
+        }
+      : {};
+
     this.wireMediaSessionControls(
       audio,
       () => {
@@ -491,16 +554,19 @@ const RadioApp = {
       () => {
         if (!audio.paused) togglePlay();
       },
+      skipOpts,
     );
 
     audio.addEventListener('play', () => {
       setWantLive(true);
+      startListenTimer();
       clearInterval(tick);
       tick = setInterval(updateTimer, 1000);
       updateTimer();
     });
 
     audio.addEventListener('pause', () => {
+      stopListenTimer();
       clearInterval(tick);
       clearStallWatch();
       if ('mediaSession' in navigator) {
@@ -550,6 +616,8 @@ const RadioApp = {
     audio.addEventListener('error', () => {
       clearInterval(tick);
       clearStallWatch();
+      stopListenTimer();
+      resetListenTimer();
       const base = baseStreamUrl();
       if (base) audio.dataset.streamSrc = base;
       audio.pause();
@@ -603,6 +671,8 @@ const RadioApp = {
       setWantLive,
       setVolume,
       connectStream,
+      getListenSeconds: listenSeconds,
+      resetListenTimer,
     };
 
     return audio._liveEngine;
@@ -718,7 +788,9 @@ const RadioApp = {
 
       if (onThisStation && !audio.paused) {
         setPlayingUi(true);
-        timer.textContent = this.formatListenTime(audio.currentTime);
+        timer.textContent = this.formatListenTime(
+          audio._liveEngine?.getListenSeconds?.() ?? 0
+        );
       } else if (onThisStation && audio.dataset.wantLive === '1' && audio.paused) {
         setConnectingUi('Connecting…');
       } else if (browsingOther) {
@@ -730,7 +802,9 @@ const RadioApp = {
           ? `Listen to ${pageStationName}`
           : 'Play');
         if (pres?.heardLive) {
-          timer.textContent = this.formatListenTime(audio.currentTime);
+          timer.textContent = this.formatListenTime(
+            audio._liveEngine?.getListenSeconds?.() ?? 0
+          );
         }
       } else {
         setIdleUi(audio.dataset.wantLive === '1' && audio.paused ? 'Paused' : 'Ready');
