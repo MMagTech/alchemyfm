@@ -24,11 +24,46 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.0.0"
+PLUGIN_VERSION = "2.0.1"
+
+ALCHEMY_FM_USER_AGENT = (
+    "AlchemyFmBridge/2.0 AudioMuse-Plugin (+https://github.com/MMagTech/alchemyfm)"
+)
 
 # ---------------------------------------------------------------------------
 # Errors + HTTP clients
 # ---------------------------------------------------------------------------
+
+
+def _friendly_http_error(status: int, body: str) -> str:
+    lower = body.lower()
+    if (
+        "browser's signature" in lower
+        or "cloudflare" in lower
+        or "cf-ray" in lower
+        or "just a moment" in lower
+    ):
+        return (
+            "Cloudflare blocked the AudioMuse server from reaching Alchemy FM. "
+            "The plugin calls the API from your AudioMuse container, not your browser. "
+            "Fix: add a Cloudflare WAF skip rule for path /api/admin/* (or from your "
+            "AudioMuse server IP), use a direct/LAN URL that bypasses Cloudflare in "
+            "plugin settings, or turn off Bot Fight Mode for admin API routes."
+        )
+    try:
+        parsed = json.loads(body)
+        if isinstance(parsed, dict):
+            if parsed.get("detail"):
+                return str(parsed["detail"])
+            if parsed.get("error"):
+                return str(parsed["error"])
+    except json.JSONDecodeError:
+        pass
+    if "<html" in lower:
+        return f"Alchemy FM returned HTTP {status} (HTML error page — often Cloudflare or a reverse proxy)."
+    text = re.sub(r"<[^>]+>", " ", body)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:500] or f"HTTP {status}"
 
 
 class ChannelDesignerError(Exception):
@@ -46,6 +81,8 @@ class AlchemyFmClient:
             "Authorization": f"Basic {token}",
             "Accept": "application/json",
             "Content-Type": "application/json",
+            "User-Agent": ALCHEMY_FM_USER_AGENT,
+            "Accept-Language": "en-US,en;q=0.9",
         }
 
     def _request(
@@ -63,14 +100,9 @@ class AlchemyFmClient:
                 return json.loads(body) if body else None
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
-            message = detail
-            try:
-                parsed = json.loads(detail)
-                if isinstance(parsed, dict) and parsed.get("detail"):
-                    message = str(parsed["detail"])
-            except json.JSONDecodeError:
-                pass
-            raise ChannelDesignerError(message or f"HTTP {exc.code}", status=exc.code) from exc
+            raise ChannelDesignerError(
+                _friendly_http_error(exc.code, detail), status=exc.code
+            ) from exc
         except urllib.error.URLError as exc:
             raise ChannelDesignerError(
                 f"Could not reach Alchemy FM at {self.base_url}: {exc.reason}"
@@ -1046,6 +1078,10 @@ def settings():
         "<form method='post' style='display:grid;gap:1rem;max-width:36rem;'>"
         "<p>Connect to your Alchemy FM broadcast instance. Credentials match "
         "<code>ADMIN_USERNAME</code> / <code>ADMIN_PASSWORD</code> in Alchemy FM.</p>"
+        "<p class='hint'><strong>Cloudflare / public URL:</strong> If you use "
+        "<code>https://alchemyfm.mmagtech.com</code>, allow server-to-server access to "
+        "<code>/api/admin/*</code> from your AudioMuse host (WAF skip rule or bypass "
+        "Bot Fight Mode). Otherwise use a LAN/direct URL that does not go through Cloudflare.</p>"
         "<div><label>Alchemy FM URL</label>"
         f"<input name='alchemyfm_url' required placeholder='https://alchemyfm.example.com' "
         f"value='{html.escape(alchemyfm_url)}'></div>"
