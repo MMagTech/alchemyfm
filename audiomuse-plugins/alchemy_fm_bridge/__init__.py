@@ -24,7 +24,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.1.0"
+PLUGIN_VERSION = "2.2.0"
 
 ALCHEMY_FM_USER_AGENT = (
     "AlchemyFmBridge/2.0 AudioMuse-Plugin (+https://github.com/MMagTech/alchemyfm)"
@@ -138,6 +138,9 @@ class AlchemyFmClient:
         if not isinstance(result, dict):
             raise ChannelDesignerError("Unexpected response when bootstrapping station")
         return result
+
+    def delete_station(self, station_id: int) -> None:
+        self._request("DELETE", f"/api/admin/stations/{int(station_id)}")
 
     def push_station(
         self,
@@ -655,17 +658,77 @@ def _preview_tracks_from_ids(item_ids: list[str]) -> list[dict[str, Any]]:
     return enrich_preview(tracks)
 
 
+def _local_channels_by_slug() -> dict[str, tuple]:
+    rows = _channel_rows()
+    return {slug: row for row in rows for slug in [row[1]]}
+
+
+def _delete_local_channel(slug: str) -> None:
+    slug = slug.strip()
+    if not slug:
+        return
+    db = get_db()
+    cur = db.cursor()
+    cur.execute("DELETE FROM " + table("channels") + " WHERE slug = %s", (slug,))
+    db.commit()
+    cur.close()
+
+
+def _profile_from_remote_station(station: dict[str, Any]) -> dict[str, Any]:
+    source_type = str(station.get("source_type") or "alchemy_anchor")
+    source_ref = str(station.get("source_ref") or "")
+    if source_type == "similar_seed":
+        programming: dict[str, Any] = {
+            "type": "similar_seed",
+            "seed_id": source_ref,
+            "limit": PREVIEW_LIMIT_DEFAULT,
+        }
+    else:
+        programming = {
+            "type": "alchemy_anchor",
+            "anchor_id": source_ref,
+            "limit": PREVIEW_LIMIT_DEFAULT,
+        }
+    continuation = str(station.get("continuation_mode") or "similar_to_last")
+    anchor_id = station.get("identity_anchor_id") or (
+        source_ref if source_type == "alchemy_anchor" else None
+    )
+    return {
+        "programming": programming,
+        "refresh": {"mode": continuation},
+        "station": {
+            "name": station.get("name") or "",
+            "slug": station.get("slug") or "",
+            "description": station.get("description") or "",
+            "icecast_mount": station.get("icecast_mount") or f"/{station.get('slug', 'station')}",
+            "enabled": bool(station.get("enabled", True)),
+            "bootstrap_queue": False,
+            "queue_target": int(station.get("queue_target") or 30),
+            "refresh_threshold": int(station.get("refresh_threshold") or 10),
+            "artist_separation_minutes": int(station.get("artist_separation_minutes") or 90),
+        },
+        "anchor_id": anchor_id,
+    }
+
+
 def _apply_loaded_channel(
     slug: str,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], str]:
     loaded = _load_saved_channel(slug)
-    if not loaded:
-        raise ChannelDesignerError(f"No saved channel found for slug '{slug}'.")
-    profile, preview_ids = loaded
+    if loaded:
+        profile, preview_ids = loaded
+        values = _form_values_from_profile(profile)
+        values["editing_slug"] = slug
+        preview_tracks = _preview_tracks_from_ids(preview_ids)
+        return values, preview_tracks, profile.get("station", {}).get("name") or slug
+
+    station = _client().find_station_by_slug(slug)
+    if not station:
+        raise ChannelDesignerError(f"No channel found locally or on Alchemy FM for slug '{slug}'.")
+    profile = _profile_from_remote_station(station)
     values = _form_values_from_profile(profile)
     values["editing_slug"] = slug
-    preview_tracks = _preview_tracks_from_ids(preview_ids)
-    return values, preview_tracks, profile.get("station", {}).get("name") or slug
+    return values, [], profile.get("station", {}).get("name") or slug
 
 
 def _record_channel_error(slug: str, message: str) -> None:
@@ -962,53 +1025,82 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
     )
 
 
-def _channels_table_html() -> str:
-    rows = _channel_rows()
-    if not rows:
-        return "<p>No saved channels yet. Preview programming above, then deploy.</p>"
+def _programming_label(profile: dict[str, Any] | None, station: dict[str, Any]) -> str:
+    if profile:
+        programming = profile.get("programming") or {}
+        ptype = programming.get("type", "?")
+        query = (
+            programming.get("query")
+            or programming.get("seed_id")
+            or programming.get("anchor_id")
+            or programming.get("mood")
+            or ""
+        )
+        return f"{ptype}: {query}"[:72]
+    source_type = station.get("source_type") or "?"
+    source_ref = station.get("source_ref") or ""
+    return f"{source_type}: {source_ref}"[:72]
+
+
+def _alchemy_stations_table_html() -> str:
+    try:
+        stations = _client().test_connection()
+    except ChannelDesignerError as exc:
+        return f"<p>Could not load Alchemy FM stations: {html.escape(str(exc))}</p>"
+
+    if not stations:
+        return "<p>No stations on Alchemy FM yet. Design a channel above and deploy.</p>"
+
+    local = _local_channels_by_slug()
     body = (
         "<table style='width:100%;border-collapse:collapse;margin-top:1rem;font-size:0.92rem;'>"
         "<thead><tr>"
-        "<th style='text-align:left;padding:0.5rem;border-bottom:1px solid #ddd;'>Channel</th>"
+        "<th style='text-align:left;padding:0.5rem;border-bottom:1px solid #ddd;'>Station</th>"
         "<th style='text-align:left;padding:0.5rem;border-bottom:1px solid #ddd;'>Programming</th>"
-        "<th style='text-align:left;padding:0.5rem;border-bottom:1px solid #ddd;'>Anchor</th>"
-        "<th style='text-align:left;padding:0.5rem;border-bottom:1px solid #ddd;'>Last push</th>"
-        "<th style='text-align:left;padding:0.5rem;border-bottom:1px solid #ddd;'>Status</th>"
-        "<th style='text-align:left;padding:0.5rem;border-bottom:1px solid #ddd;'></th>"
+        "<th style='text-align:left;padding:0.5rem;border-bottom:1px solid #ddd;'>On air</th>"
+        "<th style='text-align:left;padding:0.5rem;border-bottom:1px solid #ddd;'>Queued</th>"
+        "<th style='text-align:left;padding:0.5rem;border-bottom:1px solid #ddd;'>Actions</th>"
         "</tr></thead><tbody>"
     )
-    for name, slug, profile_json, anchor_id, _station_id, _preview_at, pushed_at, action, error in rows:
-        try:
-            profile = json.loads(profile_json or "{}")
-            ptype = profile.get("programming", {}).get("type", "?")
-            query = (
-                profile.get("programming", {}).get("query")
-                or profile.get("programming", {}).get("seed_id")
-                or profile.get("programming", {}).get("anchor_id")
-                or profile.get("programming", {}).get("mood")
-                or ""
-            )
-            prog = f"{ptype}: {query}"[:60]
-        except json.JSONDecodeError:
-            prog = "—"
-        status = html.escape(error) if error else html.escape(action or "saved")
+    for station in sorted(stations, key=lambda s: str(s.get("name") or s.get("slug") or "")):
+        slug = str(station.get("slug") or "")
+        name = str(station.get("name") or slug or "Station")
+        station_id = int(station.get("id") or 0)
+        on_air = "yes" if station.get("enabled") else "no"
+        queued = str(station.get("queued_count", station.get("queued", "?")))
+        profile = None
+        if slug in local:
+            try:
+                profile = json.loads(local[slug][2] or "{}")
+            except json.JSONDecodeError:
+                profile = None
+        prog = html.escape(_programming_label(profile, station))
+        confirm_msg = f"Delete station {name} ({slug})? This removes it from Alchemy FM permanently."
         body += (
             "<tr>"
             f"<td style='padding:0.5rem;border-bottom:1px solid #eee;'><strong>{html.escape(name)}</strong><br>"
-            f"<span style='opacity:0.7'>{html.escape(slug)}</span></td>"
-            f"<td style='padding:0.5rem;border-bottom:1px solid #eee;'>{html.escape(prog)}</td>"
-            f"<td style='padding:0.5rem;border-bottom:1px solid #eee;'>{html.escape(str(anchor_id or ''))}</td>"
-            f"<td style='padding:0.5rem;border-bottom:1px solid #eee;'>{html.escape(str(pushed_at or ''))}</td>"
-            f"<td style='padding:0.5rem;border-bottom:1px solid #eee;'>{status}</td>"
-            f"<td style='padding:0.5rem;border-bottom:1px solid #eee;'>"
-            f"<form method='post' style='display:inline;margin:0;'>"
+            f"<span style='opacity:0.7'>{html.escape(slug)} · id {station_id}</span></td>"
+            f"<td style='padding:0.5rem;border-bottom:1px solid #eee;'>{prog}</td>"
+            f"<td style='padding:0.5rem;border-bottom:1px solid #eee;'>{html.escape(on_air)}</td>"
+            f"<td style='padding:0.5rem;border-bottom:1px solid #eee;'>{html.escape(queued)}</td>"
+            "<td style='padding:0.5rem;border-bottom:1px solid #eee;white-space:nowrap;'>"
+            f"<form method='post' style='display:inline;margin:0 0.35rem 0 0;'>"
             f"<input type='hidden' name='action' value='edit'>"
             f"<input type='hidden' name='load_slug' value='{html.escape(slug)}'>"
             f"<button type='submit'>Edit</button></form>"
-            "</td>"
-            "</tr>"
+            f"<form method='post' style='display:inline;margin:0;' "
+            f"onsubmit='return confirm({json.dumps(confirm_msg)});'>"
+            f"<input type='hidden' name='action' value='delete'>"
+            f"<input type='hidden' name='station_id' value='{station_id}'>"
+            f"<input type='hidden' name='delete_slug' value='{html.escape(slug)}'>"
+            f"<button type='submit'>Delete</button></form>"
+            "</td></tr>"
         )
     return body + "</tbody></table>"
+
+
+def _channels_table_html() -> str:
+    return _alchemy_stations_table_html()
 
 
 def _form_values_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
@@ -1165,6 +1257,23 @@ def home():
             }
             preview_tracks = []
             flash = _flash_html("New channel — fill in programming and deploy.", "ok")
+        elif action == "delete":
+            try:
+                station_id = int(request.form.get("station_id") or "0")
+                delete_slug = (request.form.get("delete_slug") or "").strip()
+                if station_id <= 0:
+                    raise ChannelDesignerError("Invalid station id for delete.")
+                _client().delete_station(station_id)
+                _delete_local_channel(delete_slug)
+                flash = _flash_html(
+                    f"Deleted station '{delete_slug or station_id}' from Alchemy FM.",
+                    "ok",
+                )
+                logger.info("alchemy_fm_bridge deleted station id=%s slug=%s", station_id, delete_slug)
+            except ChannelDesignerError as exc:
+                flash = _flash_html(str(exc), "error")
+            except ValueError as exc:
+                flash = _flash_html(str(exc), "error")
         else:
             values.update({k: request.form.get(k, values.get(k, "")) for k in request.form})
             values["enabled"] = request.form.get("enabled") == "on"
@@ -1262,7 +1371,9 @@ def home():
         "<legend><strong>Preview</strong></legend>"
         f"{_preview_table_html(preview_tracks)}"
         "</fieldset>"
-        "<h3 style='margin-top:2rem;'>Saved channels</h3>"
+        "<h3 style='margin-top:2rem;'>Stations on Alchemy FM</h3>"
+        "<p class='hint' style='margin:0 0 0.5rem;'>All live stations from your Alchemy FM instance. "
+        "Edit loads into the designer above; Delete removes the station from Alchemy FM.</p>"
         f"{_channels_table_html()}"
         f"{_page_script(_mood_centroids_data())}"
     )

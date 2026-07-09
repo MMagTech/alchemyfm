@@ -6,6 +6,14 @@
   "targets": ["flask"],
   "versions": [
     {
+      "version": "2.2.0",
+      "min_core_version": "2.5.0",
+      "changelog": "List all Alchemy FM stations with Edit/Delete; edit loads from remote or saved profile; delete calls admin API.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "63e3a33b379e832ada964be04ef67075"
+    },
+    {
       "version": "2.1.0",
       "min_core_version": "2.5.0",
       "changelog": "Edit saved channels: load profile, change name/settings, update on Alchemy FM by slug.",
