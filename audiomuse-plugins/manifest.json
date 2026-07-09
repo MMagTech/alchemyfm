@@ -5,7 +5,7 @@
       "name": "Alchemy FM Bridge",
       "author": "MMagTech",
       "description": "Push live radio stations from AudioMuse programming to any Alchemy FM instance.",
-      "pluginUrl": "https://raw.githubusercontent.com/mmagtech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge/plugin.json"
+      "pluginUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge/plugin.json"
     }
   ]
 }

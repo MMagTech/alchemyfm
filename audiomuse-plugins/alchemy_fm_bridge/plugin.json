@@ -9,7 +9,9 @@
       "version": "1.0.0",
       "min_core_version": "2.5.0",
       "changelog": "Initial release: configure Alchemy FM URL and admin credentials, design stations from anchors or seed tracks, and idempotently create/update/bootstrap stations.",
-      "imageUrl": ""
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "21e64a3136c593e58d52cc22a399c14f"
     }
   ]
 }

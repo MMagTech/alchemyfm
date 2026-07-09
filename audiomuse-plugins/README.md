@@ -6,22 +6,33 @@ Third-party [AudioMuse-AI](https://github.com/NeptuneHub/AudioMuse-AI) plugins m
 
 Design a station in AudioMuse and push it to a running Alchemy FM backend:
 
-1. Install the plugin in AudioMuse (**Plugins → Repositories**).
-2. Open **Alchemy FM Bridge → Settings** and set:
+### Install from GitHub (recommended)
+
+1. In AudioMuse: **Plugins → Repositories → Add**
+   ```
+   https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/manifest.json
+   ```
+2. **Plugins → Catalog → Refresh catalog**
+3. Install **Alchemy FM Bridge** → **Apply now (restart)**
+
+### Configure and push
+
+1. Open **Alchemy FM Bridge → Settings** and set:
    - **Alchemy FM URL** — e.g. `http://192.168.1.10:8080`
    - **Admin username / password** — same as `ADMIN_USERNAME` / `ADMIN_PASSWORD` in Alchemy FM `.env`
-3. Open **Alchemy FM** in the AudioMuse menu.
-4. Pick a Song Alchemy anchor or search for a similar-seed track, then **Push to Alchemy FM**.
+2. Open **Alchemy FM** in the AudioMuse menu.
+3. Pick a Song Alchemy anchor or search for a similar-seed track, then **Push to Alchemy FM**.
 
 Pushes are **idempotent by slug**: if a station with the same slug already exists on Alchemy FM, the plugin updates it instead of creating a duplicate. Optional bootstrap fills the queue immediately after push.
 
-### Local development / testing
+### Local development / testing (optional)
 
-AudioMuse can install plugins from a local catalog without publishing to the community repo:
+Use this only if you are hacking on the plugin before pushing to GitHub:
 
 ```bash
-cd audiomuse-plugins
-zip -r alchemy_fm_bridge.zip alchemy_fm_bridge/__init__.py alchemy_fm_bridge/alchemy_client.py
+cd audiomuse-plugins/alchemy_fm_bridge
+zip -j ../alchemy_fm_bridge.zip __init__.py alchemy_client.py
+cd ..
 python -m http.server 8000
 ```
 

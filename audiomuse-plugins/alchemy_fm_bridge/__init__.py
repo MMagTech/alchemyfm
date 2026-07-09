@@ -11,7 +11,7 @@ from flask import Blueprint, request, redirect
 
 from plugin.api import get_db, get_setting, set_setting, render_page, manage_plugins_url, logger, table
 
-from .alchemy_client import AlchemyFmClient, AlchemyFmError, fetch_audiomuse_json
+from alchemy_client import AlchemyFmClient, AlchemyFmError, fetch_audiomuse_json
 
 bp = Blueprint("alchemy_fm_bridge", __name__)
 
