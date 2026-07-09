@@ -63,7 +63,10 @@ def _icecast_internal_url(station: Station) -> str:
 
 
 @router.get("", response_model=list[StationSummary])
-async def list_stations(request: Request, db: Session = Depends(get_db)):
+async def list_stations(
+    request: Request, response: Response, db: Session = Depends(get_db)
+):
+    response.headers["Cache-Control"] = "no-store"
     stations = (
         db.query(Station)
         .filter(Station.enabled.is_(True))
@@ -219,7 +222,10 @@ def get_station_artwork(slug: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{slug}", response_model=StationDetail)
-async def get_station(slug: str, request: Request, db: Session = Depends(get_db)):
+async def get_station(
+    slug: str, request: Request, response: Response, db: Session = Depends(get_db)
+):
+    response.headers["Cache-Control"] = "no-store"
     station = db.query(Station).filter(Station.slug == slug, Station.enabled.is_(True)).first()
     if not station:
         raise HTTPException(status_code=404, detail="Station not found")

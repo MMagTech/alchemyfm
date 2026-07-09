@@ -1,6 +1,10 @@
 const RadioApp = {
   async fetchJSON(url, options = {}) {
-    const res = await fetch(url, { credentials: 'same-origin', ...options });
+    const res = await fetch(url, {
+      cache: 'no-store',
+      credentials: 'same-origin',
+      ...options,
+    });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(data.detail || data.error || res.statusText);

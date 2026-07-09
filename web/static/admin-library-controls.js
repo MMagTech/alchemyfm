@@ -402,6 +402,38 @@ const AdminLibraryControls = {
     return typeof np?.hearted === 'boolean' ? np.hearted : null;
   },
 
+  /** Prefer in-flight/local heart state over stale poll data (Safari GET cache). */
+  heartedForSync(itemId, np) {
+    if (!itemId) return null;
+    if (this._heartInFlight.has(itemId)) {
+      return this._heartInFlight.get(itemId);
+    }
+    const fromPoll = this.heartedFromNp(np);
+    if (fromPoll === null) {
+      return this._heartState.has(itemId) ? this._heartState.get(itemId) : null;
+    }
+    if (fromPoll === true) {
+      return true;
+    }
+    if (this._heartState.get(itemId) === true) {
+      return true;
+    }
+    return false;
+  },
+
+  syncHeartFromPoll(btn, np) {
+    const itemId = this.itemId(np);
+    if (!itemId) {
+      this.syncHeartButton(btn, null);
+      return;
+    }
+    const hearted = this.heartedForSync(itemId, np);
+    this.syncHeartButton(btn, itemId, hearted);
+    if (hearted !== null) {
+      this.applyHeartState(itemId, hearted);
+    }
+  },
+
   applyHeartState(itemId, hearted) {
     if (!itemId) return;
     this._heartState.set(itemId, hearted);
@@ -465,23 +497,8 @@ const AdminLibraryControls = {
   async syncStationHeart(np) {
     if (!this._admin) return;
     const btn = this.ensureStationHeartRow();
-    const itemId = this.itemId(np);
-    this._currentItemId = itemId;
-
-    if (!itemId) {
-      this.syncHeartButton(btn, null);
-      return;
-    }
-
-    const fromPoll = this.heartedFromNp(np);
-    if (fromPoll !== null && !this._heartInFlight.has(itemId)) {
-      this.syncHeartButton(btn, itemId, fromPoll);
-      this.applyHeartState(itemId, fromPoll);
-      return;
-    }
-
-    const cached = this._heartState.has(itemId) ? this._heartState.get(itemId) : null;
-    this.syncHeartButton(btn, itemId, cached);
+    this._currentItemId = this.itemId(np);
+    this.syncHeartFromPoll(btn, np);
   },
 
   async syncMiniHeart(np) {
@@ -492,23 +509,8 @@ const AdminLibraryControls = {
       return;
     }
 
-    const itemId = this.itemId(np);
-    this._miniItemId = itemId;
-
-    if (!itemId) {
-      this.syncHeartButton(btn, null);
-      return;
-    }
-
-    const fromPoll = this.heartedFromNp(np);
-    if (fromPoll !== null && !this._heartInFlight.has(itemId)) {
-      this.syncHeartButton(btn, itemId, fromPoll);
-      this.applyHeartState(itemId, fromPoll);
-      return;
-    }
-
-    const cached = this._heartState.has(itemId) ? this._heartState.get(itemId) : null;
-    this.syncHeartButton(btn, itemId, cached);
+    this._miniItemId = this.itemId(np);
+    this.syncHeartFromPoll(btn, np);
   },
 
   setHeartBusy(itemId, busy) {
