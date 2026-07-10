@@ -24,7 +24,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.3.13"
+PLUGIN_VERSION = "2.3.14"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1457,13 +1457,89 @@ def _page_styles() -> str:
   border-radius: 8px;
   padding: 0.45rem 0.6rem;
 }
-.afm-panel select {
-  color-scheme: dark light;
+.afm-select-wrap {
+  position: relative;
+  width: 100%;
+}
+.afm-select-native {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.afm-select-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  box-sizing: border-box;
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+  background: var(--field, rgba(15, 23, 42, 0.55));
+  color: var(--text, #e2e8f0);
+  font: inherit;
+  line-height: 1.35;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.afm-select-trigger::after {
+  content: "";
+  flex: 0 0 auto;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg) translateY(-1px);
+  opacity: 0.72;
+}
+.afm-select-wrap.is-open .afm-select-trigger,
+.afm-select-trigger:focus-visible {
+  border-color: color-mix(in srgb, var(--accent, #6366f1) 65%, var(--border, rgba(255, 255, 255, 0.14)));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #6366f1) 40%, transparent);
+  outline: none;
+}
+.afm-select-menu {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  right: 0;
+  max-height: 16rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.35rem;
+  list-style: none;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+  background: var(--bg, #0f172a);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+}
+.afm-select-menu[hidden] { display: none; }
+.afm-select-option {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  padding: 0.52rem 0.65rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text, #e2e8f0);
+  font: inherit;
+  line-height: 1.35;
   cursor: pointer;
 }
-.afm-panel select option {
-  background-color: #1e293b;
-  color: #f1f5f9;
+.afm-select-option:hover,
+.afm-select-option.is-selected {
+  background: color-mix(in srgb, var(--accent, #6366f1) 20%, transparent);
+  color: var(--text, #f8fafc);
 }
 .afm-programming-panel .afm-field:has(.afm-text-input) {
   width: 100%;
@@ -2200,6 +2276,108 @@ def _page_script(mood_centroids: dict[str, Any] | None = None) -> str:
     moodSelect.addEventListener('change', fillClusters);
     fillClusters();
   }}
+
+  function closeAllSelectMenus(exceptMenu) {{
+    document.querySelectorAll('.afm-select-wrap.is-open').forEach((wrap) => {{
+      const menu = wrap.querySelector('.afm-select-menu');
+      if (menu && menu !== exceptMenu) {{
+        menu.hidden = true;
+        wrap.classList.remove('is-open');
+      }}
+    }});
+  }}
+
+  function syncAfmSelect(select) {{
+    const wrap = select.closest('.afm-select-wrap');
+    if (!wrap) return;
+    const trigger = wrap.querySelector('.afm-select-trigger');
+    const menu = wrap.querySelector('.afm-select-menu');
+    if (!trigger || !menu) return;
+    const selected = select.options[select.selectedIndex];
+    trigger.textContent = selected ? selected.textContent : 'Choose…';
+    menu.querySelectorAll('.afm-select-option').forEach((btn) => {{
+      const on = btn.dataset.value === select.value;
+      btn.classList.toggle('is-selected', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    }});
+  }}
+
+  function buildAfmSelectMenu(select) {{
+    const wrap = select.closest('.afm-select-wrap');
+    if (!wrap) return;
+    const menu = wrap.querySelector('.afm-select-menu');
+    if (!menu) return;
+    menu.innerHTML = '';
+    Array.from(select.options).forEach((opt) => {{
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'afm-select-option';
+      btn.setAttribute('role', 'option');
+      btn.dataset.value = opt.value;
+      btn.textContent = opt.textContent;
+      if (opt.selected) btn.classList.add('is-selected');
+      btn.addEventListener('click', () => {{
+        select.value = opt.value;
+        select.dispatchEvent(new Event('change', {{ bubbles: true }}));
+        menu.hidden = true;
+        wrap.classList.remove('is-open');
+        syncAfmSelect(select);
+      }});
+      menu.appendChild(btn);
+    }});
+    syncAfmSelect(select);
+  }}
+
+  function enhanceAfmSelect(select) {{
+    if (!select || select.dataset.afmEnhanced === '1') return;
+    select.dataset.afmEnhanced = '1';
+    select.classList.add('afm-select-native');
+
+    const wrap = document.createElement('div');
+    wrap.className = 'afm-select-wrap';
+    select.parentNode.insertBefore(wrap, select);
+    wrap.appendChild(select);
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'afm-select-trigger';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+
+    const menu = document.createElement('div');
+    menu.className = 'afm-select-menu';
+    menu.setAttribute('role', 'listbox');
+    menu.hidden = true;
+
+    trigger.addEventListener('click', () => {{
+      if (menu.hidden) {{
+        buildAfmSelectMenu(select);
+        closeAllSelectMenus(menu);
+        menu.hidden = false;
+        wrap.classList.add('is-open');
+      }} else {{
+        menu.hidden = true;
+        wrap.classList.remove('is-open');
+      }}
+    }});
+
+    select.addEventListener('change', () => syncAfmSelect(select));
+    new MutationObserver(() => buildAfmSelectMenu(select)).observe(select, {{
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['selected', 'value'],
+    }});
+
+    wrap.appendChild(trigger);
+    wrap.appendChild(menu);
+    buildAfmSelectMenu(select);
+  }}
+
+  document.querySelectorAll('.afm-panel select.afm-select').forEach(enhanceAfmSelect);
+  document.addEventListener('click', (event) => {{
+    if (!event.target.closest('.afm-select-wrap')) closeAllSelectMenus(null);
+  }});
+
   if (location.hash === '#designer') {{
     const target = document.getElementById('designer');
     if (target) target.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
