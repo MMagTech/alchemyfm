@@ -25,11 +25,14 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.0"
+PLUGIN_VERSION = "3.0.1"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
 CRON_TASK_LABEL = "Alchemy FM"
+HELP_DOC_URL = (
+    "https://github.com/MMagTech/alchemyfm/blob/master/docs/CHANNEL_DESIGNER_HELP.md"
+)
 
 ALCHEMY_FM_USER_AGENT = (
     "AlchemyFmBridge/3.0 AudioMuse-Plugin (+https://github.com/MMagTech/alchemyfm)"
@@ -1490,6 +1493,16 @@ def _panel_heading(title: str, note: str = "") -> str:
     )
 
 
+def _page_header_html() -> str:
+    return (
+        '<header class="afm-page-header">'
+        '<h2 class="afm-page-title">Live Programming for Alchemy FM</h2>'
+        f'<a href="{html.escape(HELP_DOC_URL)}" class="afm-help-link" target="_blank" '
+        'rel="noopener noreferrer">Help</a>'
+        "</header>"
+    )
+
+
 def _field_label(text: str, *, mandatory: bool = False) -> str:
     suffix = " (mandatory)" if mandatory else ""
     return f"<label>{html.escape(text)}{suffix}</label>"
@@ -1504,10 +1517,35 @@ def _page_styles() -> str:
   box-sizing: border-box;
   color: var(--text, inherit);
 }
-.afm-lede {
+.afm-page-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.55rem;
+  margin: 0 0 1.65rem;
+  padding-bottom: 1.1rem;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+}
+.afm-page-title {
+  margin: 0;
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text, inherit);
+  text-transform: none;
+}
+.afm-help-link {
+  font-size: 0.88rem;
+  font-weight: 500;
   color: var(--muted, #94a3b8);
-  margin: 0 0 1.25rem;
-  line-height: 1.55;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.afm-help-link:hover {
+  color: var(--text, inherit);
+  border-bottom-color: var(--border, rgba(255, 255, 255, 0.25));
 }
 .afm-flash {
   padding: 0.75rem 1rem;
@@ -1536,11 +1574,11 @@ def _page_styles() -> str:
 }
 .afm-section-title {
   margin: 0;
-  font-size: 0.72rem;
+  font-size: 1.05rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted, #94a3b8);
+  letter-spacing: -0.02em;
+  text-transform: none;
+  color: var(--text, inherit);
 }
 .afm-section-note {
   margin: 0.35rem 0 0;
@@ -1774,6 +1812,15 @@ def _page_styles() -> str:
   color: var(--muted, #94a3b8);
   margin-bottom: 0.35rem;
 }
+.afm-panel label.afm-check-label {
+  display: flex;
+  font-size: 0.92rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text, inherit);
+  margin-bottom: 0;
+}
 .afm-panel input[type="text"],
 .afm-panel input[type="number"],
 .afm-panel input[type="password"],
@@ -1974,6 +2021,12 @@ def _page_styles() -> str:
   color: var(--text, inherit);
 }
 .afm-check-label input { width: auto; margin-top: 0.15rem; }
+.afm-bootstrap-panel .afm-panel-heading { margin-bottom: 0.6rem; }
+.afm-bootstrap-panel .afm-panel-note { margin-top: 0.25rem; }
+.afm-bootstrap-panel > .hint { margin: 0 0 0.9rem; }
+.afm-bootstrap-panel .afm-check-group { margin: 0 0 1rem; }
+.afm-bootstrap-panel .afm-field { margin-top: 0.75rem; }
+.afm-bootstrap-panel .afm-seed-search-row { margin-top: 0; }
 .afm-seed-results {
   list-style: none;
   padding: 0;
@@ -2268,14 +2321,16 @@ def _bootstrap_fields_html(values: dict[str, Any]) -> str:
             )
         results_html = "<ul class='afm-seed-results'>" + "".join(items) + "</ul>"
     return (
-        "<section class='afm-panel'>"
+        "<section class='afm-panel afm-bootstrap-panel'>"
         + _panel_heading(
-            "Bootstrap opener",
+            "Bootstrap Opener",
             "Optional Navidrome playlist cold-start — ongoing programming stays AudioMuse-driven",
         )
-        + "<p class='hint'>Tracks from the opener play first at deploy/bootstrap; refills use your programming query.</p>"
+        + "<p class='hint'>Opener tracks play first at deploy; refills use your programming query.</p>"
+        + "<div class='afm-check-group'>"
         + "<label class='afm-check-label'><input type='checkbox' name='bootstrap_enabled'"
-        + f"{' checked' if bootstrap_enabled else ''}> Use Navidrome playlist opener</label>"
+        + f"{' checked' if bootstrap_enabled else ''}> Use Navidrome Playlist Opener</label>"
+        + "</div>"
         + "<div class='afm-field afm-seed-search-row'>"
         + f"<input name='bootstrap_playlist_search' class='afm-text-input' placeholder='Search playlists…' "
         + f"value='{html.escape(str(values.get('bootstrap_playlist_search', '')))}'>"
@@ -2283,11 +2338,11 @@ def _bootstrap_fields_html(values: dict[str, Any]) -> str:
         + "class='afm-btn afm-btn-secondary'>Search</button></div>"
         + f"{results_html}"
         + "<div class='afm-field'>"
-        + _field_label("Playlist id")
+        + _field_label("Playlist ID")
         + f"<input name='bootstrap_playlist_id' class='afm-text-input' "
         + f"value='{html.escape(str(values.get('bootstrap_playlist_id', '')))}'></div>"
         + "<div class='afm-field'>"
-        + _field_label("Opener track limit")
+        + _field_label("Opener Track Limit")
         + f"<input type='number' name='bootstrap_track_limit' min='5' max='80' "
         + f"value='{html.escape(str(values.get('bootstrap_track_limit', BOOTSTRAP_TRACK_LIMIT_DEFAULT)))}'>"
         + "</div></section>"
@@ -2353,7 +2408,7 @@ def _discover_channels_html() -> str:
     return (
         '<section class="afm-section" id="discover">'
         '<div class="afm-section-head">'
-        "<div><h2 class='afm-section-title'>Discover channels</h2>"
+        "<div><h2 class='afm-section-title'>Discover Channels</h2>"
         "<p class='afm-section-note'>Clustering playlists from AudioMuse — preview and deploy as stations.</p></div>"
         '<form method="post" id="afm-discover-form" style="margin:0;">'
         '<button type="submit" name="action" value="start_clustering" formnovalidate '
@@ -2447,9 +2502,7 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
         + f"<input name='icecast_mount' placeholder='/channel-slug' value='{html.escape(str(values.get('icecast_mount', '')))}'></div>"
         + "<div class='afm-field'>"
         + _field_label("When pool runs low")
-        + f"<select name='refresh_mode' class='afm-select'>{_select_options(REFRESH_MODES, str(values.get('refresh_mode', 'similar_to_last')))}</select>"
-        + "<p class='hint'>v3 deploys live programming to Alchemy FM — CLAP, lyrics, and mood refills "
-        + "re-run your original query instead of freezing a Song Alchemy anchor.</p></div>"
+        + f"<select name='refresh_mode' class='afm-select'>{_select_options(REFRESH_MODES, str(values.get('refresh_mode', 'similar_to_last')))}</select></div>"
         + "<div class='afm-deploy-tail'>"
         + "<div class='afm-field-grid-3'>"
         + "<div><label>Queue target</label>"
@@ -2670,7 +2723,7 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
             + "</tbody></table></div>"
         )
 
-    title = "Other stations" if editing_slug else "Your stations"
+    title = "Other Stations" if editing_slug else "Your Stations"
     note = (
         "Switch stations without losing your place — each opens in the designer above."
         if editing_slug
@@ -3200,7 +3253,7 @@ def home():
     designer_section_open = (
         '<section class="afm-section" id="designer">'
         '<div class="afm-section-head">'
-        "<div><h2 class='afm-section-title'>Channel designer</h2>"
+        "<div><h2 class='afm-section-title'>Channel Designer</h2>"
         "<p class='afm-section-note'>Program the vibe, preview tracks, then deploy to Alchemy FM.</p></div>"
         "</div>"
         if not editing_slug
@@ -3242,8 +3295,7 @@ def home():
     body = (
         f"{_page_styles()}"
         '<div class="afm-shell">'
-        f"<p class='afm-lede'>Channel Designer v{PLUGIN_VERSION} — live programming on Alchemy FM. "
-        "Upgrade note: delete pre-v3 stations and redeploy fresh.</p>"
+        f"{_page_header_html()}"
         f"{flash}"
         f"{main_flow}"
         "</div>"
@@ -3275,7 +3327,8 @@ def settings():
     body = (
         "<form method='post' style='display:grid;gap:1rem;max-width:36rem;'>"
         "<p>Connect to your Alchemy FM broadcast instance. Credentials match "
-        "<code>ADMIN_USERNAME</code> / <code>ADMIN_PASSWORD</code> in Alchemy FM.</p>"
+        "<code>ADMIN_USERNAME</code> / <code>ADMIN_PASSWORD</code> in Alchemy FM. "
+        f"<a href='{html.escape(HELP_DOC_URL)}' target='_blank' rel='noopener noreferrer'>Help</a></p>"
         "<p class='hint'><strong>Cloudflare / public URL:</strong> If Alchemy FM is behind Cloudflare, allow "
         "server-to-server access to <code>/api/admin/*</code> from your AudioMuse host (WAF skip rule or "
         "bypass Bot Fight Mode). Otherwise use a LAN/direct URL that does not go through Cloudflare "
