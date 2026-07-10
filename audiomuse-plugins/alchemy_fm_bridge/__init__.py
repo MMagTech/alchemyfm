@@ -24,8 +24,11 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.3.4"
+PLUGIN_VERSION = "2.3.5"
 PLUGIN_ID = "alchemy_fm_bridge"
+CRON_TASK_LIVING = "refresh_living"
+CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
+CRON_TASK_LABEL = "Alchemy FM"
 
 ALCHEMY_FM_USER_AGENT = (
     "AlchemyFmBridge/2.3 AudioMuse-Plugin (+https://github.com/MMagTech/alchemyfm)"
@@ -651,10 +654,14 @@ def migrate(db) -> None:
         "INSERT INTO cron (name, task_type, cron_expr, enabled) VALUES (%s, %s, %s, FALSE) "
         "ON CONFLICT (task_type) DO NOTHING",
         (
-            f"plugin.{PLUGIN_ID}.refresh_living",
-            f"plugin.{PLUGIN_ID}.refresh_living",
+            CRON_TASK_LABEL,
+            CRON_TASK_TYPE,
             "0 3 * * *",
         ),
+    )
+    cur.execute(
+        "UPDATE cron SET name=%s WHERE task_type=%s",
+        (CRON_TASK_LABEL, CRON_TASK_TYPE),
     )
     # Legacy table from v1 — keep for upgrades
     profiles = table("profiles")
@@ -2377,9 +2384,85 @@ def settings():
     return render_page(body, title="Alchemy FM Bridge Settings")
 
 
+def _patch_cron_scheduled_tasks_label() -> None:
+    """Show a friendly label on AudioMuse Administration → Scheduled Tasks."""
+    try:
+        from flask import Response
+        import app_cron
+        from plugin.manager import plugin_manager
+
+        original = plugin_manager.available_cron_tasks
+
+        def available_cron_tasks():
+            items = original()
+            patched: list[dict[str, str]] = []
+            for item in items:
+                if item.get("task_type") == CRON_TASK_TYPE:
+                    patched.append(
+                        {
+                            "task_type": CRON_TASK_TYPE,
+                            "plugin": CRON_TASK_LABEL,
+                            "task": "",
+                        }
+                    )
+                else:
+                    patched.append(item)
+            return patched
+
+        plugin_manager.available_cron_tasks = available_cron_tasks
+
+        original_page = app_cron.cron_bp.view_functions.get("cron_page")
+        if original_page is None:
+            return
+
+        label_script = (
+            "<script>"
+            "(function(){"
+            f"var needle={json.dumps(CRON_TASK_TYPE)};"
+            f"var label={json.dumps(CRON_TASK_LABEL)};"
+            "function fixLabels(){"
+            "document.querySelectorAll('#plugin-cron-list label').forEach(function(el){"
+            "if(el.dataset.afmFixed)return;"
+            "if(el.textContent.indexOf(needle)!==-1){"
+            "el.textContent=label;el.dataset.afmFixed='1';"
+            "}});"
+            "}"
+            "document.addEventListener('DOMContentLoaded',function(){"
+            "fixLabels();"
+            "var list=document.getElementById('plugin-cron-list');"
+            "if(list)new MutationObserver(fixLabels).observe(list,{childList:true,subtree:true});"
+            "});"
+            "})();"
+            "</script>"
+        )
+
+        def cron_page():
+            result = original_page()
+            if isinstance(result, str) and label_script not in result:
+                lower = result.lower()
+                idx = lower.rfind("</body>")
+                if idx != -1:
+                    return result[:idx] + label_script + result[idx:]
+                return result + label_script
+            if isinstance(result, Response):
+                body = result.get_data(as_text=True)
+                if label_script not in body:
+                    lower = body.lower()
+                    idx = lower.rfind("</body>")
+                    if idx != -1:
+                        body = body[:idx] + label_script + body[idx:]
+                        result.set_data(body)
+            return result
+
+        app_cron.cron_bp.view_functions["cron_page"] = cron_page
+    except Exception:
+        logger.exception("alchemy_fm_bridge: could not patch cron task label")
+
+
 def register(ctx):
     ctx.on_install(migrate)
     ctx.add_blueprint(bp)
     ctx.add_menu_item("Alchemy FM", "alchemy_fm_bridge.home", admin_only=True)
     ctx.on_song_analyzed(on_song_analyzed)
-    ctx.add_cron_task("refresh_living", refresh_living_channels)
+    ctx.on_flask_start(_patch_cron_scheduled_tasks_label)
+    ctx.add_cron_task(CRON_TASK_LIVING, refresh_living_channels)
