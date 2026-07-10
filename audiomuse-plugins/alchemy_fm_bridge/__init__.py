@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.1.5"
+PLUGIN_VERSION = "3.1.6"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1068,12 +1068,30 @@ def _chat_playlist_tracks(prompt: str, *, limit: int = CHAT_PLAYLIST_LIMIT) -> l
         raise ChannelDesignerError("Describe your station in at least 8 characters.")
     data = audiomuse_post(
         "/chat/api/chatPlaylist",
-        {"prompt": prompt, "limit": limit},
+        {"userInput": prompt},
     )
     results = None
     if isinstance(data, dict):
-        results = data.get("results") or data.get("tracks") or data.get("playlist")
-    return _track_rows_from_results(results)
+        if data.get("error"):
+            raise ChannelDesignerError(str(data["error"]))
+        response = data.get("response")
+        if isinstance(response, dict):
+            if response.get("message") and response.get("ai_provider_used") == "NONE":
+                raise ChannelDesignerError(
+                    "AudioMuse chat AI is not configured. Set an AI provider in AudioMuse settings."
+                )
+            results = response.get("query_results")
+        if results is None:
+            results = (
+                data.get("query_results")
+                or data.get("results")
+                or data.get("tracks")
+                or data.get("playlist")
+            )
+    rows = _track_rows_from_results(results)
+    if limit and len(rows) > limit:
+        return rows[:limit]
+    return rows
 
 
 def channel_profile_to_alchemy_payload(profile: dict[str, Any], tracks: list[dict[str, Any]]) -> dict[str, Any]:
