@@ -255,6 +255,8 @@ def admin_login_page_alias():
 @app.get("/admin/knowledge.html")
 def admin_knowledge_page(request: Request):
     if not settings.knowledge_feature:
+        if admin_user_from_request(request):
+            return RedirectResponse(url="/admin.html?knowledge=disabled", status_code=302)
         raise HTTPException(status_code=404, detail="Not found")
     if not admin_auth_enabled():
         raise HTTPException(

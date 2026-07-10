@@ -648,7 +648,19 @@
     fetch('/api/health').then(r => r.json()).then(h => {
       const link = document.getElementById('admin-knowledge-link');
       if (link && h.knowledge_feature) link.hidden = false;
+      const knowledgeHelp = document.getElementById('admin-help-knowledge');
+      if (knowledgeHelp && !h.knowledge_feature) knowledgeHelp.hidden = true;
     }).catch(() => {});
+
+    const knowledgeNotice = new URLSearchParams(window.location.search).get('knowledge');
+    if (knowledgeNotice === 'disabled') {
+      RadioApp.showAdminToast(
+        'Knowledge is disabled. Set KNOWLEDGE_FEATURE=true in .env and restart the backend.',
+        'error',
+        10000
+      );
+      history.replaceState(null, '', window.location.pathname);
+    }
 
     const adminHelpDialog = document.getElementById('admin-help-dialog');
     function openAdminHelp() {
