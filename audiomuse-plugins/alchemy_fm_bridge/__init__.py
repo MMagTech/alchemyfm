@@ -24,7 +24,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.3.8"
+PLUGIN_VERSION = "2.3.9"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1460,16 +1460,27 @@ def _page_styles() -> str:
   padding: 0.45rem 0.6rem;
 }
 .afm-panel .hint {
-  margin: 0.5rem 0 0;
+  margin: 0.55rem 0 0;
   color: var(--muted, #94a3b8);
   font-size: 0.84rem;
   line-height: 1.6;
 }
 .afm-panel .hint + .afm-check-group { margin-top: 1rem; }
+.afm-deploy-tail {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  margin-top: 0.2rem;
+}
+.afm-deploy-tail .afm-field-grid-3,
+.afm-deploy-tail .afm-check-group,
+.afm-deploy-tail .afm-form-actions {
+  margin-top: 0;
+}
 .afm-check-group {
   display: flex;
   flex-direction: column;
-  gap: 0.7rem;
+  gap: 0.75rem;
   margin-top: 0.85rem;
 }
 .afm-field { margin-top: 1rem; }
@@ -1495,7 +1506,11 @@ def _page_styles() -> str:
   gap: 0.65rem;
   flex-wrap: wrap;
   margin-top: 1.2rem;
-  padding-top: 0.2rem;
+  padding-top: 0.25rem;
+}
+.afm-deploy-tail .afm-form-actions {
+  padding-top: 0;
+  padding-bottom: 0.1rem;
 }
 .afm-designer-form { display: grid; gap: 0; min-width: 0; }
 .afm-empty { color: var(--muted, #94a3b8); margin: 0; line-height: 1.45; }
@@ -1830,7 +1845,8 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
         f"<select name='refresh_mode'>{_select_options(REFRESH_MODES, str(values.get('refresh_mode', 'similar_to_last')))}</select>"
         "<p class='hint'>For CLAP/lyrics/mood channels, the plugin saves a Song Alchemy anchor from your preview "
         "so Alchemy FM can keep refilling 24/7.</p></div>"
-        + "<div class='afm-field-grid-3 afm-spaced-block'>"
+        + "<div class='afm-deploy-tail'>"
+        "<div class='afm-field-grid-3'>"
         "<div><label>Queue target</label>"
         f"<input type='number' name='queue_target' min='5' max='200' value='{html.escape(str(values.get('queue_target', 30)))}'></div>"
         "<div><label>Refresh below</label>"
@@ -1849,7 +1865,7 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
         f"<button type='submit' name='action' value='push' class='afm-btn afm-btn-primary'>{html.escape(deploy_label)}</button>"
         "<button type='submit' name='action' value='preview' class='afm-btn afm-btn-secondary'>Preview Programming</button>"
         "<button type='submit' name='action' value='test' formnovalidate class='afm-btn afm-btn-secondary'>Test connection</button>"
-        "</div></section>"
+        "</div></div></section>"
     )
 
 
