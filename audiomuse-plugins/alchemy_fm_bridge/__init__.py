@@ -24,7 +24,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.3.12"
+PLUGIN_VERSION = "2.3.13"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1260,14 +1260,11 @@ def _page_styles() -> str:
 .afm-station-meta { margin-top: 0.2rem; font-size: 0.84rem; color: var(--muted, #94a3b8); }
 .afm-programming-type {
   display: block;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted, #94a3b8);
-  margin-bottom: 0.2rem;
+  line-height: 1.4;
+  color: var(--text, inherit);
 }
-.afm-programming-detail { color: var(--text, inherit); }
 .afm-badge-row { display: flex; flex-wrap: nowrap; gap: 0.35rem; align-items: center; }
 .afm-table .afm-badge-row { gap: 0.28rem; }
 .afm-table .afm-badge { font-size: 0.68rem; padding: 0.14rem 0.48rem; }
@@ -2024,7 +2021,7 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
                     profile = json.loads(local[slug][2] or "{}")
                 except json.JSONDecodeError:
                     profile = None
-            type_label, detail, living, has_saved = _programming_detail(profile, station)
+            type_label, _detail, living, has_saved = _programming_detail(profile, station)
             is_editing = slug_key == editing_slug
             row_class = ' class="is-editing"' if is_editing else ""
             on_air_badge = (
@@ -2045,9 +2042,8 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
             rows.append(
                 f"<tr{row_class}>"
                 f"<td><div class='afm-station-primary'>{html.escape(name)}</div>"
-                f"<div class='afm-station-meta'>{html.escape(slug)} · id {station_id}</div></td>"
-                f"<td><span class='afm-programming-type'>{html.escape(type_label)}</span>"
-                f"<span class='afm-programming-detail'>{html.escape(detail or '—')}</span></td>"
+                f"<div class='afm-station-meta'>{html.escape(slug)}</div></td>"
+                f"<td><span class='afm-programming-type'>{html.escape(type_label)}</span></td>"
                 f'<td class="afm-status-cell"><div class="afm-badge-row">{on_air_badge}{profile_badge}'
                 f'<span class="afm-badge afm-badge-queue">{html.escape(queued)} Queued</span>'
                 f"{living_badge}</div></td>"
