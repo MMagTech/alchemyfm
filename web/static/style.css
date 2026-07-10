@@ -2974,12 +2974,11 @@ body.live-station-page .live-mini-player {
   margin: 0;
 }
 
-.admin-table col.col-name { width: 15%; }
-.admin-table col.col-mount { width: 12%; }
-.admin-table col.col-source { width: 9%; }
-.admin-table col.col-queue { width: 13%; }
-.admin-table col.col-status { width: 14%; }
-.admin-table col.col-actions { width: 37%; }
+.admin-table col.col-name { width: 22%; }
+.admin-table col.col-mount { width: 16%; }
+.admin-table col.col-queue { width: 18%; }
+.admin-table col.col-status { width: 18%; }
+.admin-table col.col-actions { width: 10%; }
 
 .admin-table tbody tr {
   border-bottom: 1px solid var(--border);
@@ -3139,6 +3138,14 @@ body.live-station-page .live-mini-player {
 .admin-actions {
   justify-content: flex-end;
   width: 100%;
+}
+
+.admin-actions-ops {
+  justify-content: flex-end;
+}
+
+.admin-actions-ops .btn-sm {
+  min-width: 4.25rem;
 }
 
 .admin-action-menu {
