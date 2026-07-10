@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.3"
+PLUGIN_VERSION = "3.0.4"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -896,13 +896,73 @@ def _search_playlists(query: str) -> list[dict[str, Any]]:
     query = query.strip()
     if len(query) < 2:
         return []
+    for params in ({"query": query}, {"search_query": query, "end": "20"}):
+        try:
+            data = audiomuse_get("/api/search_playlists", params={k: str(v) for k, v in params.items()})
+        except ChannelDesignerError:
+            continue
+        if isinstance(data, list) and data:
+            return [row for row in data if isinstance(row, dict) and row.get("id")]
+    return []
+
+
+def _verify_bootstrap_playlist(playlist_id: str, *, limit: int) -> dict[str, Any]:
+    playlist_id = playlist_id.strip()
+    if not playlist_id:
+        return {"ok": False, "error": "Enter a Navidrome playlist id or pick one from search."}
     try:
-        data = audiomuse_get("/api/search_playlists", params={"search_query": query, "end": "20"})
-    except ChannelDesignerError:
-        return []
-    if not isinstance(data, list):
-        return []
-    return [row for row in data if isinstance(row, dict) and row.get("id")]
+        track_ids = _playlist_track_ids(playlist_id, limit=limit)
+    except ChannelDesignerError as exc:
+        return {"ok": False, "playlist_id": playlist_id, "error": str(exc)}
+    if not track_ids:
+        return {
+            "ok": False,
+            "playlist_id": playlist_id,
+            "error": "Playlist not found or has no playable tracks in AudioMuse.",
+        }
+    return {
+        "ok": True,
+        "playlist_id": playlist_id,
+        "resolved_count": len(track_ids),
+        "limit": limit,
+    }
+
+
+def _bootstrap_feedback_html(check: dict[str, Any] | None) -> str:
+    if not check:
+        return ""
+    if check.get("ok"):
+        count = int(check.get("resolved_count") or 0)
+        limit = int(check.get("limit") or 0)
+        pid = html.escape(str(check.get("playlist_id") or ""))
+        return (
+            "<section class='afm-filter-feedback afm-bootstrap-feedback'>"
+            "<h4 class='afm-filter-feedback-title'>Bootstrap check</h4>"
+            f"<p class='afm-filter-term-ok'>✓ Playlist <strong>{pid}</strong> resolves to "
+            f"<strong>{count}</strong> opener track(s) (limit {limit}).</p>"
+            "</section>"
+        )
+    error = html.escape(str(check.get("error") or "Could not verify playlist."))
+    pid = html.escape(str(check.get("playlist_id") or ""))
+    id_note = f" for <strong>{pid}</strong>" if pid else ""
+    return (
+        "<section class='afm-filter-feedback afm-bootstrap-feedback'>"
+        "<h4 class='afm-filter-feedback-title'>Bootstrap check</h4>"
+        f"<p class='afm-filter-term-warn'>✗ {error}{id_note}</p>"
+        "<p class='hint'>Search Navidrome playlists above and pick a result, or paste a playlist id from "
+        "Navidrome/AudioMuse and click Verify.</p>"
+        "</section>"
+    )
+
+
+def _apply_bootstrap_check(values: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any] | None:
+    bootstrap = profile.get("bootstrap")
+    if not bootstrap or not bootstrap.get("playlist_id"):
+        return None
+    limit = int(bootstrap.get("track_limit") or BOOTSTRAP_TRACK_LIMIT_DEFAULT)
+    check = _verify_bootstrap_playlist(str(bootstrap["playlist_id"]), limit=limit)
+    values["bootstrap_check"] = check
+    return check
 
 
 def _playlist_track_ids(playlist_id: str, *, limit: int) -> list[str]:
@@ -2592,40 +2652,54 @@ def _bootstrap_fields_html(values: dict[str, Any]) -> str:
         for pl in playlist_results:
             pl_id = str(pl.get("id") or "")
             name = pl.get("name") or pl_id or "Playlist"
+            count = pl.get("count")
+            count_s = f" · {count} tracks" if count is not None else ""
             items.append(
                 "<li>"
                 f'<button type="submit" name="pick_bootstrap_playlist" value="{html.escape(pl_id)}" '
                 'formnovalidate class="afm-btn afm-btn-secondary" style="width:100%;text-align:left;">'
-                f"{html.escape(name)}"
+                f"{html.escape(name)}{html.escape(count_s)}"
                 "</button></li>"
             )
         results_html = "<ul class='afm-seed-results'>" + "".join(items) + "</ul>"
+    feedback = _bootstrap_feedback_html(values.get("bootstrap_check"))
     return (
         "<section class='afm-panel afm-bootstrap-panel'>"
         + _panel_heading(
             "Bootstrap Opener",
             "Optional Navidrome playlist cold-start — ongoing programming stays AudioMuse-driven",
         )
-        + "<p class='hint'>Opener tracks play first at deploy; refills use your programming query.</p>"
+        + "<p class='hint'>Opener tracks play first at deploy; refills use your programming query. "
+        "Search and pick a Navidrome playlist, or paste an id and verify it resolves in AudioMuse.</p>"
         + "<div class='afm-check-group'>"
         + "<label class='afm-check-label'><input type='checkbox' name='bootstrap_enabled'"
         + f"{' checked' if bootstrap_enabled else ''}> Use Navidrome Playlist Opener</label>"
         + "</div>"
-        + "<div class='afm-field afm-seed-search-row'>"
-        + f"<input name='bootstrap_playlist_search' class='afm-text-input' placeholder='Search playlists…' "
-        + f"value='{html.escape(str(values.get('bootstrap_playlist_search', '')))}'>"
+        + "<div class='afm-field'>"
+        + _field_label("Search Navidrome Playlists")
+        + "<div class='afm-seed-search-row'>"
+        + f"<input name='bootstrap_playlist_search' class='afm-text-input afm-seed-search-input' "
+        + f"placeholder='Playlist name…' value='{html.escape(str(values.get('bootstrap_playlist_search', '')))}'>"
         + "<button type='submit' name='action' value='search_bootstrap_playlist' formnovalidate "
-        + "class='afm-btn afm-btn-secondary'>Search</button></div>"
-        + f"{results_html}"
+        + "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Search</button>"
+        + "</div>"
+        + f"{results_html}</div>"
         + "<div class='afm-field'>"
         + _field_label("Playlist ID")
-        + f"<input name='bootstrap_playlist_id' class='afm-text-input' "
-        + f"value='{html.escape(str(values.get('bootstrap_playlist_id', '')))}'></div>"
+        + "<div class='afm-seed-search-row'>"
+        + f"<input name='bootstrap_playlist_id' id='bootstrap_playlist_id' class='afm-text-input' "
+        + f"placeholder='From search or Navidrome' "
+        + f"value='{html.escape(str(values.get('bootstrap_playlist_id', '')))}'>"
+        + "<button type='submit' name='action' value='verify_bootstrap_playlist' formnovalidate "
+        + "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Verify</button>"
+        + "</div></div>"
         + "<div class='afm-field'>"
         + _field_label("Opener Track Limit")
         + f"<input type='number' name='bootstrap_track_limit' min='5' max='80' "
         + f"value='{html.escape(str(values.get('bootstrap_track_limit', BOOTSTRAP_TRACK_LIMIT_DEFAULT)))}'>"
-        + "</div></section>"
+        + "</div>"
+        + f"{feedback}"
+        + "</section>"
     )
 
 
@@ -3382,6 +3456,11 @@ def home():
             if pick_bootstrap:
                 values["bootstrap_playlist_id"] = pick_bootstrap
                 values["bootstrap_enabled"] = True
+                limit = max(
+                    5,
+                    min(80, int(request.form.get("bootstrap_track_limit") or BOOTSTRAP_TRACK_LIMIT_DEFAULT)),
+                )
+                values["bootstrap_check"] = _verify_bootstrap_playlist(pick_bootstrap, limit=limit)
 
             pick_seed = (request.form.get("pick_seed") or "").strip()
             if pick_seed:
@@ -3400,6 +3479,15 @@ def home():
             elif action == "search_bootstrap_playlist":
                 values["bootstrap_playlist_results"] = _search_playlists(
                     request.form.get("bootstrap_playlist_search") or ""
+                )
+            elif action == "verify_bootstrap_playlist":
+                limit = max(
+                    5,
+                    min(80, int(request.form.get("bootstrap_track_limit") or BOOTSTRAP_TRACK_LIMIT_DEFAULT)),
+                )
+                values["bootstrap_check"] = _verify_bootstrap_playlist(
+                    request.form.get("bootstrap_playlist_id") or "",
+                    limit=limit,
                 )
             elif action == "search_exclude_artist":
                 values["exclude_artist_results"] = _search_artists(
@@ -3510,6 +3598,7 @@ def home():
                                 "No tracks matched programming (and living pool, if enabled)."
                             )
                         _apply_filter_feedback(values, profile, unfiltered, preview_tracks)
+                        bootstrap_check = _apply_bootstrap_check(values, profile)
                         item_ids = [t["item_id"] for t in preview_tracks]
                         _record_audition(slug, item_ids)
                         if (profile.get("living") or {}).get("enabled"):
@@ -3520,6 +3609,11 @@ def home():
                             "Review below, then deploy to Alchemy FM.",
                             "ok",
                         )
+                        if bootstrap_check and not bootstrap_check.get("ok"):
+                            flash += _flash_html(
+                                f"Bootstrap warning: {bootstrap_check.get('error')}",
+                                "error",
+                            )
                     elif action == "push":
                         unfiltered = _merged_programming_tracks_unfiltered(profile, slug)
                         preview_tracks = apply_track_filters(unfiltered, profile)
@@ -3528,6 +3622,11 @@ def home():
                                 "No tracks to deploy. Preview programming first or broaden your criteria."
                             )
                         _apply_filter_feedback(values, profile, unfiltered, preview_tracks)
+                        bootstrap_check = _apply_bootstrap_check(values, profile)
+                        if bootstrap_check and not bootstrap_check.get("ok"):
+                            raise ChannelDesignerError(
+                                bootstrap_check.get("error") or "Bootstrap playlist could not be verified."
+                            )
                         payload = channel_profile_to_alchemy_payload(profile, preview_tracks)
                         slug = payload["slug"]
                         item_ids = [t["item_id"] for t in preview_tracks]
