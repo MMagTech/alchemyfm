@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.5"
+PLUGIN_VERSION = "3.0.6"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -310,26 +310,26 @@ def audiomuse_post(path: str, payload: dict[str, Any], *, timeout: float = 120.0
 # ---------------------------------------------------------------------------
 
 PROGRAMMING_TYPES = (
-    ("clap_query", "Sonic vibe (CLAP text search)"),
-    ("lyrics_query", "Lyrics theme (semantic)"),
-    ("mood_centroid", "Mood cluster"),
-    ("alchemy_anchor", "Song Alchemy anchor"),
-    ("similar_seed", "Similar to seed track"),
+    ("clap_query", "Sonic Vibe (CLAP Text Search)"),
+    ("lyrics_query", "Lyrics Theme (Semantic)"),
+    ("mood_centroid", "Mood Cluster"),
+    ("alchemy_anchor", "Song Alchemy Anchor"),
+    ("similar_seed", "Similar to Seed Track"),
 )
 
 PROGRAMMING_TYPE_LABELS = {key: label for key, label in PROGRAMMING_TYPES}
 PROGRAMMING_TYPE_LABELS.update(
     {
-        "clap_query": "Sonic vibe (CLAP)",
-        "lyrics_query": "Lyrics theme",
-        "mood_centroid": "Mood cluster",
+        "clap_query": "Sonic Vibe (CLAP)",
+        "lyrics_query": "Lyrics Theme",
+        "mood_centroid": "Mood Cluster",
     }
 )
 
 REFRESH_MODES = (
-    ("similar_to_last", "Similar to last played (recommended)"),
-    ("similar_to_seed", "Similar to programming seed"),
-    ("source_only", "Stay in source pool (allow repeats)"),
+    ("similar_to_last", "Similar to Last Played (Recommended)"),
+    ("similar_to_seed", "Similar to Programming Seed"),
+    ("source_only", "Stay in Source Pool (Allow Repeats)"),
 )
 
 DIRECT_ALCHEMY_TYPES = frozenset({"alchemy_anchor", "similar_seed"})
@@ -765,7 +765,7 @@ def _filter_feedback_html(report: dict[str, Any] | None) -> str:
     removed = max(0, before - after)
     lines = [
         "<section class='afm-filter-feedback'>",
-        "<h4 class='afm-filter-feedback-title'>Filter check (last preview)</h4>",
+        "<h4 class='afm-filter-feedback-title'>Filter Check (Last Preview)</h4>",
         f"<p class='hint'>Pool before filters: <strong>{before}</strong> → after filters: "
         f"<strong>{after}</strong>"
         + (f" ({removed} removed)" if removed else "")
@@ -937,7 +937,7 @@ def _bootstrap_feedback_html(check: dict[str, Any] | None) -> str:
         pid = html.escape(str(check.get("playlist_id") or ""))
         return (
             "<section class='afm-filter-feedback afm-bootstrap-feedback'>"
-            "<h4 class='afm-filter-feedback-title'>Bootstrap check</h4>"
+            "<h4 class='afm-filter-feedback-title'>Bootstrap Check</h4>"
             f"<p class='afm-filter-term-ok'>✓ Playlist <strong>{pid}</strong> resolves to "
             f"<strong>{count}</strong> opener track(s) (limit {limit}).</p>"
             "</section>"
@@ -947,7 +947,7 @@ def _bootstrap_feedback_html(check: dict[str, Any] | None) -> str:
     id_note = f" for <strong>{pid}</strong>" if pid else ""
     return (
         "<section class='afm-filter-feedback afm-bootstrap-feedback'>"
-        "<h4 class='afm-filter-feedback-title'>Bootstrap check</h4>"
+        "<h4 class='afm-filter-feedback-title'>Bootstrap Check</h4>"
         f"<p class='afm-filter-term-warn'>✗ {error}{id_note}</p>"
         "<p class='hint'>Search Navidrome playlists above and pick a result, or paste a playlist id from "
         "Navidrome/AudioMuse and click Verify.</p>"
@@ -1802,7 +1802,7 @@ def _designer_flow_overview_html() -> str:
         "<li><strong>Playback rules</strong> — what happens when the pool runs low.</li>"
         "<li><strong>Deploy</strong> — creates or updates the station on Alchemy FM.</li>"
         "</ol>"
-        "<p class='hint'>Discover Channels and Chat designer are shortcuts for ideas — they do not deploy by themselves.</p>"
+        "<p class='hint'>Discover Channels (collapsed helper below) and Chat Designer prefills ideas only — they do not deploy by themselves.</p>"
         "</section>"
     )
 
@@ -1818,7 +1818,7 @@ def _page_header_html() -> str:
 
 
 def _field_label(text: str, *, mandatory: bool = False) -> str:
-    suffix = " (mandatory)" if mandatory else ""
+    suffix = " (Mandatory)" if mandatory else ""
     return f"<label>{html.escape(text)}{suffix}</label>"
 
 def _page_styles() -> str:
@@ -1917,10 +1917,10 @@ def _page_styles() -> str:
 .afm-table th {
   text-align: left;
   padding: 0.65rem 0.85rem;
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--muted, #94a3b8);
   border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.12));
   white-space: nowrap;
@@ -2010,6 +2010,7 @@ def _page_styles() -> str:
   text-decoration: none;
   line-height: 1.25;
   white-space: nowrap;
+  text-transform: none;
   transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease, color 0.15s ease;
 }
 .afm-btn:hover {
@@ -2070,10 +2071,10 @@ def _page_styles() -> str:
 }
 .afm-edit-eyebrow {
   display: block;
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--muted, #94a3b8);
   margin-bottom: 0.25rem;
 }
@@ -2105,10 +2106,10 @@ def _page_styles() -> str:
 .afm-panel-heading { margin: 0 0 0.85rem; }
 .afm-panel-title {
   margin: 0;
-  font-size: 0.72rem;
+  font-size: 0.88rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--muted, #94a3b8);
 }
 .afm-panel-note {
@@ -2174,16 +2175,73 @@ def _page_styles() -> str:
   border-style: dashed;
   background: transparent;
 }
+.afm-collapsible-helper {
+  border-style: dashed;
+  background: transparent;
+  padding: 0;
+}
+.afm-collapsible-helper > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem 1.15rem;
+}
+.afm-collapsible-helper > summary::-webkit-details-marker { display: none; }
+.afm-collapsible-helper > summary::before {
+  content: "▸";
+  flex: 0 0 auto;
+  margin-top: 0.15rem;
+  color: var(--muted, #94a3b8);
+  transition: transform 0.15s ease;
+}
+.afm-collapsible-helper[open] > summary::before {
+  transform: rotate(90deg);
+}
+.afm-collapsible-helper[open] > summary {
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+}
+.afm-collapsible-body {
+  padding: 0.85rem 1.15rem 1.15rem;
+}
+.afm-helper-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.22rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #cbd5e1;
+  background: color-mix(in srgb, #64748b 18%, transparent);
+  border: 1px solid color-mix(in srgb, #64748b 30%, transparent);
+}
+.afm-collapsible-title {
+  display: block;
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--text, inherit);
+}
+.afm-collapsible-hint {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--muted, #94a3b8);
+}
 .afm-form-actions-inline {
   margin: 0;
   padding-top: 0.15rem;
 }
 .afm-panel label {
   display: block;
-  font-size: 0.72rem;
+  font-size: 0.82rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--muted, #94a3b8);
   margin-bottom: 0.35rem;
 }
@@ -2618,16 +2676,16 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
             "Defines what music fits this station. Alchemy FM re-runs this query when the queue needs more tracks.",
         )
         + "<div class='afm-field'>"
-        + _field_label("Programming type", mandatory=True)
+        + _field_label("Programming Type", mandatory=True)
         + f"<select name='programming_type' id='programming_type' class='afm-select'>"
         + f"{_select_options(PROGRAMMING_TYPES, ptype)}</select></div>"
         + f"<div id='field-clap' class='afm-field'{hidden('clap_query')}>"
-        + _field_label("Sonic vibe (describe the sound)", mandatory=True)
+        + _field_label("Sonic Vibe (Describe the Sound)", mandatory=True)
         + f"<input name='clap_query' class='afm-text-input' placeholder='e.g. late night rock' "
         + f"value='{html.escape(str(values.get('clap_query', '')))}'>"
         + "<p class='hint'>Uses CLAP text-to-audio search across your analyzed library.</p></div>"
         + f"<div id='field-lyrics' class='afm-field'{hidden('lyrics_query')}>"
-        + _field_label("Lyrics theme", mandatory=True)
+        + _field_label("Lyrics Theme", mandatory=True)
         + f"<input name='lyrics_query' class='afm-text-input' placeholder='e.g. songs about the open road' "
         + f"value='{html.escape(str(values.get('lyrics_query', '')))}'>"
         + "<p class='hint'>Semantic lyrics search — meaning and themes, not just keywords.</p></div>"
@@ -2645,10 +2703,10 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
         + "<p class='hint' style='grid-column:1/-1;'>Each mood has sub-clusters from your library analysis — pick one that matches "
         + "the vibe (tags show the dominant traits in that cluster).</p></div>"
         + f"<div id='field-anchor' class='afm-field'{hidden('alchemy_anchor')}>"
-        + _field_label("Song Alchemy anchor", mandatory=True)
+        + _field_label("Song Alchemy Anchor", mandatory=True)
         + f"<select name='anchor_id' class='afm-select'>{''.join(anchor_opts)}</select></div>"
         + f"<div id='field-seed' class='afm-field afm-seed-field'{hidden('similar_seed')}>"
-        + _field_label("Search seed track")
+        + _field_label("Search Seed Track")
         + "<div class='afm-seed-search-row'>"
         + f"<input name='seed_search' class='afm-text-input afm-seed-search-input' "
         + f"placeholder='Title or artist…' value='{html.escape(str(values.get('seed_search', '')))}'>"
@@ -2658,12 +2716,12 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
         + "<p class='hint'>Search your library and pick a result, or enter a track item id below.</p>"
         + f"{seed_results_html}"
         + "<div class='afm-seed-id-field'>"
-        + _field_label("Track item id", mandatory=True)
+        + _field_label("Track Item ID", mandatory=True)
         + f"<input name='seed_id' class='afm-text-input' placeholder='Filled when you pick a search result' "
         + f"value='{html.escape(str(values.get('seed_id', '')))}'>"
         + "</div></div>"
         + "<div class='afm-field'>"
-        + _field_label("Preview size")
+        + _field_label("Preview Size")
         + f"<input type='number' name='preview_limit' min='10' max='80' value='{html.escape(str(values.get('preview_limit', PREVIEW_LIMIT_DEFAULT)))}'>"
         + "</div></section>"
     )
@@ -2695,22 +2753,22 @@ def _filters_fields_html(values: dict[str, Any], *, mood_labels: list[str] | Non
         )
         + "<p class='hint'>Applies to preview and living auto-add/cron. Genre and mood must match analyzed metadata exactly.</p>"
         + "<div class='afm-field-grid'>"
-        "<div><label>Tempo min (BPM)</label>"
+        "<div><label>Tempo Min (BPM)</label>"
         f"<input type='number' name='filter_tempo_min' min='0' step='1' "
         f"value='{html.escape(str(values.get('filter_tempo_min', '')))}' placeholder='any'></div>"
-        "<div><label>Tempo max (BPM)</label>"
+        "<div><label>Tempo Max (BPM)</label>"
         f"<input type='number' name='filter_tempo_max' min='0' step='1' "
         f"value='{html.escape(str(values.get('filter_tempo_max', '')))}' placeholder='any'></div>"
-        "<div><label>Energy min (0–1)</label>"
+        "<div><label>Energy Min (0–1)</label>"
         f"<input type='number' name='filter_energy_min' min='0' max='1' step='0.01' "
         f"value='{html.escape(str(values.get('filter_energy_min', '')))}' placeholder='any'></div>"
-        "<div><label>Energy max (0–1)</label>"
+        "<div><label>Energy Max (0–1)</label>"
         f"<input type='number' name='filter_energy_max' min='0' max='1' step='0.01' "
         f"value='{html.escape(str(values.get('filter_energy_max', '')))}' placeholder='any'></div>"
-        "<div><label>Year min</label>"
+        "<div><label>Year Min</label>"
         f"<input type='number' name='filter_year_min' min='1900' max='2100' step='1' "
         f"value='{html.escape(str(values.get('filter_year_min', '')))}' placeholder='any'></div>"
-        "<div><label>Year max</label>"
+        "<div><label>Year Max</label>"
         f"<input type='number' name='filter_year_max' min='1900' max='2100' step='1' "
         f"value='{html.escape(str(values.get('filter_year_max', '')))}' placeholder='any'></div>"
         "</div>"
@@ -2772,7 +2830,7 @@ def _bootstrap_fields_html(values: dict[str, Any]) -> str:
         "<section class='afm-panel afm-bootstrap-panel afm-step-panel'>"
         + _step_panel_heading(
             "Optional",
-            "Bootstrap opener",
+            "Bootstrap Opener",
             "A Navidrome playlist that plays first at deploy only. After that, Step 2 programming takes over.",
             optional=True,
         )
@@ -2818,12 +2876,12 @@ def _chat_designer_fields_html(values: dict[str, Any]) -> str:
         )
         + "<p class='hint'>Slow LLM call. Use for initial ideas, then set programming above and preview.</p>"
         + "<div class='afm-field'>"
-        + _field_label("Describe your station")
+        + _field_label("Describe Your Station")
         + f"<textarea name='chat_prompt' rows='3' class='afm-text-input' "
         + f"placeholder='e.g. upbeat 80s synthpop for a morning commute'>{html.escape(str(values.get('chat_prompt', '')))}</textarea>"
         + "</div>"
         + "<button type='submit' name='action' value='chat_preview' formnovalidate "
-        + "class='afm-btn afm-btn-secondary'>Generate playlist preview</button>"
+        + "class='afm-btn afm-btn-secondary'>Generate Playlist Preview</button>"
         + f"<input type='hidden' name='design_notes' value='{html.escape(str(values.get('design_notes', '')))}'>"
         + "</section>"
     )
@@ -2834,7 +2892,7 @@ def _discover_channels_html() -> str:
     task_note = ""
     if task:
         status = task.get("status") or task.get("state") or "unknown"
-        task_note = f"<p class='hint'>Last clustering task: {html.escape(str(status))}</p>"
+        task_note = f"<p class='hint'>Last Clustering Task: {html.escape(str(status))}</p>"
     playlists = _clustering_playlists()
     rows: list[str] = []
     for pl in playlists[:24]:
@@ -2842,15 +2900,15 @@ def _discover_channels_html() -> str:
         name = str(pl.get("name") or pl_id or "Cluster playlist")
         mood = str(pl.get("mood") or pl.get("description") or "")
         if not mood and pl.get("track_count"):
-            mood = f"{int(pl['track_count'])} tracks"
+            mood = f"{int(pl['track_count'])} Tracks"
         deploy_query = name
         rows.append(
             "<tr>"
             f"<td>{html.escape(name)}</td>"
             f"<td>{html.escape(mood[:80])}</td>"
             f'<td><button type="submit" name="discover_deploy" value="{html.escape(pl_id)}" '
-            f'form="afm-discover-form" formnovalidate class="afm-btn afm-btn-secondary">'
-            "Use in designer</button></td>"
+            'formnovalidate class="afm-btn afm-btn-secondary">'
+            "Use in Designer</button></td>"
             f'<td><input type="hidden" name="discover_query_{html.escape(pl_id)}" '
             f'value="{html.escape(deploy_query)}"></td>'
             "</tr>"
@@ -2860,24 +2918,28 @@ def _discover_channels_html() -> str:
         if not rows
         else (
             '<div class="afm-table-wrap"><table class="afm-table">'
-            "<thead><tr><th>Playlist</th><th>Mood / notes</th><th>Action</th><th></th></tr></thead>"
+            "<thead><tr><th>Playlist</th><th>Mood / Notes</th><th>Action</th><th></th></tr></thead>"
             "<tbody>"
             + "".join(rows)
             + "</tbody></table></div>"
         )
     )
     return (
-        '<section class="afm-section" id="discover">'
-        '<div class="afm-section-head">'
-        "<div><h2 class='afm-section-title'>Discover Channels</h2>"
-        "<p class='afm-section-note'>Browse AudioMuse clustering playlists. "
-        "<strong>Use in designer</strong> only prefills a CLAP text query from the cluster name — "
-        "it does not import cluster tracks or deploy a station.</p></div>"
-        '<form method="post" id="afm-discover-form" style="margin:0;">'
+        '<details class="afm-panel afm-collapsible-helper" id="discover">'
+        "<summary>"
+        '<span class="afm-helper-badge">Helper</span>'
+        '<span><span class="afm-collapsible-title">Discover Channels</span>'
+        '<span class="afm-collapsible-hint">Browse clustering playlists. '
+        "<strong>Use in Designer</strong> prefills Step 2 with a CLAP query from the cluster name — "
+        "it does not import cluster tracks or deploy.</span></span>"
+        "</summary>"
+        '<div class="afm-collapsible-body">'
+        '<div class="afm-form-actions afm-form-actions-inline" style="margin-bottom:0.75rem;">'
         '<button type="submit" name="action" value="start_clustering" formnovalidate '
-        'class="afm-btn afm-btn-secondary">Run clustering</button>'
-        "</form></div>"
-        f"{task_note}{table}</section>"
+        'class="afm-btn afm-btn-secondary">Run Clustering</button>'
+        "</div>"
+        f"{task_note}{table}"
+        "</div></details>"
     )
 
 
@@ -2896,7 +2958,7 @@ def _living_fields_html(values: dict[str, Any]) -> str:
         "<section class='afm-panel afm-step-panel'>"
         + _step_panel_heading(
             "Optional",
-            "Living channel",
+            "Living Channel",
             "Let this station's track pool grow as new songs are analyzed. Requires Scheduled Tasks → Alchemy FM.",
             optional=True,
         )
@@ -2905,11 +2967,11 @@ def _living_fields_html(values: dict[str, Any]) -> str:
         f"{pool_note}"
         "<div class='afm-check-group'>"
         "<label class='afm-check-label'><input type='checkbox' name='living_enabled'"
-        f"{' checked' if living_enabled else ''}> Enable living channel</label>"
+        f"{' checked' if living_enabled else ''}> Enable Living Channel</label>"
         "<label class='afm-check-label'><input type='checkbox' name='living_auto_add'"
-        f"{' checked' if auto_add else ''}> Auto-add new analyzed songs that pass filters</label>"
+        f"{' checked' if auto_add else ''}> Auto-Add New Analyzed Songs That Pass Filters</label>"
         "<label class='afm-check-label'><input type='checkbox' name='living_auto_refresh'"
-        f"{' checked' if auto_refresh else ''}> Refresh: re-score pool and push to Alchemy FM</label>"
+        f"{' checked' if auto_refresh else ''}> Refresh: Re-Score Pool and Push to Alchemy FM</label>"
         "</div>"
         "</section>"
     )
@@ -2955,7 +3017,7 @@ def _station_identity_fields_html(values: dict[str, Any]) -> str:
             "What listeners see on Alchemy FM — name, URL mount, and homepage description. Does not affect track selection.",
         )
         + "<div class='afm-field'>"
-        + _field_label("Channel name", mandatory=True)
+        + _field_label("Channel Name", mandatory=True)
         + f"<input name='name' required value='{html.escape(str(values.get('name', '')))}'></div>"
         + "<div class='afm-field'>"
         + _field_label("Slug")
@@ -2968,7 +3030,7 @@ def _station_identity_fields_html(values: dict[str, Any]) -> str:
         + "placeholder='Short homepage blurb (max 120 characters)'>"
         + f"{html.escape(str(values.get('description', '')))}</textarea></div>"
         + "<div class='afm-field'>"
-        + _field_label("Icecast mount")
+        + _field_label("Icecast Mount")
         + f"<input name='icecast_mount' placeholder='/channel-slug' value='{html.escape(str(values.get('icecast_mount', '')))}'>"
         + "<p class='hint'>Listen URL path, e.g. /yachtrock</p>"
         + "</div></section>"
@@ -2995,23 +3057,23 @@ def _playback_rules_fields_html(values: dict[str, Any]) -> str:
         "<section class='afm-panel afm-step-panel'>"
         + _step_panel_heading(
             "Step 5",
-            "24/7 playback rules",
+            "24/7 Playback Rules",
             "Controls how Alchemy FM refills the queue when tracks run low — not the initial vibe (that is Step 2).",
         )
         + "<div class='afm-field'>"
-        + _field_label("When pool runs low")
+        + _field_label("When Pool Runs Low")
         + f"<select name='refresh_mode' class='afm-select'>{_select_options(REFRESH_MODES, str(values.get('refresh_mode', 'similar_to_last')))}</select>"
-        + "<p class='hint'><strong>Similar to last played</strong> drifts with each track. "
-        "<strong>Similar to seed</strong> stays near one anchor track. "
-        "<strong>Stay in source pool</strong> reuses imported tracks.</p></div>"
+        + "<p class='hint'><strong>Similar to Last Played</strong> drifts with each track. "
+        "<strong>Similar to Programming Seed</strong> stays near one anchor track. "
+        "<strong>Stay in Source Pool</strong> reuses imported tracks.</p></div>"
         + "<div class='afm-field-grid-3'>"
-        + "<div><label>Queue target</label>"
+        + "<div><label>Queue Target</label>"
         + f"<input type='number' name='queue_target' min='5' max='200' value='{html.escape(str(values.get('queue_target', 30)))}'>"
         + "<p class='hint'>Tracks to keep queued</p></div>"
-        + "<div><label>Refresh below</label>"
+        + "<div><label>Refresh Below</label>"
         + f"<input type='number' name='refresh_threshold' min='1' max='100' value='{html.escape(str(values.get('refresh_threshold', 10)))}'>"
         + "<p class='hint'>Refill when queue drops under this</p></div>"
-        + "<div><label>Artist separation (min)</label>"
+        + "<div><label>Artist Separation (Min)</label>"
         + f"<input type='number' name='artist_separation_minutes' min='0' value='{html.escape(str(values.get('artist_separation_minutes', 90)))}'>"
         + "<p class='hint'>Min minutes before same artist</p></div>"
         + "</div></section>"
@@ -3020,7 +3082,7 @@ def _playback_rules_fields_html(values: dict[str, Any]) -> str:
 
 def _deploy_actions_fields_html(values: dict[str, Any]) -> str:
     editing_slug = (values.get("editing_slug") or "").strip()
-    deploy_label = "Save changes to Alchemy FM" if editing_slug else "Deploy to Alchemy FM"
+    deploy_label = "Save Changes to Alchemy FM" if editing_slug else "Deploy to Alchemy FM"
     return (
         "<section class='afm-panel afm-step-panel afm-deploy-panel'>"
         + _step_panel_heading(
@@ -3030,14 +3092,14 @@ def _deploy_actions_fields_html(values: dict[str, Any]) -> str:
         )
         + "<div class='afm-check-group'>"
         + "<label class='afm-check-label'><input type='checkbox' name='enabled'"
-        + f"{' checked' if values.get('enabled', True) else ''}> Start on air after push</label>"
+        + f"{' checked' if values.get('enabled', True) else ''}> Start On Air After Push</label>"
         + "<label class='afm-check-label'><input type='checkbox' name='bootstrap_queue'"
-        + f"{' checked' if values.get('bootstrap_queue', True) else ''}> Bootstrap queue immediately</label>"
+        + f"{' checked' if values.get('bootstrap_queue', True) else ''}> Bootstrap Queue Immediately</label>"
         + "</div>"
         + f"<input type='hidden' name='saved_anchor_id' value='{html.escape(str(values.get('saved_anchor_id', '')))}'>"
         + "<div class='afm-form-actions'>"
         + f"<button type='submit' name='action' value='push' class='afm-btn afm-btn-primary'>{html.escape(deploy_label)}</button>"
-        + "<button type='submit' name='action' value='test' formnovalidate class='afm-btn afm-btn-secondary'>Test connection</button>"
+        + "<button type='submit' name='action' value='test' formnovalidate class='afm-btn afm-btn-secondary'>Test Connection</button>"
         + "</div></section>"
     )
 
@@ -3105,15 +3167,15 @@ def _edit_toolbar_html(values: dict[str, Any]) -> str:
     id_note = f" · id {station_id}" if station_id else ""
     op_buttons = ""
     if station_id:
-        on_label = "Take off air" if values.get("edit_on_air") else "Put on air"
+        on_label = "Take Off Air" if values.get("edit_on_air") else "Put On Air"
         op_buttons = (
             f'<form method="post" style="margin:0;display:inline;">'
             f'<input type="hidden" name="editing_slug" value="{html.escape(editing_slug)}">'
             f'<input type="hidden" name="op_station_id" value="{int(station_id)}">'
             '<button type="submit" name="action" value="op_refresh_queue" formnovalidate '
-            'class="afm-btn afm-btn-secondary">Refresh queue</button>'
+            'class="afm-btn afm-btn-secondary">Refresh Queue</button>'
             '<button type="submit" name="action" value="op_bootstrap" formnovalidate '
-            'class="afm-btn afm-btn-secondary">Rebuild pool</button>'
+            'class="afm-btn afm-btn-secondary">Rebuild Pool</button>'
             '<button type="submit" name="action" value="op_rebuild_m3u" formnovalidate '
             'class="afm-btn afm-btn-secondary">Rebuild M3U</button>'
             f'<button type="submit" name="action" value="op_toggle_enabled" formnovalidate '
@@ -3124,15 +3186,15 @@ def _edit_toolbar_html(values: dict[str, Any]) -> str:
             f'<input type="hidden" name="op_station_id" value="{int(station_id)}">'
             '<input type="file" name="artwork_file" accept="image/*" style="max-width:10rem;">'
             '<button type="submit" name="action" value="op_upload_artwork" formnovalidate '
-            'class="afm-btn afm-btn-secondary">Upload art</button>'
+            'class="afm-btn afm-btn-secondary">Upload Art</button>'
             '<button type="submit" name="action" value="op_delete_artwork" formnovalidate '
-            'class="afm-btn afm-btn-secondary">Remove art</button>'
+            'class="afm-btn afm-btn-secondary">Remove Art</button>'
             "</form>"
         )
     return (
         f'<div class="afm-edit-bar" id="designer">'
         "<div>"
-        '<span class="afm-edit-eyebrow">Editing station</span>'
+        '<span class="afm-edit-eyebrow">Editing Station</span>'
         f'<h2 class="afm-edit-title">{html.escape(name)}</h2>'
         '<div class="afm-edit-meta">'
         f'<span class="afm-edit-slug">{html.escape(editing_slug)}{html.escape(id_note)}</span>'
@@ -3145,9 +3207,9 @@ def _edit_toolbar_html(values: dict[str, Any]) -> str:
         f"{op_buttons}"
         f'<a href="{html.escape(url_for("alchemy_fm_bridge.home"))}" class="afm-btn afm-btn-secondary">← All stations</a>'
         '<button type="submit" form="afm-designer-form" name="action" value="new_channel" formnovalidate '
-        'class="afm-btn afm-btn-secondary">New channel</button>'
+        'class="afm-btn afm-btn-secondary">New Channel</button>'
         '<button type="submit" form="afm-designer-form" name="action" value="push" '
-        'class="afm-btn afm-btn-primary">Save changes</button>'
+        'class="afm-btn afm-btn-primary">Save Changes</button>'
         "</div></div>"
     )
 
@@ -3208,7 +3270,7 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
                     f"Err: {html.escape(short)}</span>"
                 )
             edit_href = html.escape(url_for("alchemy_fm_bridge.home", edit=slug) + "#designer")
-            edit_label = "Continue editing" if is_editing else "Edit"
+            edit_label = "Continue Editing" if is_editing else "Edit"
             edit_btn_class = "afm-btn afm-btn-primary" if is_editing else "afm-btn afm-btn-secondary"
             confirm_msg = f"Delete station {name} ({slug})? This removes it from Alchemy FM permanently."
             rows.append(
@@ -3248,7 +3310,7 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
     if not editing_slug:
         new_channel = (
             f'<a href="{html.escape(url_for("alchemy_fm_bridge.home", new="1") + "#designer")}" '
-            'class="afm-btn afm-btn-primary">+ New channel</a>'
+            'class="afm-btn afm-btn-primary">+ New Channel</a>'
         )
     return (
         f'<section class="afm-section" id="stations">'
@@ -3858,6 +3920,7 @@ def home():
         f"{designer_section_open}"
         "<form method='post' id='afm-designer-form' class='afm-designer-form'>"
         f"{_designer_flow_overview_html()}"
+        f"{_discover_channels_html()}"
         f"{_station_identity_fields_html(values)}"
         f"{_programming_fields_html(values)}"
         f"{_preview_step_html()}"
@@ -3876,7 +3939,7 @@ def home():
     if editing_slug:
         main_flow = f"{edit_bar}{designer_form}{stations_html}"
     else:
-        main_flow = f"{stations_html}{_discover_channels_html()}{designer_form}"
+        main_flow = f"{stations_html}{designer_form}"
 
     mood_labels = _audiomuse_mood_labels()
     body = (
