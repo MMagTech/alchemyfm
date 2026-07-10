@@ -18,9 +18,9 @@ Third-party [AudioMuse-AI](https://github.com/NeptuneHub/AudioMuse-AI) plugins m
 | Tempo/energy filters | Narrow preview and living pool by BPM and energy |
 | Living channels | `on_song_analyzed` auto-pool + nightly cron refresh |
 | Audition history | Last 20 preview runs per channel |
-| 24/7 deploy bridge | Blends preview → saves anchor → pushes `alchemy_anchor` station |
+| Live programming deploy | v3+ pushes CLAP/lyrics/mood directly — refills re-query AudioMuse (no frozen anchor required) |
 
-CLAP, lyrics, and mood channels are **auditioned in AudioMuse**, then compiled into a Song Alchemy anchor so Alchemy FM can refill queues around the clock.
+CLAP, lyrics, and mood channels are **previewed in AudioMuse**, then deployed live to Alchemy FM for 24/7 refills.
 
 ### Install
 
@@ -49,13 +49,17 @@ Plugin updates do **not** require pulling new Alchemy FM Docker images — only 
 
 ### Workflow
 
-1. **Settings** — Alchemy FM URL + admin credentials
+**Full step-by-step guide (what is universal vs per-station):** [docs/CHANNEL_DESIGNER_HELP.md](../docs/CHANNEL_DESIGNER_HELP.md)
+
+Short version:
+
+1. **Settings** (once) — Alchemy FM URL + admin credentials; optional AudioMuse API URL for living cron
 2. **Alchemy FM** menu — Channel Designer
-3. Pick programming type (CLAP, lyrics, mood, anchor, or seed)
-4. Optional: set tempo/energy filters and enable **Living channel**
-5. **Preview programming** — review tracks with BPM / energy / mood
-6. **Deploy to Alchemy FM** — creates/updates station + optional bootstrap
-7. Enable **Administration → Scheduled Tasks → Alchemy FM** for nightly pool refresh (task id: `plugin.alchemy_fm_bridge.refresh_living`)
+3. **+ New channel** → pick **programming type** (required)
+4. Optional per station: **filters**, **bootstrap opener**, **living channel**
+5. **Preview programming** — review tracks; fix programming/filters if needed
+6. **Channel + deploy** — name, slug, mount, queue rules → **Deploy to Alchemy FM**
+7. **(Living only)** Enable **Administration → Scheduled Tasks → Alchemy FM** once globally
 
 Operate deployed stations (On/Off, appearance, broadcast encoding) in [Alchemy FM admin](https://github.com/MMagTech/alchemyfm#quick-start-local-docker) — not in the plugin.
 
