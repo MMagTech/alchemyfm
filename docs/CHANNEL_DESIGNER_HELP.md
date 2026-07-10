@@ -224,7 +224,7 @@ Wait for clustering to finish (check **Active Tasks**) before expecting playlist
 
 Collapsed helper at the **top of the form** (before Step 1), alongside Discover Channels. Use when you are not sure what to put in **Step 2 Programming**.
 
-Natural-language ideas via `POST /chat/api/chatPlaylist`. Requires AudioMuse chat/AI configured.
+Natural-language ideas via `POST /chat/api/chatPlaylist` with a `userInput` field. Requires AudioMuse chat/AI configured.
 
 - **Generate Playlist Preview** sets Step 2 to a **Sonic Vibe (CLAP)** query from your prompt and shows Preview Results. Channel name is optional — a draft name is suggested from your description until you deploy.
 - Slow (LLM) — tweak Programming and run **Preview Programming** before deploy.
