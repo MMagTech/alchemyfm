@@ -112,7 +112,7 @@ See [audiomuse-plugins/README.md](../audiomuse-plugins/README.md) for install an
 
 ## CI
 
-Pushes to `master` build and publish Docker images to GHCR (`.github/workflows/docker-publish.yml`). There is no lint/test workflow yet — run manual checks before opening a PR.
+Pushes to `master` build and publish Docker images to GHCR (`.github/workflows/docker-publish.yml`). Changes under `audiomuse-plugins/`, `docs/`, or markdown-only files skip the Docker workflow — plugin updates ship via GitHub raw URLs inside AudioMuse. Use **workflow_dispatch** on the publish workflow to rebuild images manually. There is no lint/test workflow yet — run manual checks before opening a PR.
 
 ## Contributing
 
