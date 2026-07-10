@@ -24,8 +24,11 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.3.3"
+PLUGIN_VERSION = "2.3.6"
 PLUGIN_ID = "alchemy_fm_bridge"
+CRON_TASK_LIVING = "refresh_living"
+CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
+CRON_TASK_LABEL = "Alchemy FM"
 
 ALCHEMY_FM_USER_AGENT = (
     "AlchemyFmBridge/2.3 AudioMuse-Plugin (+https://github.com/MMagTech/alchemyfm)"
@@ -651,10 +654,14 @@ def migrate(db) -> None:
         "INSERT INTO cron (name, task_type, cron_expr, enabled) VALUES (%s, %s, %s, FALSE) "
         "ON CONFLICT (task_type) DO NOTHING",
         (
-            f"plugin.{PLUGIN_ID}.refresh_living",
-            f"plugin.{PLUGIN_ID}.refresh_living",
+            CRON_TASK_LABEL,
+            CRON_TASK_TYPE,
             "0 3 * * *",
         ),
+    )
+    cur.execute(
+        "UPDATE cron SET name=%s WHERE task_type=%s",
+        (CRON_TASK_LABEL, CRON_TASK_TYPE),
     )
     # Legacy table from v1 — keep for upgrades
     profiles = table("profiles")
@@ -1241,6 +1248,8 @@ def _page_styles() -> str:
 }
 .afm-table tbody tr:last-child td { border-bottom: none; }
 .afm-table tbody tr.is-editing { background: color-mix(in srgb, var(--accent, #6366f1) 10%, transparent); }
+.afm-table td.afm-status-cell { white-space: nowrap; }
+.afm-table td.afm-actions-cell { white-space: nowrap; }
 .afm-station-primary { font-weight: 600; color: var(--text, inherit); line-height: 1.35; }
 .afm-station-meta { margin-top: 0.2rem; font-size: 0.84rem; color: var(--muted, #94a3b8); }
 .afm-programming-type {
@@ -1253,7 +1262,9 @@ def _page_styles() -> str:
   margin-bottom: 0.2rem;
 }
 .afm-programming-detail { color: var(--text, inherit); }
-.afm-badge-row { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+.afm-badge-row { display: flex; flex-wrap: nowrap; gap: 0.35rem; align-items: center; }
+.afm-table .afm-badge-row { gap: 0.28rem; }
+.afm-table .afm-badge { font-size: 0.68rem; padding: 0.14rem 0.48rem; }
 .afm-badge {
   display: inline-flex;
   align-items: center;
@@ -1306,24 +1317,48 @@ def _page_styles() -> str:
   background: var(--field, rgba(255, 255, 255, 0.06));
   color: var(--text, inherit);
   font: inherit;
+  font-weight: 500;
   cursor: pointer;
   text-decoration: none;
   line-height: 1.25;
   white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease, color 0.15s ease;
 }
-.afm-btn:hover { filter: brightness(1.08); }
+.afm-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.22);
+}
+.afm-btn:active { transform: translateY(0); box-shadow: none; }
 .afm-btn-primary {
   background: var(--accent, #6366f1);
   border-color: var(--accent, #6366f1);
   color: #fff;
 }
-.afm-btn-secondary { background: var(--field, rgba(255, 255, 255, 0.06)); }
+.afm-btn-primary:hover {
+  background: color-mix(in srgb, var(--accent, #6366f1) 88%, #fff);
+  border-color: color-mix(in srgb, var(--accent, #6366f1) 88%, #fff);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent, #6366f1) 42%, transparent);
+}
+.afm-btn-secondary {
+  background: var(--field, rgba(255, 255, 255, 0.06));
+}
+.afm-btn-secondary:hover {
+  background: color-mix(in srgb, var(--accent, #6366f1) 14%, var(--field, rgba(255, 255, 255, 0.06)));
+  border-color: color-mix(in srgb, var(--accent, #6366f1) 38%, var(--border, rgba(255, 255, 255, 0.16)));
+  color: var(--text, inherit);
+}
 .afm-btn-danger {
   background: transparent;
   border-color: color-mix(in srgb, #ef4444 45%, transparent);
   color: #fca5a5;
 }
-.afm-row-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; }
+.afm-btn-danger:hover {
+  background: color-mix(in srgb, #ef4444 14%, transparent);
+  border-color: color-mix(in srgb, #ef4444 65%, transparent);
+  color: #fecaca;
+  box-shadow: 0 2px 10px color-mix(in srgb, #ef4444 28%, transparent);
+}
+.afm-row-actions { display: flex; flex-wrap: nowrap; gap: 0.45rem; align-items: center; }
 .afm-edit-bar {
   display: flex;
   justify-content: space-between;
@@ -1411,10 +1446,17 @@ def _page_styles() -> str:
   padding: 0.45rem 0.6rem;
 }
 .afm-panel .hint {
-  margin: 0.35rem 0 0;
+  margin: 0.5rem 0 0;
   color: var(--muted, #94a3b8);
   font-size: 0.84rem;
-  line-height: 1.45;
+  line-height: 1.6;
+}
+.afm-panel .hint + .afm-check-group { margin-top: 1rem; }
+.afm-check-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-top: 0.85rem;
 }
 .afm-field { margin-top: 0.85rem; }
 .afm-field-grid {
@@ -1433,10 +1475,11 @@ def _page_styles() -> str:
 .afm-panel input.is-readonly { opacity: 0.75; }
 .afm-check-label {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.55rem;
   align-items: flex-start;
-  margin: 0.35rem 0;
+  margin: 0;
   font-size: 0.92rem;
+  line-height: 1.5;
   font-weight: 400;
   text-transform: none;
   letter-spacing: normal;
@@ -1467,6 +1510,8 @@ def _page_styles() -> str:
   .afm-field-grid, .afm-field-grid-3 { grid-template-columns: 1fr; }
   .afm-edit-bar { padding: 0.9rem; }
   .afm-edit-actions { width: 100%; }
+  .afm-table .afm-badge-row { flex-wrap: wrap; }
+  .afm-row-actions { flex-wrap: wrap; }
 }
 </style>
 """
@@ -1625,7 +1670,7 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
         f"{_select_options(PROGRAMMING_TYPES, ptype)}</select></div>"
         f"<div id='field-clap' class='afm-field'{hidden('clap_query')}>"
         "<label>Sonic vibe (describe the sound)</label>"
-        f"<input name='clap_query' placeholder='e.g. late-night yacht rock, warm and mellow' "
+        f"<input name='clap_query' placeholder='e.g. late night rock' "
         f"value='{html.escape(str(values.get('clap_query', '')))}'>"
         "<p class='hint'>Uses CLAP text-to-audio search across your analyzed library.</p></div>"
         f"<div id='field-lyrics' class='afm-field'{hidden('lyrics_query')}>"
@@ -1693,16 +1738,16 @@ def _living_fields_html(values: dict[str, Any]) -> str:
         "<section class='afm-panel'>"
         + _panel_heading("Living channel", "Evolve as your library grows")
         + "<p class='hint'>When enabled, newly analyzed songs that pass filters can join the channel pool. "
-        "The nightly cron task re-runs programming, refreshes the pool, and optionally updates Alchemy FM.</p>"
+        "The cron task re-runs Programming, refreshes the pool, and optionally updates Alchemy FM.</p>"
         f"{pool_note}"
+        "<div class='afm-check-group'>"
         "<label class='afm-check-label'><input type='checkbox' name='living_enabled'"
         f"{' checked' if living_enabled else ''}> Enable living channel</label>"
         "<label class='afm-check-label'><input type='checkbox' name='living_auto_add'"
         f"{' checked' if auto_add else ''}> Auto-add new analyzed songs that pass filters</label>"
         "<label class='afm-check-label'><input type='checkbox' name='living_auto_refresh'"
-        f"{' checked' if auto_refresh else ''}> Nightly refresh: re-score pool and push to Alchemy FM</label>"
-        "<p class='hint'>Enable the <code>plugin.alchemy_fm_bridge.refresh_living</code> schedule under "
-        "Administration → Scheduled Tasks (default: 03:00 daily, disabled until you turn it on).</p>"
+        f"{' checked' if auto_refresh else ''}> Refresh: re-score pool and push to Alchemy FM</label>"
+        "</div>"
         "</section>"
     )
 
@@ -1773,7 +1818,7 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
         f"<input type='hidden' name='saved_anchor_id' value='{html.escape(str(values.get('saved_anchor_id', '')))}'>"
         "<div class='afm-form-actions'>"
         f"<button type='submit' name='action' value='push' class='afm-btn afm-btn-primary'>{html.escape(deploy_label)}</button>"
-        "<button type='submit' name='action' value='preview' class='afm-btn afm-btn-secondary'>Preview programming</button>"
+        "<button type='submit' name='action' value='preview' class='afm-btn afm-btn-secondary'>Preview Programming</button>"
         "<button type='submit' name='action' value='test' formnovalidate class='afm-btn afm-btn-secondary'>Test connection</button>"
         "</div></section>"
     )
@@ -1816,14 +1861,14 @@ def _edit_toolbar_html(values: dict[str, Any]) -> str:
     name = (values.get("name") or editing_slug).strip()
     source = values.get("profile_source") or "remote"
     source_badge = (
-        '<span class="afm-badge afm-badge-saved">Saved design</span>'
+        '<span class="afm-badge afm-badge-saved">Saved Design</span>'
         if source == "saved"
-        else '<span class="afm-badge afm-badge-remote">Alchemy FM only</span>'
+        else '<span class="afm-badge afm-badge-remote">Alchemy FM Only</span>'
     )
     on_air_badge = (
-        '<span class="afm-badge afm-badge-live">On air</span>'
+        '<span class="afm-badge afm-badge-live">On Air</span>'
         if values.get("edit_on_air")
-        else '<span class="afm-badge afm-badge-off">Off air</span>'
+        else '<span class="afm-badge afm-badge-off">Off Air</span>'
     )
     queued = values.get("edit_queued", "?")
     extra_badges = ""
@@ -1840,7 +1885,7 @@ def _edit_toolbar_html(values: dict[str, Any]) -> str:
         '<div class="afm-edit-meta">'
         f'<span class="afm-edit-slug">{html.escape(editing_slug)}{html.escape(id_note)}</span>'
         f"{source_badge}{on_air_badge}"
-        f'<span class="afm-badge afm-badge-queue">{html.escape(str(queued))} queued</span>'
+        f'<span class="afm-badge afm-badge-queue">{html.escape(str(queued))} Queued</span>'
         f"{extra_badges}"
         "</div>"
         "</div>"
@@ -1888,14 +1933,14 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
             is_editing = slug_key == editing_slug
             row_class = ' class="is-editing"' if is_editing else ""
             on_air_badge = (
-                '<span class="afm-badge afm-badge-live">On air</span>'
+                '<span class="afm-badge afm-badge-live">On Air</span>'
                 if station.get("enabled")
-                else '<span class="afm-badge afm-badge-off">Off air</span>'
+                else '<span class="afm-badge afm-badge-off">Off Air</span>'
             )
             profile_badge = (
-                '<span class="afm-badge afm-badge-saved">Saved design</span>'
+                '<span class="afm-badge afm-badge-saved">Saved Design</span>'
                 if has_saved
-                else '<span class="afm-badge afm-badge-remote">Remote only</span>'
+                else '<span class="afm-badge afm-badge-remote">Remote Only</span>'
             )
             living_badge = '<span class="afm-badge afm-badge-living">Living</span>' if living else ""
             edit_href = html.escape(url_for("alchemy_fm_bridge.home", edit=slug) + "#designer")
@@ -1908,10 +1953,10 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
                 f"<div class='afm-station-meta'>{html.escape(slug)} · id {station_id}</div></td>"
                 f"<td><span class='afm-programming-type'>{html.escape(type_label)}</span>"
                 f"<span class='afm-programming-detail'>{html.escape(detail or '—')}</span></td>"
-                f'<td><div class="afm-badge-row">{on_air_badge}{profile_badge}'
-                f'<span class="afm-badge afm-badge-queue">{html.escape(queued)} queued</span>'
+                f'<td class="afm-status-cell"><div class="afm-badge-row">{on_air_badge}{profile_badge}'
+                f'<span class="afm-badge afm-badge-queue">{html.escape(queued)} Queued</span>'
                 f"{living_badge}</div></td>"
-                f'<td><div class="afm-row-actions">'
+                f'<td class="afm-actions-cell"><div class="afm-row-actions">'
                 f'<a href="{edit_href}" class="{edit_btn_class}">{html.escape(edit_label)}</a>'
                 f'<form method="post" style="margin:0;" onsubmit="return confirm({json.dumps(confirm_msg)});">'
                 f'<input type="hidden" name="action" value="delete">'
@@ -2339,9 +2384,85 @@ def settings():
     return render_page(body, title="Alchemy FM Bridge Settings")
 
 
+def _patch_cron_scheduled_tasks_label() -> None:
+    """Show a friendly label on AudioMuse Administration → Scheduled Tasks."""
+    try:
+        from flask import Response
+        import app_cron
+        from plugin.manager import plugin_manager
+
+        original = plugin_manager.available_cron_tasks
+
+        def available_cron_tasks():
+            items = original()
+            patched: list[dict[str, str]] = []
+            for item in items:
+                if item.get("task_type") == CRON_TASK_TYPE:
+                    patched.append(
+                        {
+                            "task_type": CRON_TASK_TYPE,
+                            "plugin": CRON_TASK_LABEL,
+                            "task": "",
+                        }
+                    )
+                else:
+                    patched.append(item)
+            return patched
+
+        plugin_manager.available_cron_tasks = available_cron_tasks
+
+        original_page = app_cron.cron_bp.view_functions.get("cron_page")
+        if original_page is None:
+            return
+
+        label_script = (
+            "<script>"
+            "(function(){"
+            f"var needle={json.dumps(CRON_TASK_TYPE)};"
+            f"var label={json.dumps(CRON_TASK_LABEL)};"
+            "function fixLabels(){"
+            "document.querySelectorAll('#plugin-cron-list label').forEach(function(el){"
+            "if(el.dataset.afmFixed)return;"
+            "if(el.textContent.indexOf(needle)!==-1){"
+            "el.textContent=label;el.dataset.afmFixed='1';"
+            "}});"
+            "}"
+            "document.addEventListener('DOMContentLoaded',function(){"
+            "fixLabels();"
+            "var list=document.getElementById('plugin-cron-list');"
+            "if(list)new MutationObserver(fixLabels).observe(list,{childList:true,subtree:true});"
+            "});"
+            "})();"
+            "</script>"
+        )
+
+        def cron_page():
+            result = original_page()
+            if isinstance(result, str) and label_script not in result:
+                lower = result.lower()
+                idx = lower.rfind("</body>")
+                if idx != -1:
+                    return result[:idx] + label_script + result[idx:]
+                return result + label_script
+            if isinstance(result, Response):
+                body = result.get_data(as_text=True)
+                if label_script not in body:
+                    lower = body.lower()
+                    idx = lower.rfind("</body>")
+                    if idx != -1:
+                        body = body[:idx] + label_script + body[idx:]
+                        result.set_data(body)
+            return result
+
+        app_cron.cron_bp.view_functions["cron_page"] = cron_page
+    except Exception:
+        logger.exception("alchemy_fm_bridge: could not patch cron task label")
+
+
 def register(ctx):
     ctx.on_install(migrate)
     ctx.add_blueprint(bp)
     ctx.add_menu_item("Alchemy FM", "alchemy_fm_bridge.home", admin_only=True)
     ctx.on_song_analyzed(on_song_analyzed)
-    ctx.add_cron_task("refresh_living", refresh_living_channels)
+    ctx.on_flask_start(_patch_cron_scheduled_tasks_label)
+    ctx.add_cron_task(CRON_TASK_LIVING, refresh_living_channels)
