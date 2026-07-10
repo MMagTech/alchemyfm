@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.1"
+PLUGIN_VERSION = "3.0.2"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -745,13 +745,33 @@ def _resolve_navidrome_bootstrap(bootstrap: dict[str, Any]) -> list[str]:
 
 
 def _clustering_playlists() -> list[dict[str, Any]]:
+    """AudioMuse GET /api/playlists returns {playlist_name: [tracks]} — not a list."""
     try:
         data = audiomuse_get("/api/playlists")
     except ChannelDesignerError:
         return []
-    if not isinstance(data, list):
-        return []
-    return [row for row in data if isinstance(row, dict)]
+
+    playlists: list[dict[str, Any]] = []
+    if isinstance(data, dict):
+        for name, tracks in data.items():
+            playlist_name = str(name or "").strip()
+            if not playlist_name:
+                continue
+            track_rows = tracks if isinstance(tracks, list) else []
+            playlists.append(
+                {
+                    "id": playlist_name,
+                    "name": playlist_name,
+                    "playlist_id": playlist_name,
+                    "track_count": len(track_rows),
+                    "tracks": track_rows,
+                }
+            )
+        return sorted(playlists, key=lambda row: str(row.get("name", "")).lower())
+
+    if isinstance(data, list):
+        return [row for row in data if isinstance(row, dict)]
+    return []
 
 
 def _clustering_start() -> dict[str, Any]:
@@ -760,10 +780,15 @@ def _clustering_start() -> dict[str, Any]:
 
 def _last_clustering_task() -> dict[str, Any] | None:
     try:
-        data = audiomuse_get("/api/last_task", params={"task": "clustering"})
+        data = audiomuse_get("/api/last_task")
     except ChannelDesignerError:
         return None
-    return data if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        return None
+    task_type = str(data.get("task_type") or "")
+    if task_type == "main_clustering" or "clustering" in task_type.lower():
+        return data
+    return None
 
 
 def _chat_playlist_tracks(prompt: str, *, limit: int = CHAT_PLAYLIST_LIMIT) -> list[dict[str, Any]]:
@@ -2382,7 +2407,9 @@ def _discover_channels_html() -> str:
         pl_id = str(pl.get("id") or pl.get("playlist_id") or "")
         name = str(pl.get("name") or pl_id or "Cluster playlist")
         mood = str(pl.get("mood") or pl.get("description") or "")
-        deploy_query = mood or name
+        if not mood and pl.get("track_count"):
+            mood = f"{int(pl['track_count'])} tracks"
+        deploy_query = name
         rows.append(
             "<tr>"
             f"<td>{html.escape(name)}</td>"

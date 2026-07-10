@@ -73,7 +73,7 @@ Enable the cron task under **AudioMuse → Administration → Scheduled Tasks �
 
 ## Discover Channels
 
-Lists **clustering playlists** already produced by AudioMuse (including the default weekly clustering job). The plugin does **not** run its own scheduled clustering — it reads `GET /api/playlists`.
+Lists **clustering playlists** from AudioMuse `GET /api/playlists` (a map of playlist name → tracks). Includes results from the default weekly clustering job and manual runs.
 
 - **Run Clustering** — optional manual `POST /api/clustering/start` if you want a fresh run now.
 - **Use in Designer** — prefills a CLAP query from the cluster name/mood.
