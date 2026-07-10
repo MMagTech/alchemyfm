@@ -24,7 +24,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.3.7"
+PLUGIN_VERSION = "2.3.8"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1414,7 +1414,7 @@ def _page_styles() -> str:
 .afm-panel {
   border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
   border-radius: 12px;
-  padding: 1rem 1.05rem 1.05rem;
+  padding: 1.1rem 1.15rem 1.2rem;
   margin: 0 0 0.85rem;
   background: var(--field, rgba(255, 255, 255, 0.04));
   overflow: visible;
@@ -1472,18 +1472,31 @@ def _page_styles() -> str:
   gap: 0.7rem;
   margin-top: 0.85rem;
 }
-.afm-field { margin-top: 0.85rem; }
+.afm-field { margin-top: 1rem; }
+.afm-field:first-child { margin-top: 0; }
 .afm-field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
+  gap: 0.85rem;
+  margin-top: 1rem;
 }
 .afm-field-grid-3 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
+  gap: 0.85rem;
+  margin-top: 1rem;
 }
-.afm-form-actions { display: flex; gap: 0.65rem; flex-wrap: wrap; margin-top: 0.75rem; }
+.afm-field-grid-3 label,
+.afm-field-grid label {
+  margin-bottom: 0.4rem;
+}
+.afm-form-actions {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin-top: 1.2rem;
+  padding-top: 0.2rem;
+}
 .afm-designer-form { display: grid; gap: 0; min-width: 0; }
 .afm-empty { color: var(--muted, #94a3b8); margin: 0; line-height: 1.45; }
 .afm-panel input.is-readonly { opacity: 0.75; }
@@ -1817,7 +1830,7 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
         f"<select name='refresh_mode'>{_select_options(REFRESH_MODES, str(values.get('refresh_mode', 'similar_to_last')))}</select>"
         "<p class='hint'>For CLAP/lyrics/mood channels, the plugin saves a Song Alchemy anchor from your preview "
         "so Alchemy FM can keep refilling 24/7.</p></div>"
-        + "<div class='afm-field-grid-3'>"
+        + "<div class='afm-field-grid-3 afm-spaced-block'>"
         "<div><label>Queue target</label>"
         f"<input type='number' name='queue_target' min='5' max='200' value='{html.escape(str(values.get('queue_target', 30)))}'></div>"
         "<div><label>Refresh below</label>"
@@ -1825,10 +1838,12 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
         "<div><label>Artist separation (min)</label>"
         f"<input type='number' name='artist_separation_minutes' min='0' value='{html.escape(str(values.get('artist_separation_minutes', 90)))}'></div>"
         "</div>"
+        "<div class='afm-check-group'>"
         "<label class='afm-check-label'><input type='checkbox' name='enabled'"
         f"{' checked' if values.get('enabled', True) else ''}> Start on air after push</label>"
         "<label class='afm-check-label'><input type='checkbox' name='bootstrap_queue'"
         f"{' checked' if values.get('bootstrap_queue', True) else ''}> Bootstrap queue immediately</label>"
+        "</div>"
         f"<input type='hidden' name='saved_anchor_id' value='{html.escape(str(values.get('saved_anchor_id', '')))}'>"
         "<div class='afm-form-actions'>"
         f"<button type='submit' name='action' value='push' class='afm-btn afm-btn-primary'>{html.escape(deploy_label)}</button>"
