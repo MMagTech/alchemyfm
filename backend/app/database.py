@@ -35,6 +35,8 @@ class ContinuationMode(str, enum.Enum):
     """How to refill the queue when the primary source has no fresh tracks."""
 
     source_only = "source_only"  # stay in source pool; allow repeats before leaving
+    programming_only = "programming_only"  # re-query programming + pool once; no similar tiers
+    no_repeats = "no_repeats"  # similar expansion like similar_to_last but never pool repeats
     similar_to_seed = "similar_to_seed"  # similar_tracks from a fixed seed in the source
     similar_to_last = "similar_to_last"  # similar_tracks from last played (can drift)
 

@@ -206,7 +206,7 @@ async def collect_refill_candidates(
         station.source_last_error = source_error[:500]
         logger.warning("Station %s: programming batch failed: %s", station.slug, exc)
 
-    # Tier 1 — imported pool (repeats allowed under source_only)
+    # Tier 1 — imported pool (repeats allowed only under source_only)
     pool = _rotate_pool(pool_track_refs(db, station), play_count)
     append_tier(pool, "pool")
     if need_more() > 0 and station.continuation_mode == ContinuationMode.source_only:
@@ -221,7 +221,10 @@ async def collect_refill_candidates(
             if picked:
                 collected.extend(picked)
 
-    if station.continuation_mode == ContinuationMode.source_only:
+    if station.continuation_mode in (
+        ContinuationMode.source_only,
+        ContinuationMode.programming_only,
+    ):
         return collected, source_error
 
     # Tier 2 — alchemy anchor (station identity)
@@ -250,8 +253,11 @@ async def collect_refill_candidates(
         except Exception as exc:
             logger.warning("Station %s: similar-seed tier failed: %s", station.slug, exc)
 
-    # Tier 4 — similar to last played (only when explicitly allowed)
-    if need_more() > 0 and station.continuation_mode == ContinuationMode.similar_to_last:
+    # Tier 4 — similar to last played (drift modes only)
+    if need_more() > 0 and station.continuation_mode in (
+        ContinuationMode.similar_to_last,
+        ContinuationMode.no_repeats,
+    ):
         last_id = last_played_item_id(db, station.id) or seed
         if last_id:
             try:

@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.11"
+PLUGIN_VERSION = "3.1.0"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -328,7 +328,9 @@ PROGRAMMING_TYPE_LABELS.update(
 
 REFRESH_MODES = (
     ("similar_to_last", "Similar to Last Played (Recommended)"),
+    ("no_repeats", "No Repeats (Fresh Tracks First)"),
     ("similar_to_seed", "Similar to Programming Seed"),
+    ("programming_only", "Programming Only (Re-Query Step 2)"),
     ("source_only", "Stay in Source Pool (Allow Repeats)"),
 )
 
@@ -2240,11 +2242,10 @@ def _page_styles() -> str:
   padding-top: 0.15rem;
 }
 .afm-filter-explainer {
-  margin: 0 0 1rem;
-  padding: 0.85rem 1rem;
-  border-radius: 10px;
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
-  background: color-mix(in srgb, var(--accent, #6366f1) 6%, transparent);
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
   font-size: 0.88rem;
   line-height: 1.55;
   color: var(--muted, #94a3b8);
@@ -2253,6 +2254,40 @@ def _page_styles() -> str:
 .afm-filter-explainer p:first-child { margin-top: 0; }
 .afm-filter-explainer p:last-child { margin-bottom: 0; }
 .afm-filter-explainer strong { color: var(--text, inherit); }
+.afm-collapsible-explainer {
+  margin: 0 0 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: color-mix(in srgb, var(--accent, #6366f1) 6%, transparent);
+  overflow: hidden;
+}
+.afm-collapsible-explainer > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.65rem 0.9rem;
+  font-size: 0.88rem;
+  font-weight: 650;
+  color: var(--text, inherit);
+}
+.afm-collapsible-explainer > summary::-webkit-details-marker { display: none; }
+.afm-collapsible-explainer > summary::before {
+  content: "▸";
+  flex: 0 0 auto;
+  color: var(--muted, #94a3b8);
+  transition: transform 0.15s ease;
+}
+.afm-collapsible-explainer[open] > summary::before {
+  transform: rotate(90deg);
+}
+.afm-collapsible-explainer[open] > summary {
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+}
+.afm-collapsible-explainer-body {
+  padding: 0.75rem 0.9rem 0.9rem;
+}
 .afm-preview-results-panel {
   scroll-margin-top: 1rem;
 }
@@ -2822,9 +2857,17 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
     )
 
 
-def _filters_explainer_html() -> str:
+def _collapsible_explainer_html(body: str) -> str:
     return (
-        "<div class='afm-filter-explainer'>"
+        "<details class='afm-collapsible-explainer'>"
+        "<summary>Explanation</summary>"
+        f"<div class='afm-collapsible-explainer-body afm-filter-explainer'>{body}</div>"
+        "</details>"
+    )
+
+
+def _filters_explainer_html() -> str:
+    return _collapsible_explainer_html(
         "<p><strong>When filters run:</strong> In AudioMuse only — when you "
         "<strong>Preview Programming</strong> (Step 3). If <strong>Living Channel</strong> is on, "
         "they also apply when new analyzed songs join the pool or cron refreshes it.</p>"
@@ -2836,7 +2879,27 @@ def _filters_explainer_html() -> str:
         "<p><strong>After Preview:</strong> The <strong>Filter Check</strong> panel below the fields "
         "shows which genre/mood terms matched — use the <strong>Genre</strong> column in Preview Results "
         "to see exact spellings.</p>"
-        "</div>"
+    )
+
+
+def _playback_rules_explainer_html() -> str:
+    return _collapsible_explainer_html(
+        "<p><strong>When these rules run:</strong> Alchemy FM on-air playback only — when the queue "
+        "drops below <strong>Refresh Below</strong>. They do not change Preview Programming or Living "
+        "pool filters.</p>"
+        "<p><strong>Refill order:</strong> Every refill first re-runs your <strong>Step 2 Programming</strong> "
+        "query, then reuses unplayed tracks from the imported pool, then expands with similar/anchor tiers "
+        "depending on the mode below.</p>"
+        "<p><strong>Similar to Last Played:</strong> After the pool is exhausted, pulls tracks similar to "
+        "whatever just played. The channel can drift over time — good default for variety.</p>"
+        "<p><strong>No Repeats:</strong> Same expansion as Similar to Last Played, but never replays pool "
+        "tracks that already aired. Best when you want fresh recommendations before any repeat.</p>"
+        "<p><strong>Similar to Programming Seed:</strong> Stays near one fixed anchor track from the "
+        "station identity — less drift than Similar to Last Played.</p>"
+        "<p><strong>Programming Only:</strong> Re-queries Step 2 and uses the pool once — no similar-track "
+        "expansion and no pool repeats. Stops when those are exhausted.</p>"
+        "<p><strong>Stay in Source Pool:</strong> Reuses imported tracks and allows repeats before leaving "
+        "the pool. No similar-track drift.</p>"
     )
 
 
@@ -3176,12 +3239,11 @@ def _playback_rules_fields_html(values: dict[str, Any]) -> str:
             "24/7 Playback Rules",
             "Controls how Alchemy FM refills the queue when tracks run low — not the initial vibe (that is Step 2).",
         )
+        + _playback_rules_explainer_html()
         + "<div class='afm-field'>"
         + _field_label("When Pool Runs Low")
         + f"<select name='refresh_mode' class='afm-select'>{_select_options(REFRESH_MODES, str(values.get('refresh_mode', 'similar_to_last')))}</select>"
-        + "<p class='hint'><strong>Similar to Last Played</strong> drifts with each track. "
-        "<strong>Similar to Programming Seed</strong> stays near one anchor track. "
-        "<strong>Stay in Source Pool</strong> reuses imported tracks.</p></div>"
+        + "</div>"
         + "<div class='afm-field-grid-3'>"
         + "<div><label>Queue Target</label>"
         + f"<input type='number' name='queue_target' min='5' max='200' value='{html.escape(str(values.get('queue_target', 30)))}'>"
