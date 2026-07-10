@@ -24,7 +24,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.3.10"
+PLUGIN_VERSION = "2.3.11"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1477,6 +1477,28 @@ def _page_styles() -> str:
   width: 100% !important;
   max-width: 100% !important;
 }
+.afm-seed-field .afm-seed-search-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: stretch;
+  margin-top: 0.35rem;
+}
+.afm-seed-field .afm-seed-search-input {
+  flex: 1 1 16rem;
+  min-width: 0;
+  width: auto !important;
+  max-width: none !important;
+}
+.afm-seed-field .afm-seed-search-btn {
+  flex: 0 0 auto;
+  align-self: center;
+}
+.afm-seed-field .afm-seed-id-field {
+  margin-top: 1.1rem;
+}
+.afm-seed-field .afm-seed-results {
+  margin-top: 0.85rem;
+}
 .afm-panel .hint {
   margin: 0.55rem 0 0;
   color: var(--muted, #94a3b8);
@@ -1746,13 +1768,21 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
         f"<div id='field-anchor' class='afm-field'{hidden('alchemy_anchor')}>"
         "<label>Song Alchemy anchor</label>"
         f"<select name='anchor_id' class='afm-select'>{''.join(anchor_opts)}</select></div>"
-        f"<div id='field-seed' class='afm-field'{hidden('similar_seed')}>"
+        f"<div id='field-seed' class='afm-field afm-seed-field'{hidden('similar_seed')}>"
         "<label>Search seed track</label>"
-        f"<input name='seed_search' class='afm-text-input' value='{html.escape(str(values.get('seed_search', '')))}'> "
-        "<button type='submit' name='action' value='search_seed' formnovalidate class='afm-btn afm-btn-secondary'>Search</button>"
-        f"{seed_results_html}"
-        f"<input name='seed_id' placeholder='Track item id' value='{html.escape(str(values.get('seed_id', '')))}'>"
+        "<div class='afm-seed-search-row'>"
+        f"<input name='seed_search' class='afm-text-input afm-seed-search-input' "
+        f"placeholder='Title or artist…' value='{html.escape(str(values.get('seed_search', '')))}'>"
+        "<button type='submit' name='action' value='search_seed' formnovalidate "
+        "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Search</button>"
         "</div>"
+        "<p class='hint'>Search your library and pick a result, or enter a track item id below.</p>"
+        f"{seed_results_html}"
+        "<div class='afm-seed-id-field'>"
+        "<label>Track item id</label>"
+        f"<input name='seed_id' class='afm-text-input' placeholder='Filled when you pick a search result' "
+        f"value='{html.escape(str(values.get('seed_id', '')))}'>"
+        "</div></div>"
         "<div class='afm-field'>"
         "<label>Preview size</label>"
         f"<input type='number' name='preview_limit' min='10' max='80' value='{html.escape(str(values.get('preview_limit', PREVIEW_LIMIT_DEFAULT)))}'>"
