@@ -3013,6 +3013,36 @@ body.live-station-page .live-mini-player {
   color: var(--muted);
 }
 
+.admin-table tbody tr.admin-row-designer {
+  opacity: 0.68;
+}
+
+.admin-table tbody tr.admin-row-designer:hover {
+  opacity: 0.82;
+}
+
+.admin-table tbody tr.admin-row-designer .admin-station-link,
+.admin-table tbody tr.admin-row-designer .admin-chip,
+.admin-table tbody tr.admin-row-designer .admin-queue-cell {
+  color: color-mix(in srgb, var(--text) 72%, var(--muted));
+}
+
+.admin-name-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.admin-designer-wand {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--accent) 75%, var(--muted));
+  cursor: help;
+}
+
 .admin-table th,
 .admin-table td {
   text-align: left;

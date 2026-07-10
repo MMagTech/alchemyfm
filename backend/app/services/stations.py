@@ -135,6 +135,7 @@ def station_to_admin(db: Session, station: Station, queued_count: int) -> Statio
         created_at=station.created_at,
         has_uploaded_artwork=artwork_exists(station.slug),
         external_artwork_url=station.artwork_url or "",
+        designer_managed=bool(station.designer_managed),
     )
 
 
@@ -151,6 +152,7 @@ async def create_station_record(db: Session, payload: StationCreate) -> Station:
         artwork_url=payload.artwork_url,
         icecast_mount=mount,
         enabled=payload.enabled,
+        designer_managed=payload.designer_managed,
         source_type=payload.source_type.value,
         source_ref=payload.source_ref,
         queue_target=payload.queue_target,

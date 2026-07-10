@@ -86,6 +86,7 @@ class StationCreate(BaseModel):
     identity_seed_item_id: str = ""
     identity_anchor_id: str = ""
     bootstrap_queue: bool = True
+    designer_managed: bool = False
 
     @field_validator("icecast_mount")
     @classmethod
@@ -110,6 +111,7 @@ class StationUpdate(BaseModel):
     continuation_mode: ContinuationMode | None = None
     identity_seed_item_id: str | None = None
     identity_anchor_id: str | None = None
+    designer_managed: bool | None = None
 
 
 class StationAdmin(StationDetail):
@@ -128,6 +130,7 @@ class StationAdmin(StationDetail):
     created_at: datetime
     has_uploaded_artwork: bool = False
     external_artwork_url: str = ""
+    designer_managed: bool = False
 
 
 class HealthResponse(BaseModel):

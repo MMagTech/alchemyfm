@@ -543,6 +543,7 @@ def channel_profile_to_alchemy_payload(profile: dict[str, Any], tracks: list[dic
         "continuation_mode": refresh.get("mode", "similar_to_last"),
         "identity_anchor_id": identity_anchor_id,
         "bootstrap_queue": bool(station.get("bootstrap_queue", True)),
+        "designer_managed": True,
     }
 
 

@@ -53,6 +53,7 @@ class Station(Base):
     artwork_url: Mapped[str] = mapped_column(String(500), default="")
     icecast_mount: Mapped[str] = mapped_column(String(100), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    designer_managed: Mapped[bool] = mapped_column(Boolean, default=False)
 
     source_type: Mapped[str] = mapped_column(String(32), nullable=False)
     source_ref: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -177,6 +178,7 @@ def _migrate_db() -> None:
             ("identity_anchor_id", "VARCHAR(100) NOT NULL DEFAULT ''"),
             ("source_last_error", "TEXT NOT NULL DEFAULT ''"),
             ("source_last_ok_at", "DATETIME"),
+            ("designer_managed", "INTEGER NOT NULL DEFAULT 0"),
         ):
             if col not in cols:
                 conn.execute(text(f"ALTER TABLE stations ADD COLUMN {col} {ddl}"))
