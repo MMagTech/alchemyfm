@@ -26,6 +26,9 @@ class SourceType(str, enum.Enum):
 
     alchemy_anchor = "alchemy_anchor"
     similar_seed = "similar_seed"
+    clap_query = "clap_query"
+    lyrics_query = "lyrics_query"
+    mood_centroid = "mood_centroid"
 
 
 class ContinuationMode(str, enum.Enum):
@@ -56,6 +59,7 @@ class Station(Base):
 
     source_type: Mapped[str] = mapped_column(String(32), nullable=False)
     source_ref: Mapped[str] = mapped_column(String(500), nullable=False)
+    programming_json: Mapped[str] = mapped_column(Text, default="")
 
     queue_target: Mapped[int] = mapped_column(Integer, default=30)
     refresh_threshold: Mapped[int] = mapped_column(Integer, default=10)
@@ -177,6 +181,7 @@ def _migrate_db() -> None:
             ("identity_anchor_id", "VARCHAR(100) NOT NULL DEFAULT ''"),
             ("source_last_error", "TEXT NOT NULL DEFAULT ''"),
             ("source_last_ok_at", "DATETIME"),
+            ("programming_json", "TEXT NOT NULL DEFAULT ''"),
         ):
             if col not in cols:
                 conn.execute(text(f"ALTER TABLE stations ADD COLUMN {col} {ddl}"))
@@ -184,8 +189,9 @@ def _migrate_db() -> None:
         conn.execute(
             text(
                 "UPDATE stations SET enabled = 0, "
-                "source_last_error = 'Source type removed — switch to Alchemy anchor or similar seed and re-bootstrap.' "
-                "WHERE source_type IN ('clustering_playlist', 'navidrome_playlist', 'clap_query')"
+                "source_last_error = 'Legacy source — delete and redeploy from Channel Designer v3.' "
+                "WHERE source_type IN ('clustering_playlist', 'navidrome_playlist') "
+                "AND (programming_json IS NULL OR programming_json = '')"
             )
         )
         conn.commit()

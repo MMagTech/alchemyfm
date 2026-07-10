@@ -127,6 +127,7 @@ def station_to_admin(db: Session, station: Station, queued_count: int) -> Statio
         continuation_mode=station.continuation_mode,
         identity_seed_item_id=station.identity_seed_item_id or "",
         identity_anchor_id=station.identity_anchor_id or "",
+        programming_json=station.programming_json or "",
         pool_count=pool_count(db, station.id),
         source_last_error=station.source_last_error or "",
         source_healthy=not station.source_last_error,
@@ -159,6 +160,7 @@ async def create_station_record(db: Session, payload: StationCreate) -> Station:
         continuation_mode=payload.continuation_mode,
         identity_seed_item_id=payload.identity_seed_item_id,
         identity_anchor_id=payload.identity_anchor_id,
+        programming_json=payload.programming_json or "",
     )
     db.add(station)
     db.commit()

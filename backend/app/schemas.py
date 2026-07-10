@@ -85,6 +85,7 @@ class StationCreate(BaseModel):
     continuation_mode: ContinuationMode = ContinuationMode.source_only
     identity_seed_item_id: str = ""
     identity_anchor_id: str = ""
+    programming_json: str = ""
     bootstrap_queue: bool = True
 
     @field_validator("icecast_mount")
@@ -110,6 +111,7 @@ class StationUpdate(BaseModel):
     continuation_mode: ContinuationMode | None = None
     identity_seed_item_id: str | None = None
     identity_anchor_id: str | None = None
+    programming_json: str | None = None
 
 
 class StationAdmin(StationDetail):
@@ -120,6 +122,7 @@ class StationAdmin(StationDetail):
     continuation_mode: ContinuationMode
     identity_seed_item_id: str
     identity_anchor_id: str
+    programming_json: str = ""
     pool_count: int
     source_last_error: str
     source_healthy: bool
