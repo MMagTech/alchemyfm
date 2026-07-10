@@ -1439,10 +1439,17 @@ def _page_styles() -> str:
   padding: 0.45rem 0.6rem;
 }
 .afm-panel .hint {
-  margin: 0.35rem 0 0;
+  margin: 0.5rem 0 0;
   color: var(--muted, #94a3b8);
   font-size: 0.84rem;
-  line-height: 1.45;
+  line-height: 1.6;
+}
+.afm-panel .hint + .afm-check-group { margin-top: 1rem; }
+.afm-check-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-top: 0.85rem;
 }
 .afm-field { margin-top: 0.85rem; }
 .afm-field-grid {
@@ -1461,10 +1468,11 @@ def _page_styles() -> str:
 .afm-panel input.is-readonly { opacity: 0.75; }
 .afm-check-label {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.55rem;
   align-items: flex-start;
-  margin: 0.35rem 0;
+  margin: 0;
   font-size: 0.92rem;
+  line-height: 1.5;
   font-weight: 400;
   text-transform: none;
   letter-spacing: normal;
@@ -1725,14 +1733,14 @@ def _living_fields_html(values: dict[str, Any]) -> str:
         + "<p class='hint'>When enabled, newly analyzed songs that pass filters can join the channel pool. "
         "The cron task re-runs Programming, refreshes the pool, and optionally updates Alchemy FM.</p>"
         f"{pool_note}"
+        "<div class='afm-check-group'>"
         "<label class='afm-check-label'><input type='checkbox' name='living_enabled'"
         f"{' checked' if living_enabled else ''}> Enable living channel</label>"
         "<label class='afm-check-label'><input type='checkbox' name='living_auto_add'"
         f"{' checked' if auto_add else ''}> Auto-add new analyzed songs that pass filters</label>"
         "<label class='afm-check-label'><input type='checkbox' name='living_auto_refresh'"
-        f"{' checked' if auto_refresh else ''}> Nightly refresh: re-score pool and push to Alchemy FM</label>"
-        "<p class='hint'>Enable the <code>plugin.alchemy_fm_bridge.refresh_living</code> schedule under "
-        "Administration → Scheduled Tasks (default: 03:00 daily, disabled until you turn it on).</p>"
+        f"{' checked' if auto_refresh else ''}> Refresh: re-score pool and push to Alchemy FM</label>"
+        "</div>"
         "</section>"
     )
 
