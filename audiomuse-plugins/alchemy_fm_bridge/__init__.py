@@ -24,7 +24,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.3.3"
+PLUGIN_VERSION = "2.3.4"
 PLUGIN_ID = "alchemy_fm_bridge"
 
 ALCHEMY_FM_USER_AGENT = (
@@ -1241,6 +1241,8 @@ def _page_styles() -> str:
 }
 .afm-table tbody tr:last-child td { border-bottom: none; }
 .afm-table tbody tr.is-editing { background: color-mix(in srgb, var(--accent, #6366f1) 10%, transparent); }
+.afm-table td.afm-status-cell { white-space: nowrap; }
+.afm-table td.afm-actions-cell { white-space: nowrap; }
 .afm-station-primary { font-weight: 600; color: var(--text, inherit); line-height: 1.35; }
 .afm-station-meta { margin-top: 0.2rem; font-size: 0.84rem; color: var(--muted, #94a3b8); }
 .afm-programming-type {
@@ -1253,7 +1255,9 @@ def _page_styles() -> str:
   margin-bottom: 0.2rem;
 }
 .afm-programming-detail { color: var(--text, inherit); }
-.afm-badge-row { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+.afm-badge-row { display: flex; flex-wrap: nowrap; gap: 0.35rem; align-items: center; }
+.afm-table .afm-badge-row { gap: 0.28rem; }
+.afm-table .afm-badge { font-size: 0.68rem; padding: 0.14rem 0.48rem; }
 .afm-badge {
   display: inline-flex;
   align-items: center;
@@ -1306,24 +1310,48 @@ def _page_styles() -> str:
   background: var(--field, rgba(255, 255, 255, 0.06));
   color: var(--text, inherit);
   font: inherit;
+  font-weight: 500;
   cursor: pointer;
   text-decoration: none;
   line-height: 1.25;
   white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease, color 0.15s ease;
 }
-.afm-btn:hover { filter: brightness(1.08); }
+.afm-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.22);
+}
+.afm-btn:active { transform: translateY(0); box-shadow: none; }
 .afm-btn-primary {
   background: var(--accent, #6366f1);
   border-color: var(--accent, #6366f1);
   color: #fff;
 }
-.afm-btn-secondary { background: var(--field, rgba(255, 255, 255, 0.06)); }
+.afm-btn-primary:hover {
+  background: color-mix(in srgb, var(--accent, #6366f1) 88%, #fff);
+  border-color: color-mix(in srgb, var(--accent, #6366f1) 88%, #fff);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent, #6366f1) 42%, transparent);
+}
+.afm-btn-secondary {
+  background: var(--field, rgba(255, 255, 255, 0.06));
+}
+.afm-btn-secondary:hover {
+  background: color-mix(in srgb, var(--accent, #6366f1) 14%, var(--field, rgba(255, 255, 255, 0.06)));
+  border-color: color-mix(in srgb, var(--accent, #6366f1) 38%, var(--border, rgba(255, 255, 255, 0.16)));
+  color: var(--text, inherit);
+}
 .afm-btn-danger {
   background: transparent;
   border-color: color-mix(in srgb, #ef4444 45%, transparent);
   color: #fca5a5;
 }
-.afm-row-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; }
+.afm-btn-danger:hover {
+  background: color-mix(in srgb, #ef4444 14%, transparent);
+  border-color: color-mix(in srgb, #ef4444 65%, transparent);
+  color: #fecaca;
+  box-shadow: 0 2px 10px color-mix(in srgb, #ef4444 28%, transparent);
+}
+.afm-row-actions { display: flex; flex-wrap: nowrap; gap: 0.45rem; align-items: center; }
 .afm-edit-bar {
   display: flex;
   justify-content: space-between;
@@ -1467,6 +1495,8 @@ def _page_styles() -> str:
   .afm-field-grid, .afm-field-grid-3 { grid-template-columns: 1fr; }
   .afm-edit-bar { padding: 0.9rem; }
   .afm-edit-actions { width: 100%; }
+  .afm-table .afm-badge-row { flex-wrap: wrap; }
+  .afm-row-actions { flex-wrap: wrap; }
 }
 </style>
 """
@@ -1625,7 +1655,7 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
         f"{_select_options(PROGRAMMING_TYPES, ptype)}</select></div>"
         f"<div id='field-clap' class='afm-field'{hidden('clap_query')}>"
         "<label>Sonic vibe (describe the sound)</label>"
-        f"<input name='clap_query' placeholder='e.g. late-night yacht rock, warm and mellow' "
+        f"<input name='clap_query' placeholder='e.g. late night rock' "
         f"value='{html.escape(str(values.get('clap_query', '')))}'>"
         "<p class='hint'>Uses CLAP text-to-audio search across your analyzed library.</p></div>"
         f"<div id='field-lyrics' class='afm-field'{hidden('lyrics_query')}>"
@@ -1693,7 +1723,7 @@ def _living_fields_html(values: dict[str, Any]) -> str:
         "<section class='afm-panel'>"
         + _panel_heading("Living channel", "Evolve as your library grows")
         + "<p class='hint'>When enabled, newly analyzed songs that pass filters can join the channel pool. "
-        "The nightly cron task re-runs programming, refreshes the pool, and optionally updates Alchemy FM.</p>"
+        "The cron task re-runs Programming, refreshes the pool, and optionally updates Alchemy FM.</p>"
         f"{pool_note}"
         "<label class='afm-check-label'><input type='checkbox' name='living_enabled'"
         f"{' checked' if living_enabled else ''}> Enable living channel</label>"
@@ -1773,7 +1803,7 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
         f"<input type='hidden' name='saved_anchor_id' value='{html.escape(str(values.get('saved_anchor_id', '')))}'>"
         "<div class='afm-form-actions'>"
         f"<button type='submit' name='action' value='push' class='afm-btn afm-btn-primary'>{html.escape(deploy_label)}</button>"
-        "<button type='submit' name='action' value='preview' class='afm-btn afm-btn-secondary'>Preview programming</button>"
+        "<button type='submit' name='action' value='preview' class='afm-btn afm-btn-secondary'>Preview Programming</button>"
         "<button type='submit' name='action' value='test' formnovalidate class='afm-btn afm-btn-secondary'>Test connection</button>"
         "</div></section>"
     )
@@ -1908,10 +1938,10 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
                 f"<div class='afm-station-meta'>{html.escape(slug)} · id {station_id}</div></td>"
                 f"<td><span class='afm-programming-type'>{html.escape(type_label)}</span>"
                 f"<span class='afm-programming-detail'>{html.escape(detail or '—')}</span></td>"
-                f'<td><div class="afm-badge-row">{on_air_badge}{profile_badge}'
+                f'<td class="afm-status-cell"><div class="afm-badge-row">{on_air_badge}{profile_badge}'
                 f'<span class="afm-badge afm-badge-queue">{html.escape(queued)} queued</span>'
                 f"{living_badge}</div></td>"
-                f'<td><div class="afm-row-actions">'
+                f'<td class="afm-actions-cell"><div class="afm-row-actions">'
                 f'<a href="{edit_href}" class="{edit_btn_class}">{html.escape(edit_label)}</a>'
                 f'<form method="post" style="margin:0;" onsubmit="return confirm({json.dumps(confirm_msg)});">'
                 f'<input type="hidden" name="action" value="delete">'
