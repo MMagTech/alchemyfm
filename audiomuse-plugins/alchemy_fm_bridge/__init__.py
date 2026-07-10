@@ -24,7 +24,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.3.11"
+PLUGIN_VERSION = "2.3.12"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1886,7 +1886,9 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
         f"value='{html.escape(str(values.get('slug', editing_slug or '')))}'{slug_readonly}>"
         f"{slug_extra}</div>"
         "<div class='afm-field'><label>Description</label>"
-        f"<textarea name='description' maxlength='120' rows='2'>{html.escape(str(values.get('description', '')))}</textarea></div>"
+        f"<textarea name='description' maxlength='120' rows='2' "
+        "placeholder='Max 120 characters — shorter, punchier lines work best on the homepage'>"
+        f"{html.escape(str(values.get('description', '')))}</textarea></div>"
         "<div class='afm-field'><label>Icecast mount</label>"
         f"<input name='icecast_mount' placeholder='/channel-slug' value='{html.escape(str(values.get('icecast_mount', '')))}'></div>"
         "<div class='afm-field'><label>When pool runs low</label>"
