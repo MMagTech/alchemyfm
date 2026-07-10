@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.8"
+PLUGIN_VERSION = "3.0.9"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -2239,6 +2239,45 @@ def _page_styles() -> str:
   margin: 0;
   padding-top: 0.15rem;
 }
+.afm-preview-results-panel {
+  scroll-margin-top: 1rem;
+}
+.afm-preview-results-panel > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.15rem 0 0.65rem;
+  margin-bottom: 0.65rem;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+}
+.afm-preview-results-panel > summary::-webkit-details-marker { display: none; }
+.afm-preview-results-panel > summary::before {
+  content: "▸";
+  margin-right: 0.55rem;
+  color: var(--muted, #94a3b8);
+  transition: transform 0.15s ease;
+}
+.afm-preview-results-panel[open] > summary::before {
+  transform: rotate(90deg);
+}
+.afm-preview-results-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--muted, #94a3b8);
+}
+.afm-preview-results-meta {
+  font-size: 0.84rem;
+  color: var(--muted, #94a3b8);
+}
+.afm-preview-results-panel.afm-preview-results-highlight {
+  border-color: color-mix(in srgb, #3b82f6 45%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, #3b82f6 18%, transparent);
+}
+.afm-preview-results-body { padding-top: 0.15rem; }
 .afm-panel label {
   display: block;
   font-size: 0.82rem;
@@ -2634,6 +2673,31 @@ def _preview_table_html(tracks: list[dict[str, Any]]) -> str:
         "</tr></thead><tbody>"
         + "".join(rows)
         + "</tbody></table></div>"
+    )
+
+
+def _preview_results_html(
+    preview_tracks: list[dict[str, Any]],
+    *,
+    highlight: bool = False,
+) -> str:
+    count = len(preview_tracks)
+    open_attr = " open" if count else ""
+    highlight_class = " afm-preview-results-highlight" if highlight else ""
+    if count:
+        meta = f"{count} Track(s) From Your Last Step 3 Preview"
+        body = _preview_table_html(preview_tracks)
+    else:
+        meta = "Run Preview Programming in Step 3 to See Tracks Here"
+        body = "<p class='hint'>No preview yet. Set programming above, then click <strong>Preview Programming</strong>.</p>"
+    return (
+        f'<details id="preview-results" class="afm-panel afm-preview-results-panel{highlight_class}"{open_attr}>'
+        "<summary>"
+        '<span class="afm-preview-results-title">Preview Results</span>'
+        f'<span class="afm-preview-results-meta">{html.escape(meta)}</span>'
+        "</summary>"
+        f'<div class="afm-preview-results-body">{body}</div>'
+        "</details>"
     )
 
 
@@ -3044,7 +3108,7 @@ def _station_identity_fields_html(values: dict[str, Any]) -> str:
 
 def _preview_step_html() -> str:
     return (
-        "<section class='afm-panel afm-step-panel'>"
+        "<section class='afm-panel afm-step-panel' id='step-preview'>"
         + _step_panel_heading(
             "Step 3",
             "Preview Programming",
@@ -3399,9 +3463,12 @@ def _form_values_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
 def _page_script(
     mood_centroids: dict[str, Any] | None = None,
     mood_labels: list[str] | None = None,
+    *,
+    scroll_to_preview: bool = False,
 ) -> str:
     mood_json = json.dumps(mood_centroids or {})
     mood_labels_json = json.dumps(mood_labels or [])
+    scroll_flag = "true" if scroll_to_preview else "false"
     return f"""
 <script type="application/json" id="mood-centroids-data">{mood_json}</script>
 <script type="application/json" id="mood-labels-data">{mood_labels_json}</script>
@@ -3591,6 +3658,23 @@ def _page_script(
     moodInput.addEventListener('input', checkMoodTerms);
     moodInput.addEventListener('blur', checkMoodTerms);
     checkMoodTerms();
+  }}
+
+  function scrollToPreviewResults() {{
+    const el = document.getElementById('preview-results');
+    if (!el) return;
+    if (el.tagName === 'DETAILS') el.open = true;
+    window.requestAnimationFrame(() => {{
+      el.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+    }});
+  }}
+  const shouldScrollPreview = {scroll_flag} || window.location.hash === '#preview-results';
+  if (shouldScrollPreview) {{
+    if (document.readyState === 'loading') {{
+      document.addEventListener('DOMContentLoaded', scrollToPreviewResults);
+    }} else {{
+      scrollToPreviewResults();
+    }}
   }}
 }})();
 </script>
@@ -3812,6 +3896,7 @@ def home():
                         item_ids = [t["item_id"] for t in preview_tracks]
                         _record_audition(slug, item_ids)
                         _save_channel(profile, preview_ids=item_ids)
+                        values["scroll_to_preview"] = True
                         flash = _flash_html(
                             f"Chat preview — {len(preview_tracks)} tracks. Tweak programming/filters, then deploy.",
                             "ok",
@@ -3830,6 +3915,7 @@ def home():
                         if (profile.get("living") or {}).get("enabled"):
                             _add_to_pool(slug, item_ids, source="preview")
                         _save_channel(profile, preview_ids=item_ids)
+                        values["scroll_to_preview"] = True
                         flash = _flash_html(
                             f"Preview ready — {len(preview_tracks)} tracks from AudioMuse. "
                             "Review below, then deploy to Alchemy FM.",
@@ -3909,11 +3995,10 @@ def home():
         else ""
     )
     designer_section_close = "</section>" if not editing_slug else ""
-    preview_block = (
-        "<section class='afm-panel'>"
-        + _panel_heading("Preview Results", "Tracks From Your Last Step 3 Preview")
-        + f"{_preview_table_html(preview_tracks)}"
-        + "</section>"
+    scroll_to_preview = bool(values.get("scroll_to_preview"))
+    preview_block = _preview_results_html(
+        preview_tracks,
+        highlight=scroll_to_preview,
     )
     audition_block = (
         "<section class='afm-panel'>"
@@ -3954,7 +4039,7 @@ def home():
         f"{flash}"
         f"{main_flow}"
         "</div>"
-        f"{_page_script(_mood_centroids_data(), mood_labels)}"
+        f"{_page_script(_mood_centroids_data(), mood_labels, scroll_to_preview=scroll_to_preview)}"
     )
     return render_page(body, title="Alchemy FM Channel Designer")
 
