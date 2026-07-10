@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.1.1"
+PLUGIN_VERSION = "3.1.2"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1834,6 +1834,99 @@ def _page_styles() -> str:
   min-width: 0;
   box-sizing: border-box;
   color: var(--text, inherit);
+}
+/* Light mode only — bridge AudioMuse theme tokens; dark mode rules unchanged */
+html:not(.dark-mode) .afm-shell {
+  --text: var(--text-main, #1f2937);
+  --muted: var(--text-muted, #4b5563);
+  --border: var(--border-color, #e5e7eb);
+  --field: var(--bg-input, #ffffff);
+  --bg: var(--bg-card, #ffffff);
+  --accent: var(--color-primary, #2563eb);
+}
+html:not(.dark-mode) .afm-shell .afm-panel,
+html:not(.dark-mode) .afm-shell .afm-table-wrap,
+html:not(.dark-mode) .afm-shell .afm-edit-bar {
+  background: var(--bg-card, #ffffff);
+}
+html:not(.dark-mode) .afm-shell .afm-flash-ok {
+  color: #166534;
+  background: color-mix(in srgb, var(--color-success, #16a34a) 12%, #ffffff);
+  border-color: color-mix(in srgb, var(--color-success, #16a34a) 35%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-flash-error {
+  color: #991b1b;
+  background: color-mix(in srgb, var(--color-danger, #dc2626) 10%, #ffffff);
+  border-color: color-mix(in srgb, var(--color-danger, #dc2626) 32%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-badge-live {
+  color: #15803d;
+  background: color-mix(in srgb, var(--color-success, #16a34a) 14%, #ffffff);
+  border-color: color-mix(in srgb, var(--color-success, #16a34a) 28%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-badge-off {
+  color: var(--text-muted, #4b5563);
+  background: color-mix(in srgb, var(--text-muted, #4b5563) 10%, #ffffff);
+  border-color: var(--border-color, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-badge-queue {
+  color: #1d4ed8;
+  background: color-mix(in srgb, var(--color-primary, #2563eb) 12%, #ffffff);
+  border-color: color-mix(in srgb, var(--color-primary, #2563eb) 24%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-badge-saved {
+  color: #6d28d9;
+  background: color-mix(in srgb, #8b5cf6 12%, #ffffff);
+  border-color: color-mix(in srgb, #8b5cf6 24%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-badge-remote {
+  color: #c2410c;
+  background: color-mix(in srgb, #f97316 12%, #ffffff);
+  border-color: color-mix(in srgb, #f97316 24%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-badge-living {
+  color: #0e7490;
+  background: color-mix(in srgb, #06b6d4 12%, #ffffff);
+  border-color: color-mix(in srgb, #06b6d4 24%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-step-badge {
+  color: #1d4ed8;
+  background: color-mix(in srgb, var(--color-primary, #2563eb) 12%, #ffffff);
+  border-color: color-mix(in srgb, var(--color-primary, #2563eb) 24%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-step-badge-optional,
+html:not(.dark-mode) .afm-shell .afm-helper-badge {
+  color: #475569;
+  background: color-mix(in srgb, #64748b 10%, #ffffff);
+  border-color: color-mix(in srgb, #64748b 22%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-btn-danger {
+  color: #b91c1c;
+  border-color: color-mix(in srgb, var(--color-danger, #dc2626) 40%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-btn-danger:hover {
+  color: #991b1b;
+  background: color-mix(in srgb, var(--color-danger, #dc2626) 10%, #ffffff);
+  border-color: color-mix(in srgb, var(--color-danger, #dc2626) 55%, #e5e7eb);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-danger, #dc2626) 18%, transparent);
+}
+html:not(.dark-mode) .afm-shell .afm-btn:hover {
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+}
+html:not(.dark-mode) .afm-shell .afm-select-menu {
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+}
+html:not(.dark-mode) .afm-shell .afm-select-option:hover,
+html:not(.dark-mode) .afm-shell .afm-select-option.is-selected {
+  background: color-mix(in srgb, var(--color-primary, #2563eb) 12%, #ffffff);
+  color: var(--text-main, #1f2937);
+}
+html:not(.dark-mode) .afm-shell .afm-filter-term-ok { color: #15803d; }
+html:not(.dark-mode) .afm-shell .afm-filter-term-warn,
+html:not(.dark-mode) .afm-shell .afm-mood-inline-hint { color: #c2410c; }
+html:not(.dark-mode) .afm-shell .afm-collapsible-explainer,
+html:not(.dark-mode) .afm-shell .afm-filter-feedback {
+  background: color-mix(in srgb, var(--color-primary, #2563eb) 6%, #ffffff);
 }
 .afm-page-header {
   display: flex;
