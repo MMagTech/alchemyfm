@@ -24,7 +24,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.3.6"
+PLUGIN_VERSION = "2.3.7"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1220,6 +1220,8 @@ def _page_styles() -> str:
   border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
   border-radius: 12px;
   background: var(--field, rgba(255, 255, 255, 0.04));
+  padding: 0.25rem 0.6rem 0.4rem 0.25rem;
+  box-sizing: border-box;
 }
 .afm-table {
   width: 100%;
@@ -1237,6 +1239,10 @@ def _page_styles() -> str:
   color: var(--muted, #94a3b8);
   border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.12));
   white-space: nowrap;
+}
+.afm-table th.afm-actions-col,
+.afm-table td.afm-actions-cell {
+  padding-right: 1rem;
 }
 .afm-table td {
   padding: 0.75rem 0.85rem;
@@ -1359,6 +1365,14 @@ def _page_styles() -> str:
   box-shadow: 0 2px 10px color-mix(in srgb, #ef4444 28%, transparent);
 }
 .afm-row-actions { display: flex; flex-wrap: nowrap; gap: 0.45rem; align-items: center; }
+.afm-table .afm-row-actions { padding-right: 0.1rem; }
+.afm-table .afm-btn:hover {
+  transform: none;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #6366f1) 35%, transparent);
+}
+.afm-table .afm-btn-danger:hover {
+  box-shadow: 0 0 0 1px color-mix(in srgb, #ef4444 55%, transparent);
+}
 .afm-edit-bar {
   display: flex;
   justify-content: space-between;
@@ -1969,7 +1983,7 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
         table_html = (
             '<div class="afm-table-wrap"><table class="afm-table">'
             "<thead><tr>"
-            "<th>Station</th><th>Programming</th><th>Status</th><th>Actions</th>"
+            "<th>Station</th><th>Programming</th><th>Status</th><th class='afm-actions-col'>Actions</th>"
             "</tr></thead><tbody>"
             + "".join(rows)
             + "</tbody></table></div>"
