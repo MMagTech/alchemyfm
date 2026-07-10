@@ -188,7 +188,7 @@ After **Preview Programming**, the Filters panel shows a **Filter check** summar
 
 Optional **Navidrome playlist** cold-start for **this station**:
 
-- **Search** Navidrome playlists by name and **pick** a result (sets Playlist ID automatically), or paste an id manually.
+- **Search** Navidrome playlists by **title** and **pick** a result (sets Playlist ID automatically), or paste an id manually.
 - Click **Verify** to confirm AudioMuse can resolve the playlist and load opener tracks.
 - On **Preview**, a bootstrap warning appears if verification fails; **Deploy** blocks until the playlist verifies.
 - Opener tracks play first at deploy/bootstrap; refills use your programming query.
