@@ -3360,6 +3360,20 @@ body.live-station-page .live-mini-player {
   font-weight: 600;
 }
 
+.admin-designer-callout a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.admin-designer-callout a:hover {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.admin-designer-callout a strong {
+  color: var(--accent-hover);
+}
+
 .admin-details > summary {
   cursor: pointer;
   font-size: 1.05rem;
@@ -3935,6 +3949,21 @@ body.admin-dialog-open {
   font-size: 0.82rem;
   line-height: 1.55;
   color: var(--muted);
+}
+
+.admin-help-p a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.admin-help-p a:hover {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.admin-help-p a strong {
+  color: var(--accent-hover);
+  font-weight: 600;
 }
 
 .admin-help-body code {
