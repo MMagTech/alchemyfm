@@ -226,7 +226,7 @@ Collapsed helper at the **top of the form** (before Step 1), alongside Discover 
 
 Natural-language ideas via `POST /chat/api/chatPlaylist`. Requires AudioMuse chat/AI configured.
 
-- **Generate Playlist Preview** sets Step 2 to a **Sonic Vibe (CLAP)** query from your prompt and shows Preview Results.
+- **Generate Playlist Preview** sets Step 2 to a **Sonic Vibe (CLAP)** query from your prompt and shows Preview Results. Channel name is optional — a draft name is suggested from your description until you deploy.
 - Slow (LLM) — tweak Programming and run **Preview Programming** before deploy.
 - **Not** wired to living cron and **does not** deploy to Alchemy FM.
 
