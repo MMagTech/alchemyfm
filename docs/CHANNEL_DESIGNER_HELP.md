@@ -42,11 +42,11 @@ Optional rules narrow **preview**, **living auto-add**, and **cron refresh**:
 
 - Tempo and energy bounds
 - Year min/max
-- Genre include/exclude (comma-separated)
-- Mood tags include
-- Exclude artists (comma-separated)
+- Genre include/exclude — **exact match** on analyzed `top_genre` (see Genre column in Preview)
+- Mood tags include — autocomplete from AudioMuse mood labels; inline warning for unknown tags
+- Exclude artists — search library to add; exact match on artist name
 
-Tracks without score metadata may be dropped when a filter needs that field.
+After **Preview Programming**, the Filters panel shows a **Filter check** summary: which terms matched tracks in the pool and the top genres present. Genre and mood filters use analyzed score metadata, not free-text tags.
 
 ---
 
