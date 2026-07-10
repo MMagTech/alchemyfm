@@ -24,7 +24,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.3.9"
+PLUGIN_VERSION = "2.3.10"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1449,15 +1449,33 @@ def _page_styles() -> str:
 .afm-panel input[type="password"],
 .afm-panel input[type="search"],
 .afm-panel textarea,
-.afm-panel select {
+.afm-panel select,
+.afm-panel .afm-text-input {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  color: var(--text, inherit);
-  background: var(--bg, rgba(0, 0, 0, 0.25));
+  color: var(--text, #e2e8f0);
+  background: var(--field, rgba(15, 23, 42, 0.55));
   border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
   border-radius: 8px;
   padding: 0.45rem 0.6rem;
+}
+.afm-panel select {
+  color-scheme: dark light;
+  cursor: pointer;
+}
+.afm-panel select option {
+  background-color: #1e293b;
+  color: #f1f5f9;
+}
+.afm-programming-panel .afm-field:has(.afm-text-input) {
+  width: 100%;
+  max-width: none;
+}
+.afm-programming-panel input.afm-text-input {
+  display: block;
+  width: 100% !important;
+  max-width: 100% !important;
 }
 .afm-panel .hint {
   margin: 0.55rem 0 0;
@@ -1705,32 +1723,32 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
         )
 
     return (
-        "<section class='afm-panel'>"
+        "<section class='afm-panel afm-programming-panel'>"
         + _panel_heading("Programming", "How AudioMuse finds tracks")
-        + "<div><label>Programming type</label>"
-        f"<select name='programming_type' id='programming_type'>"
+        + "<div class='afm-field'><label>Programming type</label>"
+        f"<select name='programming_type' id='programming_type' class='afm-select'>"
         f"{_select_options(PROGRAMMING_TYPES, ptype)}</select></div>"
         f"<div id='field-clap' class='afm-field'{hidden('clap_query')}>"
         "<label>Sonic vibe (describe the sound)</label>"
-        f"<input name='clap_query' placeholder='e.g. late night rock' "
+        f"<input name='clap_query' class='afm-text-input' placeholder='e.g. late night rock' "
         f"value='{html.escape(str(values.get('clap_query', '')))}'>"
         "<p class='hint'>Uses CLAP text-to-audio search across your analyzed library.</p></div>"
         f"<div id='field-lyrics' class='afm-field'{hidden('lyrics_query')}>"
         "<label>Lyrics theme</label>"
-        f"<input name='lyrics_query' placeholder='e.g. songs about the open road' "
+        f"<input name='lyrics_query' class='afm-text-input' placeholder='e.g. songs about the open road' "
         f"value='{html.escape(str(values.get('lyrics_query', '')))}'>"
         "<p class='hint'>Semantic lyrics search — meaning and themes, not just keywords.</p></div>"
         f"<div id='field-mood' class='afm-field afm-field-grid'{hidden('mood_centroid')}>"
-        "<div><label>Mood</label><select name='mood_name'>" + mood_opts + "</select></div>"
-        "<div><label>Cluster</label><select name='centroid_index' id='centroid_index'>" + centroid_opts + "</select></div>"
+        "<div><label>Mood</label><select name='mood_name' class='afm-select'>" + mood_opts + "</select></div>"
+        "<div><label>Cluster</label><select name='centroid_index' id='centroid_index' class='afm-select'>" + centroid_opts + "</select></div>"
         "<p class='hint' style='grid-column:1/-1;'>Each mood has sub-clusters from your library analysis — pick one that matches "
         "the vibe (tags show the dominant traits in that cluster).</p></div>"
         f"<div id='field-anchor' class='afm-field'{hidden('alchemy_anchor')}>"
         "<label>Song Alchemy anchor</label>"
-        f"<select name='anchor_id'>{''.join(anchor_opts)}</select></div>"
+        f"<select name='anchor_id' class='afm-select'>{''.join(anchor_opts)}</select></div>"
         f"<div id='field-seed' class='afm-field'{hidden('similar_seed')}>"
         "<label>Search seed track</label>"
-        f"<input name='seed_search' value='{html.escape(str(values.get('seed_search', '')))}'> "
+        f"<input name='seed_search' class='afm-text-input' value='{html.escape(str(values.get('seed_search', '')))}'> "
         "<button type='submit' name='action' value='search_seed' formnovalidate class='afm-btn afm-btn-secondary'>Search</button>"
         f"{seed_results_html}"
         f"<input name='seed_id' placeholder='Track item id' value='{html.escape(str(values.get('seed_id', '')))}'>"
@@ -1842,7 +1860,7 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
         "<div class='afm-field'><label>Icecast mount</label>"
         f"<input name='icecast_mount' placeholder='/channel-slug' value='{html.escape(str(values.get('icecast_mount', '')))}'></div>"
         "<div class='afm-field'><label>When pool runs low</label>"
-        f"<select name='refresh_mode'>{_select_options(REFRESH_MODES, str(values.get('refresh_mode', 'similar_to_last')))}</select>"
+        f"<select name='refresh_mode' class='afm-select'>{_select_options(REFRESH_MODES, str(values.get('refresh_mode', 'similar_to_last')))}</select>"
         "<p class='hint'>For CLAP/lyrics/mood channels, the plugin saves a Song Alchemy anchor from your preview "
         "so Alchemy FM can keep refilling 24/7.</p></div>"
         + "<div class='afm-deploy-tail'>"
