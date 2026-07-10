@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.6"
+PLUGIN_VERSION = "3.0.7"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -701,7 +701,7 @@ def _filter_feedback_report(
         count = sum(1 for track in unfiltered if _track_genre(track) == term)
         terms.append(
             {
-                "kind": "Genre include",
+                "kind": "Genre Include",
                 "term": term,
                 "count": count,
                 "status": "ok" if count else "warn",
@@ -712,7 +712,7 @@ def _filter_feedback_report(
         count = sum(1 for track in unfiltered if _track_genre(track) == term)
         terms.append(
             {
-                "kind": "Genre exclude",
+                "kind": "Genre Exclude",
                 "term": term,
                 "count": count,
                 "status": "ok",
@@ -726,7 +726,7 @@ def _filter_feedback_report(
         note = "AudioMuse mood label" if known else "not a known AudioMuse mood"
         terms.append(
             {
-                "kind": "Mood include",
+                "kind": "Mood Include",
                 "term": term,
                 "count": count,
                 "status": status,
@@ -741,7 +741,7 @@ def _filter_feedback_report(
         )
         terms.append(
             {
-                "kind": "Exclude artist",
+                "kind": "Exclude Artist",
                 "term": term,
                 "count": count,
                 "status": "ok",
@@ -1792,15 +1792,18 @@ def _step_panel_heading(
 def _designer_flow_overview_html() -> str:
     return (
         '<section class="afm-panel afm-flow-overview-panel">'
-        + _panel_heading("How to build a station", "Follow the steps below — only Step 2 is required before preview.")
+        + _panel_heading(
+            "How to Build a Station",
+            "Follow the Steps Below — Only Step 2 Is Required Before Preview.",
+        )
         + "<ol class='afm-flow-steps'>"
-        "<li><strong>Name it</strong> — what listeners see (mount, homepage).</li>"
-        "<li><strong>Program it</strong> — how AudioMuse finds music (CLAP, lyrics, mood, etc.). "
+        "<li><strong>Name It</strong> — What listeners see (mount, homepage).</li>"
+        "<li><strong>Program It</strong> — How AudioMuse finds music (CLAP, lyrics, mood, etc.). "
         "This is re-queried when the queue needs more tracks.</li>"
-        "<li><strong>Preview it</strong> — sanity-check tracks before anything goes on air.</li>"
-        "<li><strong>Optional extras</strong> — filters, opener playlist, living pool (skip on first try).</li>"
-        "<li><strong>Playback rules</strong> — what happens when the pool runs low.</li>"
-        "<li><strong>Deploy</strong> — creates or updates the station on Alchemy FM.</li>"
+        "<li><strong>Preview It</strong> — Sanity-check tracks before anything goes on air.</li>"
+        "<li><strong>Optional Extras</strong> — Filters, opener playlist, living pool (skip on first try).</li>"
+        "<li><strong>Playback Rules</strong> — What happens when the pool runs low.</li>"
+        "<li><strong>Deploy</strong> — Creates or updates the station on Alchemy FM.</li>"
         "</ol>"
         "<p class='hint'>Discover Channels (collapsed helper below) and Chat Designer prefills ideas only — they do not deploy by themselves.</p>"
         "</section>"
@@ -2871,8 +2874,8 @@ def _chat_designer_fields_html(values: dict[str, Any]) -> str:
     return (
         "<section class='afm-panel afm-helpers-panel'>"
         + _panel_heading(
-            "Chat designer",
-            "Brainstorm only — does not deploy or set programming until you copy ideas into Step 2",
+            "Chat Designer",
+            "Brainstorm Only — Does Not Deploy or Set Programming Until You Copy Ideas Into Step 2",
         )
         + "<p class='hint'>Slow LLM call. Use for initial ideas, then set programming above and preview.</p>"
         + "<div class='afm-field'>"
@@ -3013,7 +3016,7 @@ def _station_identity_fields_html(values: dict[str, Any]) -> str:
         "<section class='afm-panel afm-step-panel'>"
         + _step_panel_heading(
             "Step 1",
-            "Station identity",
+            "Station Identity",
             "What listeners see on Alchemy FM — name, URL mount, and homepage description. Does not affect track selection.",
         )
         + "<div class='afm-field'>"
@@ -3042,7 +3045,7 @@ def _preview_step_html() -> str:
         "<section class='afm-panel afm-step-panel'>"
         + _step_panel_heading(
             "Step 3",
-            "Preview programming",
+            "Preview Programming",
             "Runs your Step 2 query in AudioMuse and shows matching tracks below. Nothing goes on air until Step 6 deploy.",
         )
         + "<div class='afm-form-actions afm-form-actions-inline'>"
@@ -3205,7 +3208,7 @@ def _edit_toolbar_html(values: dict[str, Any]) -> str:
         "</div>"
         '<div class="afm-edit-actions">'
         f"{op_buttons}"
-        f'<a href="{html.escape(url_for("alchemy_fm_bridge.home"))}" class="afm-btn afm-btn-secondary">← All stations</a>'
+        f'<a href="{html.escape(url_for("alchemy_fm_bridge.home"))}" class="afm-btn afm-btn-secondary">← All Stations</a>'
         '<button type="submit" form="afm-designer-form" name="action" value="new_channel" formnovalidate '
         'class="afm-btn afm-btn-secondary">New Channel</button>'
         '<button type="submit" form="afm-designer-form" name="action" value="push" '
@@ -3302,9 +3305,9 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
 
     title = "Other Stations" if editing_slug else "Your Stations"
     note = (
-        "Switch stations without losing your place — each opens in the designer above."
+        "Switch Stations Without Losing Your Place — Each Opens in the Designer Above."
         if editing_slug
-        else "Pick a station to edit, or create a new channel below."
+        else "Pick a Station to Edit, or Create a New Channel Below."
     )
     new_channel = ""
     if not editing_slug:
@@ -3620,7 +3623,7 @@ def home():
             except ChannelDesignerError as exc:
                 flash = _flash_html(str(exc), "error")
         elif request.args.get("new"):
-            flash = _flash_html("New channel — design programming, preview tracks, then deploy.", "ok")
+            flash = _flash_html("New Channel — Design Programming, Preview Tracks, Then Deploy.", "ok")
 
     if request.method == "POST":
         action = (request.form.get("action") or "").strip()
@@ -3898,7 +3901,7 @@ def home():
         '<section class="afm-section" id="designer">'
         '<div class="afm-section-head">'
         "<div><h2 class='afm-section-title'>Channel Designer</h2>"
-        "<p class='afm-section-note'>Work through the numbered steps — name, program, preview, then deploy.</p></div>"
+        "<p class='afm-section-note'>Work Through the Numbered Steps — Name, Program, Preview, Then Deploy.</p></div>"
         "</div>"
         if not editing_slug
         else ""
@@ -3906,13 +3909,13 @@ def home():
     designer_section_close = "</section>" if not editing_slug else ""
     preview_block = (
         "<section class='afm-panel'>"
-        + _panel_heading("Preview results", "Tracks from your last Step 3 preview")
+        + _panel_heading("Preview Results", "Tracks From Your Last Step 3 Preview")
         + f"{_preview_table_html(preview_tracks)}"
         + "</section>"
     )
     audition_block = (
         "<section class='afm-panel'>"
-        + _panel_heading("Audition history", "Recent preview runs for this channel")
+        + _panel_heading("Audition History", "Recent Preview Runs for This Channel")
         + f"{_audition_history_html(editing_slug or None)}"
         + "</section>"
     )
