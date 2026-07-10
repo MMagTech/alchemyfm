@@ -4,6 +4,10 @@ on:
   push:
     branches: [master]
     tags: ["v*"]
+    paths-ignore:
+      - "audiomuse-plugins/**"
+      - "docs/**"
+      - "**/*.md"
   workflow_dispatch:
 
 permissions:
