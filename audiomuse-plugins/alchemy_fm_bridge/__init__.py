@@ -25,11 +25,14 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.0"
+PLUGIN_VERSION = "3.0.4"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
 CRON_TASK_LABEL = "Alchemy FM"
+HELP_DOC_URL = (
+    "https://github.com/MMagTech/alchemyfm/blob/master/docs/CHANNEL_DESIGNER_HELP.md"
+)
 
 ALCHEMY_FM_USER_AGENT = (
     "AlchemyFmBridge/3.0 AudioMuse-Plugin (+https://github.com/MMagTech/alchemyfm)"
@@ -432,8 +435,10 @@ def preview_programming(profile: dict[str, Any]) -> list[dict[str, Any]]:
     raise ChannelDesignerError(f"Unsupported programming type: {ptype}")
 
 
-def _merged_programming_tracks(profile: dict[str, Any], slug: str | None = None) -> list[dict[str, Any]]:
-    """Programming preview merged with living pool tracks (deduped by item_id)."""
+def _merged_programming_tracks_unfiltered(
+    profile: dict[str, Any], slug: str | None = None
+) -> list[dict[str, Any]]:
+    """Programming + living pool merge, enriched — before track filters."""
     raw = preview_programming(profile)
     slug = (slug or (profile.get("station") or {}).get("slug") or "").strip()
     living_cfg = profile.get("living") or {}
@@ -442,8 +447,12 @@ def _merged_programming_tracks(profile: dict[str, Any], slug: str | None = None)
         pool_ids = [item_id for item_id in _pool_item_ids(slug) if item_id not in seen]
         if pool_ids:
             raw = raw + _preview_tracks_from_ids(pool_ids)
-    enriched = enrich_preview(raw)
-    return apply_track_filters(enriched, profile)
+    return enrich_preview(raw)
+
+
+def _merged_programming_tracks(profile: dict[str, Any], slug: str | None = None) -> list[dict[str, Any]]:
+    """Programming preview merged with living pool tracks (deduped by item_id)."""
+    return apply_track_filters(_merged_programming_tracks_unfiltered(profile, slug), profile)
 
 
 def _programming_source_ref(programming: dict[str, Any]) -> str:
@@ -633,6 +642,192 @@ def apply_track_filters(tracks: list[dict[str, Any]], profile: dict[str, Any]) -
     return [track for track in tracks if track_passes_filters(track, filters)]
 
 
+def _append_csv_term(current: str, term: str) -> str:
+    term = term.strip()
+    if not term:
+        return current
+    parts = [part.strip() for part in current.split(",") if part.strip()]
+    if term.lower() not in {part.lower() for part in parts}:
+        parts.append(term)
+    return ", ".join(parts)
+
+
+def _audiomuse_mood_labels() -> list[str]:
+    labels: list[str] = []
+    try:
+        cfg = audiomuse_get("/api/config")
+        if isinstance(cfg, dict):
+            raw = cfg.get("mood_labels")
+            if isinstance(raw, list):
+                labels.extend(str(item).strip().lower() for item in raw if item)
+            elif isinstance(raw, dict):
+                labels.extend(str(key).strip().lower() for key in raw.keys())
+    except ChannelDesignerError:
+        pass
+    if not labels:
+        for mood in _mood_centroids_data().keys():
+            labels.append(str(mood).strip().lower())
+    return sorted({label for label in labels if label})
+
+
+def _search_artists(query: str) -> list[str]:
+    artists: list[str] = []
+    seen: set[str] = set()
+    for track in _search_tracks(query):
+        artist = (track.get("author") or track.get("artist") or "").strip()
+        key = artist.lower()
+        if artist and key not in seen:
+            seen.add(key)
+            artists.append(artist)
+    return artists[:15]
+
+
+def _filter_feedback_report(
+    unfiltered: list[dict[str, Any]],
+    filtered: list[dict[str, Any]],
+    filters: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not _filters_active(filters):
+        return {}
+    filters = filters or {}
+    mood_vocab = set(_audiomuse_mood_labels())
+    genre_counts: dict[str, int] = {}
+    for track in unfiltered:
+        genre = _track_genre(track)
+        if genre:
+            genre_counts[genre] = genre_counts.get(genre, 0) + 1
+    terms: list[dict[str, Any]] = []
+    for term in filters.get("genre_include") or []:
+        count = sum(1 for track in unfiltered if _track_genre(track) == term)
+        terms.append(
+            {
+                "kind": "Genre include",
+                "term": term,
+                "count": count,
+                "status": "ok" if count else "warn",
+                "note": "exact Top Genre match",
+            }
+        )
+    for term in filters.get("genre_exclude") or []:
+        count = sum(1 for track in unfiltered if _track_genre(track) == term)
+        terms.append(
+            {
+                "kind": "Genre exclude",
+                "term": term,
+                "count": count,
+                "status": "ok",
+                "note": f"would remove {count}" if count else "not in preview pool",
+            }
+        )
+    for term in filters.get("mood_include") or []:
+        count = sum(1 for track in unfiltered if term in _track_mood_tags(track))
+        known = term in mood_vocab
+        status = "ok" if count else ("warn" if known else "unknown")
+        note = "AudioMuse mood label" if known else "not a known AudioMuse mood"
+        terms.append(
+            {
+                "kind": "Mood include",
+                "term": term,
+                "count": count,
+                "status": status,
+                "note": note,
+            }
+        )
+    for term in filters.get("exclude_artists") or []:
+        count = sum(
+            1
+            for track in unfiltered
+            if (track.get("author") or track.get("artist") or "").strip().lower() == term
+        )
+        terms.append(
+            {
+                "kind": "Exclude artist",
+                "term": term,
+                "count": count,
+                "status": "ok",
+                "note": f"would remove {count}" if count else "not in preview pool",
+            }
+        )
+    return {
+        "before": len(unfiltered),
+        "after": len(filtered),
+        "terms": terms,
+        "sample_genres": sorted(genre_counts.keys(), key=lambda g: (-genre_counts[g], g))[:10],
+        "genre_counts": genre_counts,
+    }
+
+
+def _filter_feedback_html(report: dict[str, Any] | None) -> str:
+    if not report:
+        return ""
+    before = int(report.get("before") or 0)
+    after = int(report.get("after") or 0)
+    removed = max(0, before - after)
+    lines = [
+        "<section class='afm-filter-feedback'>",
+        "<h4 class='afm-filter-feedback-title'>Filter check (last preview)</h4>",
+        f"<p class='hint'>Pool before filters: <strong>{before}</strong> → after filters: "
+        f"<strong>{after}</strong>"
+        + (f" ({removed} removed)" if removed else "")
+        + ". Genre and mood filters match <strong>analyzed</strong> score metadata exactly.</p>",
+    ]
+    terms = report.get("terms") or []
+    if terms:
+        lines.append("<ul class='afm-filter-feedback-list'>")
+        for item in terms:
+            term = html.escape(str(item.get("term") or ""))
+            kind = html.escape(str(item.get("kind") or "Filter"))
+            count = int(item.get("count") or 0)
+            status = str(item.get("status") or "ok")
+            note = html.escape(str(item.get("note") or ""))
+            if status == "ok":
+                marker = f"✓ {count} in pool"
+                cls = "afm-filter-term-ok"
+            elif status == "unknown":
+                marker = "✗ unknown mood"
+                cls = "afm-filter-term-warn"
+            else:
+                marker = f"✗ {count} in pool"
+                cls = "afm-filter-term-warn"
+            lines.append(
+                f"<li class='{cls}'><strong>{kind}</strong> {term} — {marker}"
+                + (f" <span class='afm-filter-term-note'>({note})</span>" if note else "")
+                + "</li>"
+            )
+        lines.append("</ul>")
+    sample_genres = report.get("sample_genres") or []
+    genre_counts = report.get("genre_counts") or {}
+    if sample_genres:
+        parts = []
+        for genre in sample_genres:
+            parts.append(f"{html.escape(genre)} ({int(genre_counts.get(genre, 0))})")
+        lines.append(
+            "<p class='hint afm-filter-genre-hint'><strong>Top genres in preview pool:</strong> "
+            + ", ".join(parts)
+            + "</p>"
+        )
+    lines.append("</section>")
+    return "".join(lines)
+
+
+def _apply_filter_feedback(
+    values: dict[str, Any],
+    profile: dict[str, Any],
+    unfiltered: list[dict[str, Any]],
+    filtered: list[dict[str, Any]],
+) -> None:
+    report = _filter_feedback_report(unfiltered, filtered, profile.get("filters"))
+    if report:
+        values["filter_feedback"] = report
+
+
+def _mood_datalist_html(labels: list[str]) -> str:
+    if not labels:
+        return ""
+    options = "".join(f'<option value="{html.escape(label)}"></option>' for label in labels)
+    return f"<datalist id='afm-mood-labels'>{options}</datalist>"
+
+
 def _centroid_from_alchemy_response(data: Any) -> list[float] | None:
     if not isinstance(data, dict):
         return None
@@ -701,13 +896,73 @@ def _search_playlists(query: str) -> list[dict[str, Any]]:
     query = query.strip()
     if len(query) < 2:
         return []
+    for params in ({"query": query}, {"search_query": query, "end": "20"}):
+        try:
+            data = audiomuse_get("/api/search_playlists", params={k: str(v) for k, v in params.items()})
+        except ChannelDesignerError:
+            continue
+        if isinstance(data, list) and data:
+            return [row for row in data if isinstance(row, dict) and row.get("id")]
+    return []
+
+
+def _verify_bootstrap_playlist(playlist_id: str, *, limit: int) -> dict[str, Any]:
+    playlist_id = playlist_id.strip()
+    if not playlist_id:
+        return {"ok": False, "error": "Enter a Navidrome playlist id or pick one from search."}
     try:
-        data = audiomuse_get("/api/search_playlists", params={"search_query": query, "end": "20"})
-    except ChannelDesignerError:
-        return []
-    if not isinstance(data, list):
-        return []
-    return [row for row in data if isinstance(row, dict) and row.get("id")]
+        track_ids = _playlist_track_ids(playlist_id, limit=limit)
+    except ChannelDesignerError as exc:
+        return {"ok": False, "playlist_id": playlist_id, "error": str(exc)}
+    if not track_ids:
+        return {
+            "ok": False,
+            "playlist_id": playlist_id,
+            "error": "Playlist not found or has no playable tracks in AudioMuse.",
+        }
+    return {
+        "ok": True,
+        "playlist_id": playlist_id,
+        "resolved_count": len(track_ids),
+        "limit": limit,
+    }
+
+
+def _bootstrap_feedback_html(check: dict[str, Any] | None) -> str:
+    if not check:
+        return ""
+    if check.get("ok"):
+        count = int(check.get("resolved_count") or 0)
+        limit = int(check.get("limit") or 0)
+        pid = html.escape(str(check.get("playlist_id") or ""))
+        return (
+            "<section class='afm-filter-feedback afm-bootstrap-feedback'>"
+            "<h4 class='afm-filter-feedback-title'>Bootstrap check</h4>"
+            f"<p class='afm-filter-term-ok'>✓ Playlist <strong>{pid}</strong> resolves to "
+            f"<strong>{count}</strong> opener track(s) (limit {limit}).</p>"
+            "</section>"
+        )
+    error = html.escape(str(check.get("error") or "Could not verify playlist."))
+    pid = html.escape(str(check.get("playlist_id") or ""))
+    id_note = f" for <strong>{pid}</strong>" if pid else ""
+    return (
+        "<section class='afm-filter-feedback afm-bootstrap-feedback'>"
+        "<h4 class='afm-filter-feedback-title'>Bootstrap check</h4>"
+        f"<p class='afm-filter-term-warn'>✗ {error}{id_note}</p>"
+        "<p class='hint'>Search Navidrome playlists above and pick a result, or paste a playlist id from "
+        "Navidrome/AudioMuse and click Verify.</p>"
+        "</section>"
+    )
+
+
+def _apply_bootstrap_check(values: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any] | None:
+    bootstrap = profile.get("bootstrap")
+    if not bootstrap or not bootstrap.get("playlist_id"):
+        return None
+    limit = int(bootstrap.get("track_limit") or BOOTSTRAP_TRACK_LIMIT_DEFAULT)
+    check = _verify_bootstrap_playlist(str(bootstrap["playlist_id"]), limit=limit)
+    values["bootstrap_check"] = check
+    return check
 
 
 def _playlist_track_ids(playlist_id: str, *, limit: int) -> list[str]:
@@ -742,13 +997,33 @@ def _resolve_navidrome_bootstrap(bootstrap: dict[str, Any]) -> list[str]:
 
 
 def _clustering_playlists() -> list[dict[str, Any]]:
+    """AudioMuse GET /api/playlists returns {playlist_name: [tracks]} — not a list."""
     try:
         data = audiomuse_get("/api/playlists")
     except ChannelDesignerError:
         return []
-    if not isinstance(data, list):
-        return []
-    return [row for row in data if isinstance(row, dict)]
+
+    playlists: list[dict[str, Any]] = []
+    if isinstance(data, dict):
+        for name, tracks in data.items():
+            playlist_name = str(name or "").strip()
+            if not playlist_name:
+                continue
+            track_rows = tracks if isinstance(tracks, list) else []
+            playlists.append(
+                {
+                    "id": playlist_name,
+                    "name": playlist_name,
+                    "playlist_id": playlist_name,
+                    "track_count": len(track_rows),
+                    "tracks": track_rows,
+                }
+            )
+        return sorted(playlists, key=lambda row: str(row.get("name", "")).lower())
+
+    if isinstance(data, list):
+        return [row for row in data if isinstance(row, dict)]
+    return []
 
 
 def _clustering_start() -> dict[str, Any]:
@@ -757,10 +1032,15 @@ def _clustering_start() -> dict[str, Any]:
 
 def _last_clustering_task() -> dict[str, Any] | None:
     try:
-        data = audiomuse_get("/api/last_task", params={"task": "clustering"})
+        data = audiomuse_get("/api/last_task")
     except ChannelDesignerError:
         return None
-    return data if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        return None
+    task_type = str(data.get("task_type") or "")
+    if task_type == "main_clustering" or "clustering" in task_type.lower():
+        return data
+    return None
 
 
 def _chat_playlist_tracks(prompt: str, *, limit: int = CHAT_PLAYLIST_LIMIT) -> list[dict[str, Any]]:
@@ -1490,6 +1770,16 @@ def _panel_heading(title: str, note: str = "") -> str:
     )
 
 
+def _page_header_html() -> str:
+    return (
+        '<header class="afm-page-header">'
+        '<h2 class="afm-page-title">Live Programming for Alchemy FM</h2>'
+        f'<a href="{html.escape(HELP_DOC_URL)}" class="afm-help-link" target="_blank" '
+        'rel="noopener noreferrer">Help</a>'
+        "</header>"
+    )
+
+
 def _field_label(text: str, *, mandatory: bool = False) -> str:
     suffix = " (mandatory)" if mandatory else ""
     return f"<label>{html.escape(text)}{suffix}</label>"
@@ -1504,10 +1794,35 @@ def _page_styles() -> str:
   box-sizing: border-box;
   color: var(--text, inherit);
 }
-.afm-lede {
+.afm-page-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.55rem;
+  margin: 0 0 1.65rem;
+  padding-bottom: 1.1rem;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+}
+.afm-page-title {
+  margin: 0;
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text, inherit);
+  text-transform: none;
+}
+.afm-help-link {
+  font-size: 0.88rem;
+  font-weight: 500;
   color: var(--muted, #94a3b8);
-  margin: 0 0 1.25rem;
-  line-height: 1.55;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.afm-help-link:hover {
+  color: var(--text, inherit);
+  border-bottom-color: var(--border, rgba(255, 255, 255, 0.25));
 }
 .afm-flash {
   padding: 0.75rem 1rem;
@@ -1536,11 +1851,11 @@ def _page_styles() -> str:
 }
 .afm-section-title {
   margin: 0;
-  font-size: 0.72rem;
+  font-size: 1.05rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted, #94a3b8);
+  letter-spacing: -0.02em;
+  text-transform: none;
+  color: var(--text, inherit);
 }
 .afm-section-note {
   margin: 0.35rem 0 0;
@@ -1774,6 +2089,15 @@ def _page_styles() -> str:
   color: var(--muted, #94a3b8);
   margin-bottom: 0.35rem;
 }
+.afm-panel label.afm-check-label {
+  display: flex;
+  font-size: 0.92rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text, inherit);
+  margin-bottom: 0;
+}
 .afm-panel input[type="text"],
 .afm-panel input[type="number"],
 .afm-panel input[type="password"],
@@ -1974,6 +2298,43 @@ def _page_styles() -> str:
   color: var(--text, inherit);
 }
 .afm-check-label input { width: auto; margin-top: 0.15rem; }
+.afm-filter-feedback {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: color-mix(in srgb, var(--accent, #6366f1) 8%, transparent);
+}
+.afm-filter-feedback-title {
+  margin: 0 0 0.45rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text, inherit);
+  text-transform: none;
+  letter-spacing: normal;
+}
+.afm-filter-feedback-list {
+  margin: 0.55rem 0 0;
+  padding-left: 1.1rem;
+  line-height: 1.5;
+}
+.afm-filter-feedback-list li { margin: 0.2rem 0; }
+.afm-filter-term-ok { color: #86efac; }
+.afm-filter-term-warn { color: #fdba74; }
+.afm-filter-term-note { color: var(--muted, #94a3b8); font-size: 0.88rem; }
+.afm-filter-genre-hint { margin: 0.65rem 0 0; }
+.afm-mood-inline-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.84rem;
+  color: #fdba74;
+  min-height: 1.1rem;
+}
+.afm-bootstrap-panel .afm-panel-heading { margin-bottom: 0.6rem; }
+.afm-bootstrap-panel .afm-panel-note { margin-top: 0.25rem; }
+.afm-bootstrap-panel > .hint { margin: 0 0 0.9rem; }
+.afm-bootstrap-panel .afm-check-group { margin: 0 0 1rem; }
+.afm-bootstrap-panel .afm-field { margin-top: 0.75rem; }
+.afm-bootstrap-panel .afm-seed-search-row { margin-top: 0; }
 .afm-seed-results {
   list-style: none;
   padding: 0;
@@ -2100,6 +2461,7 @@ def _preview_table_html(tracks: list[dict[str, Any]]) -> str:
             "<tr>"
             f"<td>{html.escape(track['title'])}</td>"
             f"<td>{html.escape(track['author'])}</td>"
+            f"<td>{html.escape(str(track.get('top_genre') or '—'))}</td>"
             f"<td>{tempo_s}</td>"
             f"<td>{energy_s}</td>"
             f"<td>{html.escape(track.get('mood') or '—')}</td>"
@@ -2109,7 +2471,7 @@ def _preview_table_html(tracks: list[dict[str, Any]]) -> str:
         f"<p><strong>{len(tracks)}</strong> tracks in preview (from your AudioMuse library analysis).</p>"
         '<div class="afm-table-wrap"><table class="afm-table">'
         "<thead><tr>"
-        "<th>Title</th><th>Artist</th><th>BPM</th><th>Energy</th><th>Mood</th>"
+        "<th>Title</th><th>Artist</th><th>Genre</th><th>BPM</th><th>Energy</th><th>Mood</th>"
         "</tr></thead><tbody>"
         + "".join(rows)
         + "</tbody></table></div>"
@@ -2205,11 +2567,28 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
     )
 
 
-def _filters_fields_html(values: dict[str, Any]) -> str:
+def _filters_fields_html(values: dict[str, Any], *, mood_labels: list[str] | None = None) -> str:
+    mood_labels = mood_labels if mood_labels is not None else _audiomuse_mood_labels()
+    feedback = _filter_feedback_html(values.get("filter_feedback"))
+    exclude_artist_results = values.get("exclude_artist_results") or []
+    artist_results_html = ""
+    if exclude_artist_results:
+        items = []
+        for artist in exclude_artist_results:
+            items.append(
+                "<li>"
+                f'<button type="submit" name="pick_exclude_artist" value="{html.escape(artist)}" '
+                'formnovalidate class="afm-btn afm-btn-secondary" style="width:100%;text-align:left;">'
+                f"Add {html.escape(artist)}"
+                "</button></li>"
+            )
+        artist_results_html = "<ul class='afm-seed-results'>" + "".join(items) + "</ul>"
     return (
         "<section class='afm-panel'>"
         + _panel_heading("Filters", "Narrow preview, living pool, and cron results")
-        + "<p class='hint'>Optional bounds apply to preview, auto-added songs, and living cron refresh.</p>"
+        + "<p class='hint'>Optional bounds apply to preview, auto-added songs, and living cron refresh. "
+        "Genre and mood filters match <strong>analyzed</strong> Top Genre and mood tags exactly — run "
+        "<strong>Preview Programming</strong> to see what matched.</p>"
         + "<div class='afm-field-grid'>"
         "<div><label>Tempo min (BPM)</label>"
         f"<input type='number' name='filter_tempo_min' min='0' step='1' "
@@ -2231,21 +2610,35 @@ def _filters_fields_html(values: dict[str, Any]) -> str:
         f"value='{html.escape(str(values.get('filter_year_max', '')))}' placeholder='any'></div>"
         "</div>"
         + "<div class='afm-field'>"
-        + _field_label("Genre include (comma-separated)")
-        + f"<input name='filter_genre_include' class='afm-text-input' placeholder='rock, indie' "
+        + _field_label("Genre Include")
+        + f"<input name='filter_genre_include' class='afm-text-input' placeholder='exact top_genre, e.g. rock' "
         + f"value='{html.escape(str(values.get('filter_genre_include', '')))}'></div>"
         + "<div class='afm-field'>"
-        + _field_label("Genre exclude (comma-separated)")
-        + f"<input name='filter_genre_exclude' class='afm-text-input' placeholder='metal, edm' "
+        + _field_label("Genre Exclude")
+        + f"<input name='filter_genre_exclude' class='afm-text-input' placeholder='exact top_genre' "
         + f"value='{html.escape(str(values.get('filter_genre_exclude', '')))}'></div>"
         + "<div class='afm-field'>"
-        + _field_label("Mood tags include (comma-separated)")
-        + f"<input name='filter_mood_include' class='afm-text-input' placeholder='melancholic, dreamy' "
-        + f"value='{html.escape(str(values.get('filter_mood_include', '')))}'></div>"
+        + _field_label("Mood Tags Include")
+        + f"<input name='filter_mood_include' id='filter_mood_include' class='afm-text-input' "
+        + f"list='afm-mood-labels' placeholder='melancholic, dreamy' "
+        + f"value='{html.escape(str(values.get('filter_mood_include', '')))}'>"
+        + "<p class='hint'>Pick from suggestions — must match AudioMuse mood labels on analyzed tracks.</p>"
+        + "<p id='afm-mood-inline-hint' class='afm-mood-inline-hint' aria-live='polite'></p></div>"
         + "<div class='afm-field'>"
-        + _field_label("Exclude artists (comma-separated)")
-        + f"<input name='filter_exclude_artists' class='afm-text-input' placeholder='artist one, artist two' "
-        + f"value='{html.escape(str(values.get('filter_exclude_artists', '')))}'></div>"
+        + _field_label("Exclude Artists")
+        + f"<input name='filter_exclude_artists' id='filter_exclude_artists' class='afm-text-input' "
+        + f"placeholder='comma-separated artist names' "
+        + f"value='{html.escape(str(values.get('filter_exclude_artists', '')))}'>"
+        + "<div class='afm-seed-search-row'>"
+        + f"<input name='exclude_artist_search' class='afm-text-input afm-seed-search-input' "
+        + f"placeholder='Search artist to add…' value='{html.escape(str(values.get('exclude_artist_search', '')))}'>"
+        + "<button type='submit' name='action' value='search_exclude_artist' formnovalidate "
+        + "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Search</button>"
+        + "</div>"
+        + f"{artist_results_html}"
+        + "<p class='hint'>Artist names must match library spelling exactly (case-insensitive).</p></div>"
+        + _mood_datalist_html(mood_labels)
+        + f"{feedback}"
         + "</section>"
     )
 
@@ -2259,38 +2652,54 @@ def _bootstrap_fields_html(values: dict[str, Any]) -> str:
         for pl in playlist_results:
             pl_id = str(pl.get("id") or "")
             name = pl.get("name") or pl_id or "Playlist"
+            count = pl.get("count")
+            count_s = f" · {count} tracks" if count is not None else ""
             items.append(
                 "<li>"
                 f'<button type="submit" name="pick_bootstrap_playlist" value="{html.escape(pl_id)}" '
                 'formnovalidate class="afm-btn afm-btn-secondary" style="width:100%;text-align:left;">'
-                f"{html.escape(name)}"
+                f"{html.escape(name)}{html.escape(count_s)}"
                 "</button></li>"
             )
         results_html = "<ul class='afm-seed-results'>" + "".join(items) + "</ul>"
+    feedback = _bootstrap_feedback_html(values.get("bootstrap_check"))
     return (
-        "<section class='afm-panel'>"
+        "<section class='afm-panel afm-bootstrap-panel'>"
         + _panel_heading(
-            "Bootstrap opener",
+            "Bootstrap Opener",
             "Optional Navidrome playlist cold-start — ongoing programming stays AudioMuse-driven",
         )
-        + "<p class='hint'>Tracks from the opener play first at deploy/bootstrap; refills use your programming query.</p>"
+        + "<p class='hint'>Opener tracks play first at deploy; refills use your programming query. "
+        "Search and pick a Navidrome playlist, or paste an id and verify it resolves in AudioMuse.</p>"
+        + "<div class='afm-check-group'>"
         + "<label class='afm-check-label'><input type='checkbox' name='bootstrap_enabled'"
-        + f"{' checked' if bootstrap_enabled else ''}> Use Navidrome playlist opener</label>"
-        + "<div class='afm-field afm-seed-search-row'>"
-        + f"<input name='bootstrap_playlist_search' class='afm-text-input' placeholder='Search playlists…' "
-        + f"value='{html.escape(str(values.get('bootstrap_playlist_search', '')))}'>"
+        + f"{' checked' if bootstrap_enabled else ''}> Use Navidrome Playlist Opener</label>"
+        + "</div>"
+        + "<div class='afm-field'>"
+        + _field_label("Search Navidrome Playlists")
+        + "<div class='afm-seed-search-row'>"
+        + f"<input name='bootstrap_playlist_search' class='afm-text-input afm-seed-search-input' "
+        + f"placeholder='Playlist name…' value='{html.escape(str(values.get('bootstrap_playlist_search', '')))}'>"
         + "<button type='submit' name='action' value='search_bootstrap_playlist' formnovalidate "
-        + "class='afm-btn afm-btn-secondary'>Search</button></div>"
-        + f"{results_html}"
+        + "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Search</button>"
+        + "</div>"
+        + f"{results_html}</div>"
         + "<div class='afm-field'>"
-        + _field_label("Playlist id")
-        + f"<input name='bootstrap_playlist_id' class='afm-text-input' "
-        + f"value='{html.escape(str(values.get('bootstrap_playlist_id', '')))}'></div>"
+        + _field_label("Playlist ID")
+        + "<div class='afm-seed-search-row'>"
+        + f"<input name='bootstrap_playlist_id' id='bootstrap_playlist_id' class='afm-text-input' "
+        + f"placeholder='From search or Navidrome' "
+        + f"value='{html.escape(str(values.get('bootstrap_playlist_id', '')))}'>"
+        + "<button type='submit' name='action' value='verify_bootstrap_playlist' formnovalidate "
+        + "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Verify</button>"
+        + "</div></div>"
         + "<div class='afm-field'>"
-        + _field_label("Opener track limit")
+        + _field_label("Opener Track Limit")
         + f"<input type='number' name='bootstrap_track_limit' min='5' max='80' "
         + f"value='{html.escape(str(values.get('bootstrap_track_limit', BOOTSTRAP_TRACK_LIMIT_DEFAULT)))}'>"
-        + "</div></section>"
+        + "</div>"
+        + f"{feedback}"
+        + "</section>"
     )
 
 
@@ -2327,7 +2736,9 @@ def _discover_channels_html() -> str:
         pl_id = str(pl.get("id") or pl.get("playlist_id") or "")
         name = str(pl.get("name") or pl_id or "Cluster playlist")
         mood = str(pl.get("mood") or pl.get("description") or "")
-        deploy_query = mood or name
+        if not mood and pl.get("track_count"):
+            mood = f"{int(pl['track_count'])} tracks"
+        deploy_query = name
         rows.append(
             "<tr>"
             f"<td>{html.escape(name)}</td>"
@@ -2353,7 +2764,7 @@ def _discover_channels_html() -> str:
     return (
         '<section class="afm-section" id="discover">'
         '<div class="afm-section-head">'
-        "<div><h2 class='afm-section-title'>Discover channels</h2>"
+        "<div><h2 class='afm-section-title'>Discover Channels</h2>"
         "<p class='afm-section-note'>Clustering playlists from AudioMuse — preview and deploy as stations.</p></div>"
         '<form method="post" id="afm-discover-form" style="margin:0;">'
         '<button type="submit" name="action" value="start_clustering" formnovalidate '
@@ -2447,9 +2858,7 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
         + f"<input name='icecast_mount' placeholder='/channel-slug' value='{html.escape(str(values.get('icecast_mount', '')))}'></div>"
         + "<div class='afm-field'>"
         + _field_label("When pool runs low")
-        + f"<select name='refresh_mode' class='afm-select'>{_select_options(REFRESH_MODES, str(values.get('refresh_mode', 'similar_to_last')))}</select>"
-        + "<p class='hint'>v3 deploys live programming to Alchemy FM — CLAP, lyrics, and mood refills "
-        + "re-run your original query instead of freezing a Song Alchemy anchor.</p></div>"
+        + f"<select name='refresh_mode' class='afm-select'>{_select_options(REFRESH_MODES, str(values.get('refresh_mode', 'similar_to_last')))}</select></div>"
         + "<div class='afm-deploy-tail'>"
         + "<div class='afm-field-grid-3'>"
         + "<div><label>Queue target</label>"
@@ -2670,7 +3079,7 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
             + "</tbody></table></div>"
         )
 
-    title = "Other stations" if editing_slug else "Your stations"
+    title = "Other Stations" if editing_slug else "Your Stations"
     note = (
         "Switch stations without losing your place — each opens in the designer above."
         if editing_slug
@@ -2761,15 +3170,22 @@ def _form_values_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
     return values
 
 
-def _page_script(mood_centroids: dict[str, Any] | None = None) -> str:
+def _page_script(
+    mood_centroids: dict[str, Any] | None = None,
+    mood_labels: list[str] | None = None,
+) -> str:
     mood_json = json.dumps(mood_centroids or {})
+    mood_labels_json = json.dumps(mood_labels or [])
     return f"""
 <script type="application/json" id="mood-centroids-data">{mood_json}</script>
+<script type="application/json" id="mood-labels-data">{mood_labels_json}</script>
 <script>
 (function() {{
   const typeSelect = document.getElementById('programming_type');
   const moodDataEl = document.getElementById('mood-centroids-data');
+  const moodLabelsEl = document.getElementById('mood-labels-data');
   const moodData = moodDataEl ? JSON.parse(moodDataEl.textContent || '{{}}') : {{}};
+  const moodLabels = moodLabelsEl ? JSON.parse(moodLabelsEl.textContent || '[]') : [];
   const sections = {{
     clap_query: document.getElementById('field-clap'),
     lyrics_query: document.getElementById('field-lyrics'),
@@ -2931,6 +3347,25 @@ def _page_script(mood_centroids: dict[str, Any] | None = None) -> str:
     const target = document.getElementById('designer');
     if (target) target.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
   }}
+
+  const moodInput = document.getElementById('filter_mood_include');
+  const moodHint = document.getElementById('afm-mood-inline-hint');
+  function checkMoodTerms() {{
+    if (!moodInput || !moodHint || !moodLabels.length) return;
+    const vocab = new Set(moodLabels.map((m) => String(m).toLowerCase()));
+    const unknown = (moodInput.value || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter((s) => s && !vocab.has(s));
+    moodHint.textContent = unknown.length
+      ? 'Unknown mood(s): ' + unknown.join(', ') + ' — pick from suggestions.'
+      : '';
+  }}
+  if (moodInput) {{
+    moodInput.addEventListener('input', checkMoodTerms);
+    moodInput.addEventListener('blur', checkMoodTerms);
+    checkMoodTerms();
+  }}
 }})();
 </script>
 """
@@ -3021,6 +3456,11 @@ def home():
             if pick_bootstrap:
                 values["bootstrap_playlist_id"] = pick_bootstrap
                 values["bootstrap_enabled"] = True
+                limit = max(
+                    5,
+                    min(80, int(request.form.get("bootstrap_track_limit") or BOOTSTRAP_TRACK_LIMIT_DEFAULT)),
+                )
+                values["bootstrap_check"] = _verify_bootstrap_playlist(pick_bootstrap, limit=limit)
 
             pick_seed = (request.form.get("pick_seed") or "").strip()
             if pick_seed:
@@ -3028,11 +3468,30 @@ def home():
                 values["programming_type"] = "similar_seed"
                 if request.form.get("seed_search"):
                     values["seed_search_results"] = _search_tracks(request.form.get("seed_search") or "")
+            pick_exclude_artist = (request.form.get("pick_exclude_artist") or "").strip()
+            if pick_exclude_artist:
+                values["filter_exclude_artists"] = _append_csv_term(
+                    request.form.get("filter_exclude_artists") or "",
+                    pick_exclude_artist,
+                )
             elif action == "search_seed":
                 values["seed_search_results"] = _search_tracks(request.form.get("seed_search") or "")
             elif action == "search_bootstrap_playlist":
                 values["bootstrap_playlist_results"] = _search_playlists(
                     request.form.get("bootstrap_playlist_search") or ""
+                )
+            elif action == "verify_bootstrap_playlist":
+                limit = max(
+                    5,
+                    min(80, int(request.form.get("bootstrap_track_limit") or BOOTSTRAP_TRACK_LIMIT_DEFAULT)),
+                )
+                values["bootstrap_check"] = _verify_bootstrap_playlist(
+                    request.form.get("bootstrap_playlist_id") or "",
+                    limit=limit,
+                )
+            elif action == "search_exclude_artist":
+                values["exclude_artist_results"] = _search_artists(
+                    request.form.get("exclude_artist_search") or ""
                 )
             elif action == "start_clustering":
                 try:
@@ -3121,7 +3580,9 @@ def home():
                         }
                         values = _form_values_from_profile(profile)
                         values["chat_prompt"] = prompt
-                        preview_tracks = apply_track_filters(enrich_preview(raw), profile)
+                        unfiltered = enrich_preview(raw)
+                        preview_tracks = apply_track_filters(unfiltered, profile)
+                        _apply_filter_feedback(values, profile, unfiltered, preview_tracks)
                         item_ids = [t["item_id"] for t in preview_tracks]
                         _record_audition(slug, item_ids)
                         _save_channel(profile, preview_ids=item_ids)
@@ -3130,11 +3591,14 @@ def home():
                             "ok",
                         )
                     elif action == "preview":
-                        preview_tracks = _merged_programming_tracks(profile, slug)
+                        unfiltered = _merged_programming_tracks_unfiltered(profile, slug)
+                        preview_tracks = apply_track_filters(unfiltered, profile)
                         if not preview_tracks:
                             raise ChannelDesignerError(
                                 "No tracks matched programming (and living pool, if enabled)."
                             )
+                        _apply_filter_feedback(values, profile, unfiltered, preview_tracks)
+                        bootstrap_check = _apply_bootstrap_check(values, profile)
                         item_ids = [t["item_id"] for t in preview_tracks]
                         _record_audition(slug, item_ids)
                         if (profile.get("living") or {}).get("enabled"):
@@ -3145,11 +3609,23 @@ def home():
                             "Review below, then deploy to Alchemy FM.",
                             "ok",
                         )
+                        if bootstrap_check and not bootstrap_check.get("ok"):
+                            flash += _flash_html(
+                                f"Bootstrap warning: {bootstrap_check.get('error')}",
+                                "error",
+                            )
                     elif action == "push":
-                        preview_tracks = _merged_programming_tracks(profile, slug)
+                        unfiltered = _merged_programming_tracks_unfiltered(profile, slug)
+                        preview_tracks = apply_track_filters(unfiltered, profile)
                         if not preview_tracks:
                             raise ChannelDesignerError(
                                 "No tracks to deploy. Preview programming first or broaden your criteria."
+                            )
+                        _apply_filter_feedback(values, profile, unfiltered, preview_tracks)
+                        bootstrap_check = _apply_bootstrap_check(values, profile)
+                        if bootstrap_check and not bootstrap_check.get("ok"):
+                            raise ChannelDesignerError(
+                                bootstrap_check.get("error") or "Bootstrap playlist could not be verified."
                             )
                         payload = channel_profile_to_alchemy_payload(profile, preview_tracks)
                         slug = payload["slug"]
@@ -3200,7 +3676,7 @@ def home():
     designer_section_open = (
         '<section class="afm-section" id="designer">'
         '<div class="afm-section-head">'
-        "<div><h2 class='afm-section-title'>Channel designer</h2>"
+        "<div><h2 class='afm-section-title'>Channel Designer</h2>"
         "<p class='afm-section-note'>Program the vibe, preview tracks, then deploy to Alchemy FM.</p></div>"
         "</div>"
         if not editing_slug
@@ -3239,15 +3715,15 @@ def home():
     else:
         main_flow = f"{stations_html}{_discover_channels_html()}{designer_form}"
 
+    mood_labels = _audiomuse_mood_labels()
     body = (
         f"{_page_styles()}"
         '<div class="afm-shell">'
-        f"<p class='afm-lede'>Channel Designer v{PLUGIN_VERSION} — live programming on Alchemy FM. "
-        "Upgrade note: delete pre-v3 stations and redeploy fresh.</p>"
+        f"{_page_header_html()}"
         f"{flash}"
         f"{main_flow}"
         "</div>"
-        f"{_page_script(_mood_centroids_data())}"
+        f"{_page_script(_mood_centroids_data(), mood_labels)}"
     )
     return render_page(body, title="Alchemy FM Channel Designer")
 
@@ -3275,7 +3751,8 @@ def settings():
     body = (
         "<form method='post' style='display:grid;gap:1rem;max-width:36rem;'>"
         "<p>Connect to your Alchemy FM broadcast instance. Credentials match "
-        "<code>ADMIN_USERNAME</code> / <code>ADMIN_PASSWORD</code> in Alchemy FM.</p>"
+        "<code>ADMIN_USERNAME</code> / <code>ADMIN_PASSWORD</code> in Alchemy FM. "
+        f"<a href='{html.escape(HELP_DOC_URL)}' target='_blank' rel='noopener noreferrer'>Help</a></p>"
         "<p class='hint'><strong>Cloudflare / public URL:</strong> If Alchemy FM is behind Cloudflare, allow "
         "server-to-server access to <code>/api/admin/*</code> from your AudioMuse host (WAF skip rule or "
         "bypass Bot Fight Mode). Otherwise use a LAN/direct URL that does not go through Cloudflare "

@@ -5,6 +5,38 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy — preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "3.0.4",
+      "min_core_version": "2.5.0",
+      "changelog": "Bootstrap assist: fix playlist search API param, verify button, auto-check on pick/preview/deploy, track counts in search results.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "756d79d45d877040efb9cdf823b72158"
+    },
+    {
+      "version": "3.0.3",
+      "min_core_version": "2.5.0",
+      "changelog": "Filter assist: post-preview match report, mood autocomplete, artist search-to-add, Genre column in preview table.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "81441595960c6d3d6d1ff7e8d937ca86"
+    },
+    {
+      "version": "3.0.2",
+      "min_core_version": "2.5.0",
+      "changelog": "Fix Discover Channels: parse AudioMuse /api/playlists object map (name -> tracks). Show track counts in cluster table.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "fe64bd0b32c355bf2f27621467222a51"
+    },
+    {
+      "version": "3.0.1",
+      "min_core_version": "2.5.0",
+      "changelog": "UI polish: centered page title, Alchemy FM capitalization, bootstrap spacing, remove v3 deploy hint, Help link to CHANNEL_DESIGNER_HELP.md.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "0695221087d910ea27e21f2f3eb234c3"
+    },
+    {
       "version": "3.0.0",
       "min_core_version": "2.5.0",
       "changelog": "Big-bang v3: living pool merge, richer filters, operator tools, Navidrome bootstrap opener, clustering discover, chat one-shot designer, live CLAP/lyrics/mood refill on Alchemy FM (redeploy stations required).",
