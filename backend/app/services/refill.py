@@ -1,5 +1,6 @@
 """Tiered queue refill: import batches into a persistent pool, then expand by identity."""
 
+import json
 import logging
 from datetime import datetime
 
@@ -17,6 +18,16 @@ from app.services.audiomuse import audiomuse_client
 logger = logging.getLogger(__name__)
 
 BOOTSTRAP_FETCH_LIMIT = 500
+
+LIVE_SOURCE_TYPES = frozenset(
+    {
+        SourceType.clap_query.value,
+        SourceType.lyrics_query.value,
+        SourceType.mood_centroid.value,
+        SourceType.alchemy_anchor.value,
+        SourceType.similar_seed.value,
+    }
+)
 
 
 def filter_track_refs(
@@ -46,7 +57,30 @@ async def fetch_programming_batch(station: Station, count: int) -> list[TrackRef
         station.source_type,
         station.source_ref,
         count,
+        station.programming_json or None,
     )
+
+
+def _station_profile(station: Station) -> dict:
+    if not station.programming_json:
+        return {}
+    try:
+        data = json.loads(station.programming_json)
+        return data if isinstance(data, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def _bootstrap_opener_refs(station: Station) -> list[TrackRef]:
+    profile = _station_profile(station)
+    bootstrap = profile.get("bootstrap") or {}
+    if bootstrap.get("type") != "navidrome_playlist":
+        return []
+    refs: list[TrackRef] = []
+    for item_id in bootstrap.get("resolved_ids") or []:
+        if item_id:
+            refs.append(TrackRef(item_id=str(item_id), title="Unknown", artist="Unknown"))
+    return refs
 
 
 def import_batch_to_pool(db: Session, station: Station, refs: list[TrackRef]) -> int:
@@ -111,7 +145,7 @@ def establish_station_identity(station: Station, batch: list[TrackRef]) -> None:
 
     if station.source_type == SourceType.alchemy_anchor.value:
         station.identity_anchor_id = station.source_ref
-    if station.source_type == SourceType.similar_seed.value:
+    elif station.source_type == SourceType.similar_seed.value:
         station.identity_seed_item_id = station.source_ref
     elif not station.identity_seed_item_id:
         station.identity_seed_item_id = batch[len(batch) // 2].item_id
@@ -233,4 +267,13 @@ async def collect_refill_candidates(
 async def fetch_bootstrap_batch(station: Station) -> list[TrackRef]:
     """Initial import — grab as much of the source as we can for the station pool."""
     limit = max(station.queue_target * 2, BOOTSTRAP_FETCH_LIMIT)
-    return await fetch_programming_batch(station, limit)
+    opener = _bootstrap_opener_refs(station)
+    programming = await fetch_programming_batch(station, limit)
+    seen: set[str] = set()
+    merged: list[TrackRef] = []
+    for ref in opener + programming:
+        if ref.item_id in seen:
+            continue
+        seen.add(ref.item_id)
+        merged.append(ref)
+    return merged

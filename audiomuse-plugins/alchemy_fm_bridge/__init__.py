@@ -6,6 +6,7 @@ import base64
 import html
 import json
 import re
+import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -24,14 +25,14 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.3.16"
+PLUGIN_VERSION = "3.0.0"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
 CRON_TASK_LABEL = "Alchemy FM"
 
 ALCHEMY_FM_USER_AGENT = (
-    "AlchemyFmBridge/2.3 AudioMuse-Plugin (+https://github.com/MMagTech/alchemyfm)"
+    "AlchemyFmBridge/3.0 AudioMuse-Plugin (+https://github.com/MMagTech/alchemyfm)"
 )
 
 # ---------------------------------------------------------------------------
@@ -152,6 +153,49 @@ class AlchemyFmClient:
             raise ChannelDesignerError("Unexpected response when refreshing station queue")
         return result
 
+    def rebuild_m3u(self, station_id: int) -> dict[str, Any]:
+        result = self._request("POST", f"/api/admin/stations/{int(station_id)}/rebuild-m3u")
+        if not isinstance(result, dict):
+            raise ChannelDesignerError("Unexpected response when rebuilding M3U")
+        return result
+
+    def delete_artwork(self, station_id: int) -> dict[str, Any]:
+        result = self._request("DELETE", f"/api/admin/stations/{int(station_id)}/artwork")
+        if not isinstance(result, dict):
+            raise ChannelDesignerError("Unexpected response when deleting artwork")
+        return result
+
+    def upload_artwork(self, station_id: int, filename: str, data: bytes, content_type: str) -> dict[str, Any]:
+        boundary = uuid.uuid4().hex
+        body = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+            f"Content-Type: {content_type}\r\n\r\n"
+        ).encode("utf-8") + data + f"\r\n--{boundary}--\r\n".encode("utf-8")
+        url = f"{self.base_url}/api/admin/stations/{int(station_id)}/artwork"
+        headers = dict(self.headers)
+        headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
+        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                raw = resp.read().decode("utf-8")
+                result = json.loads(raw) if raw else None
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise ChannelDesignerError(
+                _friendly_http_error(exc.code, detail), status=exc.code
+            ) from exc
+        except urllib.error.URLError as exc:
+            raise ChannelDesignerError(
+                f"Could not reach Alchemy FM at {self.base_url}: {exc.reason}"
+            ) from exc
+        if not isinstance(result, dict):
+            raise ChannelDesignerError("Unexpected response when uploading artwork")
+        return result
+
+    def set_station_enabled(self, station_id: int, enabled: bool) -> dict[str, Any]:
+        return self.update_station(int(station_id), {"enabled": bool(enabled)})
+
     def push_station(
         self,
         payload: dict[str, Any],
@@ -271,6 +315,13 @@ PROGRAMMING_TYPES = (
 )
 
 PROGRAMMING_TYPE_LABELS = {key: label for key, label in PROGRAMMING_TYPES}
+PROGRAMMING_TYPE_LABELS.update(
+    {
+        "clap_query": "Sonic vibe (CLAP)",
+        "lyrics_query": "Lyrics theme",
+        "mood_centroid": "Mood cluster",
+    }
+)
 
 REFRESH_MODES = (
     ("similar_to_last", "Similar to last played (recommended)"),
@@ -279,8 +330,13 @@ REFRESH_MODES = (
 )
 
 DIRECT_ALCHEMY_TYPES = frozenset({"alchemy_anchor", "similar_seed"})
+LIVE_SOURCE_TYPES = frozenset(
+    {"clap_query", "lyrics_query", "mood_centroid", "alchemy_anchor", "similar_seed"}
+)
 PREVIEW_LIMIT_DEFAULT = 30
 ANCHOR_BLEND_TRACKS = 8
+BOOTSTRAP_TRACK_LIMIT_DEFAULT = 30
+CHAT_PLAYLIST_LIMIT = 60
 
 
 def _slugify(value: str) -> str:
@@ -376,6 +432,46 @@ def preview_programming(profile: dict[str, Any]) -> list[dict[str, Any]]:
     raise ChannelDesignerError(f"Unsupported programming type: {ptype}")
 
 
+def _merged_programming_tracks(profile: dict[str, Any], slug: str | None = None) -> list[dict[str, Any]]:
+    """Programming preview merged with living pool tracks (deduped by item_id)."""
+    raw = preview_programming(profile)
+    slug = (slug or (profile.get("station") or {}).get("slug") or "").strip()
+    living_cfg = profile.get("living") or {}
+    if living_cfg.get("enabled") and slug:
+        seen = {t["item_id"] for t in raw}
+        pool_ids = [item_id for item_id in _pool_item_ids(slug) if item_id not in seen]
+        if pool_ids:
+            raw = raw + _preview_tracks_from_ids(pool_ids)
+    enriched = enrich_preview(raw)
+    return apply_track_filters(enriched, profile)
+
+
+def _programming_source_ref(programming: dict[str, Any]) -> str:
+    ptype = programming["type"]
+    if ptype in ("clap_query", "lyrics_query"):
+        query = (programming.get("query") or "").strip()
+        if len(query) < 3:
+            raise ChannelDesignerError(f"{ptype} requires a query of at least 3 characters.")
+        return query
+    if ptype == "mood_centroid":
+        mood = (programming.get("mood") or "").strip().lower()
+        centroid_index = programming.get("centroid_index")
+        if not mood or centroid_index is None:
+            raise ChannelDesignerError("Mood cluster programming requires mood and cluster.")
+        return f"{mood}:{int(centroid_index)}"
+    if ptype == "alchemy_anchor":
+        anchor_id = str(programming.get("anchor_id") or "").strip()
+        if not anchor_id:
+            raise ChannelDesignerError("Choose a Song Alchemy anchor.")
+        return anchor_id
+    if ptype == "similar_seed":
+        seed_id = str(programming.get("seed_id") or "").strip()
+        if not seed_id:
+            raise ChannelDesignerError("Pick a seed track.")
+        return seed_id
+    raise ChannelDesignerError(f"Unsupported programming type: {ptype}")
+
+
 def enrich_preview(tracks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ids = [t["item_id"] for t in tracks]
     if not ids:
@@ -390,11 +486,15 @@ def enrich_preview(tracks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         score = scores.get(track["item_id"]) or {}
         row["tempo"] = score.get("tempo")
         row["energy"] = score.get("energy")
+        row["year"] = score.get("year")
+        row["top_genre"] = score.get("top_genre") or score.get("genre") or ""
         moods = score.get("mood_vector") or score.get("moods")
         if isinstance(moods, dict):
-            top = sorted(moods.items(), key=lambda kv: kv[1], reverse=True)[:2]
-            row["mood"] = ", ".join(name for name, _ in top)
+            top = sorted(moods.items(), key=lambda kv: kv[1], reverse=True)[:4]
+            row["mood_tags"] = [name for name, _ in top]
+            row["mood"] = ", ".join(name for name, _ in top[:2])
         else:
+            row["mood_tags"] = []
             row["mood"] = ""
         enriched.append(row)
     return enriched
@@ -412,12 +512,36 @@ def _parse_optional_float(value: Any) -> float | None:
         return None
 
 
+def _parse_optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        return None
+
+
+def _parse_csv_list(value: Any) -> list[str]:
+    if not value:
+        return []
+    return [part.strip().lower() for part in str(value).split(",") if part.strip()]
+
+
 def _filters_from_form(form) -> dict[str, Any]:
     return {
         "tempo_min": _parse_optional_float(form.get("filter_tempo_min")),
         "tempo_max": _parse_optional_float(form.get("filter_tempo_max")),
         "energy_min": _parse_optional_float(form.get("filter_energy_min")),
         "energy_max": _parse_optional_float(form.get("filter_energy_max")),
+        "year_min": _parse_optional_int(form.get("filter_year_min")),
+        "year_max": _parse_optional_int(form.get("filter_year_max")),
+        "genre_include": _parse_csv_list(form.get("filter_genre_include")),
+        "genre_exclude": _parse_csv_list(form.get("filter_genre_exclude")),
+        "mood_include": _parse_csv_list(form.get("filter_mood_include")),
+        "exclude_artists": _parse_csv_list(form.get("filter_exclude_artists")),
     }
 
 
@@ -432,7 +556,26 @@ def _living_from_form(form) -> dict[str, Any]:
 def _filters_active(filters: dict[str, Any] | None) -> bool:
     if not filters:
         return False
-    return any(filters.get(key) is not None for key in ("tempo_min", "tempo_max", "energy_min", "energy_max"))
+    scalar_keys = ("tempo_min", "tempo_max", "energy_min", "energy_max", "year_min", "year_max")
+    if any(filters.get(key) is not None for key in scalar_keys):
+        return True
+    list_keys = ("genre_include", "genre_exclude", "mood_include", "exclude_artists")
+    return any(filters.get(key) for key in list_keys)
+
+
+def _track_genre(track: dict[str, Any]) -> str:
+    genre = track.get("top_genre") or track.get("genre") or ""
+    return str(genre).strip().lower()
+
+
+def _track_mood_tags(track: dict[str, Any]) -> list[str]:
+    tags = track.get("mood_tags")
+    if isinstance(tags, list) and tags:
+        return [str(t).strip().lower() for t in tags if t]
+    mood = track.get("mood") or ""
+    if mood:
+        return [part.strip().lower() for part in str(mood).split(",") if part.strip()]
+    return []
 
 
 def track_passes_filters(track: dict[str, Any], filters: dict[str, Any] | None) -> bool:
@@ -440,6 +583,7 @@ def track_passes_filters(track: dict[str, Any], filters: dict[str, Any] | None) 
         return True
     tempo = track.get("tempo")
     energy = track.get("energy")
+    year = track.get("year")
     if tempo is None and energy is None:
         analysis = track.get("analysis") or {}
         tempo = analysis.get("tempo")
@@ -455,6 +599,29 @@ def track_passes_filters(track: dict[str, Any], filters: dict[str, Any] | None) 
             return False
     if filters.get("energy_max") is not None:
         if energy is None or float(energy) > float(filters["energy_max"]):
+            return False
+    if filters.get("year_min") is not None:
+        if year is None or int(year) < int(filters["year_min"]):
+            return False
+    if filters.get("year_max") is not None:
+        if year is None or int(year) > int(filters["year_max"]):
+            return False
+    genre = _track_genre(track)
+    genre_include = filters.get("genre_include") or []
+    if genre_include and genre not in genre_include:
+        return False
+    genre_exclude = filters.get("genre_exclude") or []
+    if genre_exclude and genre in genre_exclude:
+        return False
+    mood_include = filters.get("mood_include") or []
+    if mood_include:
+        tags = _track_mood_tags(track)
+        if not any(m in tags for m in mood_include):
+            return False
+    exclude_artists = filters.get("exclude_artists") or []
+    if exclude_artists:
+        artist = (track.get("author") or track.get("artist") or "").strip().lower()
+        if artist in exclude_artists:
             return False
     return True
 
@@ -516,21 +683,131 @@ def ensure_programming_anchor(profile: dict[str, Any], tracks: list[dict[str, An
     return int(anchor["id"])
 
 
+def _bootstrap_from_form(form) -> dict[str, Any] | None:
+    if form.get("bootstrap_enabled") != "on":
+        return None
+    playlist_id = (form.get("bootstrap_playlist_id") or "").strip()
+    if not playlist_id:
+        return None
+    limit = max(5, min(80, int(form.get("bootstrap_track_limit") or BOOTSTRAP_TRACK_LIMIT_DEFAULT)))
+    return {
+        "type": "navidrome_playlist",
+        "playlist_id": playlist_id,
+        "track_limit": limit,
+    }
+
+
+def _search_playlists(query: str) -> list[dict[str, Any]]:
+    query = query.strip()
+    if len(query) < 2:
+        return []
+    try:
+        data = audiomuse_get("/api/search_playlists", params={"search_query": query, "end": "20"})
+    except ChannelDesignerError:
+        return []
+    if not isinstance(data, list):
+        return []
+    return [row for row in data if isinstance(row, dict) and row.get("id")]
+
+
+def _playlist_track_ids(playlist_id: str, *, limit: int) -> list[str]:
+    playlist_id = playlist_id.strip()
+    if not playlist_id:
+        return []
+    try:
+        data = audiomuse_get("/api/playlist", params={"playlist_id": playlist_id})
+    except ChannelDesignerError as exc:
+        raise ChannelDesignerError(f"Could not load Navidrome playlist: {exc}") from exc
+    tracks = data.get("tracks") if isinstance(data, dict) else data
+    if not isinstance(tracks, list):
+        return []
+    ids: list[str] = []
+    for row in tracks:
+        if not isinstance(row, dict):
+            continue
+        item_id = row.get("item_id") or row.get("id")
+        if item_id:
+            ids.append(str(item_id))
+        if len(ids) >= limit:
+            break
+    return ids
+
+
+def _resolve_navidrome_bootstrap(bootstrap: dict[str, Any]) -> list[str]:
+    playlist_id = str(bootstrap.get("playlist_id") or "").strip()
+    if not playlist_id:
+        return []
+    limit = int(bootstrap.get("track_limit") or BOOTSTRAP_TRACK_LIMIT_DEFAULT)
+    return _playlist_track_ids(playlist_id, limit=limit)
+
+
+def _clustering_playlists() -> list[dict[str, Any]]:
+    try:
+        data = audiomuse_get("/api/playlists")
+    except ChannelDesignerError:
+        return []
+    if not isinstance(data, list):
+        return []
+    return [row for row in data if isinstance(row, dict)]
+
+
+def _clustering_start() -> dict[str, Any]:
+    return audiomuse_post("/api/clustering/start", {})
+
+
+def _last_clustering_task() -> dict[str, Any] | None:
+    try:
+        data = audiomuse_get("/api/last_task", params={"task": "clustering"})
+    except ChannelDesignerError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _chat_playlist_tracks(prompt: str, *, limit: int = CHAT_PLAYLIST_LIMIT) -> list[dict[str, Any]]:
+    prompt = prompt.strip()
+    if len(prompt) < 8:
+        raise ChannelDesignerError("Describe your station in at least 8 characters.")
+    data = audiomuse_post(
+        "/chat/api/chatPlaylist",
+        {"prompt": prompt, "limit": limit},
+    )
+    results = None
+    if isinstance(data, dict):
+        results = data.get("results") or data.get("tracks") or data.get("playlist")
+    return _track_rows_from_results(results)
+
+
 def channel_profile_to_alchemy_payload(profile: dict[str, Any], tracks: list[dict[str, Any]]) -> dict[str, Any]:
     station = profile["station"]
     refresh = profile.get("refresh") or {}
-    ptype = profile["programming"]["type"]
+    programming = profile["programming"]
+    ptype = programming["type"]
 
-    if ptype == "similar_seed":
-        source_type = "similar_seed"
-        source_ref = str(profile["programming"]["seed_id"]).strip()
-        identity_anchor_id = ""
-    else:
-        anchor_id = ensure_programming_anchor(profile, tracks)
-        profile["anchor_id"] = anchor_id
-        source_type = "alchemy_anchor"
-        source_ref = str(anchor_id)
-        identity_anchor_id = str(anchor_id)
+    if ptype not in LIVE_SOURCE_TYPES:
+        raise ChannelDesignerError(f"Unsupported deploy programming type: {ptype}")
+
+    source_type = ptype
+    source_ref = _programming_source_ref(programming)
+    identity_anchor_id = ""
+    identity_seed_item_id = ""
+    if ptype == "alchemy_anchor":
+        identity_anchor_id = source_ref
+    elif ptype == "similar_seed":
+        identity_seed_item_id = source_ref
+    elif tracks:
+        identity_seed_item_id = tracks[len(tracks) // 2]["item_id"]
+
+    deploy_profile = dict(profile)
+    bootstrap = deploy_profile.get("bootstrap") or {}
+    if bootstrap.get("type") == "navidrome_playlist" and bootstrap.get("playlist_id"):
+        try:
+            resolved = _resolve_navidrome_bootstrap(bootstrap)
+            if resolved:
+                bootstrap = dict(bootstrap)
+                bootstrap["resolved_ids"] = resolved
+                deploy_profile["bootstrap"] = bootstrap
+        except ChannelDesignerError:
+            pass
 
     return {
         "name": station["name"],
@@ -540,11 +817,13 @@ def channel_profile_to_alchemy_payload(profile: dict[str, Any], tracks: list[dic
         "enabled": bool(station.get("enabled", True)),
         "source_type": source_type,
         "source_ref": source_ref,
+        "programming_json": json.dumps(deploy_profile),
         "queue_target": int(station.get("queue_target", 30)),
         "refresh_threshold": int(station.get("refresh_threshold", 10)),
         "artist_separation_minutes": int(station.get("artist_separation_minutes", 90)),
         "continuation_mode": refresh.get("mode", "similar_to_last"),
         "identity_anchor_id": identity_anchor_id,
+        "identity_seed_item_id": identity_seed_item_id,
         "bootstrap_queue": bool(station.get("bootstrap_queue", True)),
     }
 
@@ -583,6 +862,8 @@ def profile_from_form(form) -> dict[str, Any]:
         "refresh": {"mode": refresh_mode},
         "filters": _filters_from_form(form),
         "living": _living_from_form(form),
+        "bootstrap": _bootstrap_from_form(form),
+        "design_notes": (form.get("design_notes") or "").strip(),
         "station": {
             "name": name,
             "slug": slug,
@@ -812,12 +1093,46 @@ def _delete_local_channel(slug: str) -> None:
 
 
 def _profile_from_remote_station(station: dict[str, Any]) -> dict[str, Any]:
+    programming_json = station.get("programming_json") or ""
+    if programming_json:
+        try:
+            profile = json.loads(programming_json)
+            if isinstance(profile, dict) and profile.get("programming"):
+                station_cfg = profile.get("station") or {}
+                station_cfg.setdefault("name", station.get("name") or "")
+                station_cfg.setdefault("slug", station.get("slug") or "")
+                station_cfg.setdefault("description", station.get("description") or "")
+                station_cfg.setdefault("icecast_mount", station.get("icecast_mount") or "")
+                station_cfg.setdefault("enabled", bool(station.get("enabled", True)))
+                station_cfg.setdefault("queue_target", int(station.get("queue_target") or 30))
+                station_cfg.setdefault("refresh_threshold", int(station.get("refresh_threshold") or 10))
+                station_cfg.setdefault(
+                    "artist_separation_minutes", int(station.get("artist_separation_minutes") or 90)
+                )
+                profile["station"] = station_cfg
+                profile.setdefault("refresh", {"mode": station.get("continuation_mode") or "similar_to_last"})
+                return profile
+        except json.JSONDecodeError:
+            pass
+
     source_type = str(station.get("source_type") or "alchemy_anchor")
     source_ref = str(station.get("source_ref") or "")
     if source_type == "similar_seed":
         programming: dict[str, Any] = {
             "type": "similar_seed",
             "seed_id": source_ref,
+            "limit": PREVIEW_LIMIT_DEFAULT,
+        }
+    elif source_type == "clap_query":
+        programming = {"type": "clap_query", "query": source_ref, "limit": PREVIEW_LIMIT_DEFAULT}
+    elif source_type == "lyrics_query":
+        programming = {"type": "lyrics_query", "query": source_ref, "limit": PREVIEW_LIMIT_DEFAULT}
+    elif source_type == "mood_centroid" and ":" in source_ref:
+        mood, _, idx = source_ref.partition(":")
+        programming = {
+            "type": "mood_centroid",
+            "mood": mood,
+            "centroid_index": idx,
             "limit": PREVIEW_LIMIT_DEFAULT,
         }
     else:
@@ -883,6 +1198,8 @@ def _apply_loaded_channel(
         values["edit_on_air"] = bool(station_remote.get("enabled"))
         values["edit_queued"] = station_remote.get("queued_count", station_remote.get("queued", "?"))
         values["edit_description"] = station_remote.get("description") or values.get("description", "")
+        values["edit_source_error"] = station_remote.get("source_last_error") or ""
+        values["edit_source_healthy"] = bool(station_remote.get("source_healthy", True))
     if (profile.get("living") or {}).get("enabled"):
         values["edit_pool_count"] = _pool_count(slug)
     return values, preview_tracks, channel_name
@@ -1063,11 +1380,24 @@ def on_song_analyzed(song: dict[str, Any]) -> None:
     if not item_id:
         return
     analysis = song.get("analysis") or {}
-    track = {
+    track: dict[str, Any] = {
         "item_id": item_id,
         "tempo": analysis.get("tempo"),
         "energy": analysis.get("energy"),
+        "author": song.get("author") or song.get("artist") or "",
     }
+    try:
+        scores = get_score_data_by_ids([item_id])
+        if scores:
+            score = scores[0]
+            track["year"] = score.get("year")
+            track["top_genre"] = score.get("top_genre") or score.get("genre") or ""
+            moods = score.get("mood_vector") or score.get("moods")
+            if isinstance(moods, dict):
+                top = sorted(moods.items(), key=lambda kv: kv[1], reverse=True)[:4]
+                track["mood_tags"] = [name for name, _ in top]
+    except Exception:
+        pass
     for slug, profile, _alchemy_id in _living_channel_profiles():
         living_cfg = profile.get("living") or {}
         if not living_cfg.get("auto_add_on_analyze"):
@@ -1092,9 +1422,8 @@ def refresh_living_channels() -> None:
     client: AlchemyFmClient | None = None
     for slug, profile, alchemy_station_id in channels:
         try:
-            raw = preview_programming(profile)
-            filtered = apply_track_filters(enrich_preview(raw), profile)
-            item_ids = [t["item_id"] for t in filtered]
+            preview_tracks = _merged_programming_tracks(profile, slug)
+            item_ids = [t["item_id"] for t in preview_tracks]
             if not item_ids:
                 logger.warning("alchemy_fm_bridge refresh_living: no tracks for slug=%s", slug)
                 continue
@@ -1113,7 +1442,7 @@ def refresh_living_channels() -> None:
                 )
                 continue
 
-            payload = channel_profile_to_alchemy_payload(profile, filtered or raw)
+            payload = channel_profile_to_alchemy_payload(profile, preview_tracks)
             if client is None:
                 try:
                     client = _client()
@@ -1879,9 +2208,8 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
 def _filters_fields_html(values: dict[str, Any]) -> str:
     return (
         "<section class='afm-panel'>"
-        + _panel_heading("Filters", "Narrow preview and living pool by analysis")
-        + "<p class='hint'>Optional tempo and energy bounds apply to preview results and to songs "
-        "auto-added when living channels are enabled.</p>"
+        + _panel_heading("Filters", "Narrow preview, living pool, and cron results")
+        + "<p class='hint'>Optional bounds apply to preview, auto-added songs, and living cron refresh.</p>"
         + "<div class='afm-field-grid'>"
         "<div><label>Tempo min (BPM)</label>"
         f"<input type='number' name='filter_tempo_min' min='0' step='1' "
@@ -1895,7 +2223,143 @@ def _filters_fields_html(values: dict[str, Any]) -> str:
         "<div><label>Energy max (0–1)</label>"
         f"<input type='number' name='filter_energy_max' min='0' max='1' step='0.01' "
         f"value='{html.escape(str(values.get('filter_energy_max', '')))}' placeholder='any'></div>"
-        "</div></section>"
+        "<div><label>Year min</label>"
+        f"<input type='number' name='filter_year_min' min='1900' max='2100' step='1' "
+        f"value='{html.escape(str(values.get('filter_year_min', '')))}' placeholder='any'></div>"
+        "<div><label>Year max</label>"
+        f"<input type='number' name='filter_year_max' min='1900' max='2100' step='1' "
+        f"value='{html.escape(str(values.get('filter_year_max', '')))}' placeholder='any'></div>"
+        "</div>"
+        + "<div class='afm-field'>"
+        + _field_label("Genre include (comma-separated)")
+        + f"<input name='filter_genre_include' class='afm-text-input' placeholder='rock, indie' "
+        + f"value='{html.escape(str(values.get('filter_genre_include', '')))}'></div>"
+        + "<div class='afm-field'>"
+        + _field_label("Genre exclude (comma-separated)")
+        + f"<input name='filter_genre_exclude' class='afm-text-input' placeholder='metal, edm' "
+        + f"value='{html.escape(str(values.get('filter_genre_exclude', '')))}'></div>"
+        + "<div class='afm-field'>"
+        + _field_label("Mood tags include (comma-separated)")
+        + f"<input name='filter_mood_include' class='afm-text-input' placeholder='melancholic, dreamy' "
+        + f"value='{html.escape(str(values.get('filter_mood_include', '')))}'></div>"
+        + "<div class='afm-field'>"
+        + _field_label("Exclude artists (comma-separated)")
+        + f"<input name='filter_exclude_artists' class='afm-text-input' placeholder='artist one, artist two' "
+        + f"value='{html.escape(str(values.get('filter_exclude_artists', '')))}'></div>"
+        + "</section>"
+    )
+
+
+def _bootstrap_fields_html(values: dict[str, Any]) -> str:
+    bootstrap_enabled = values.get("bootstrap_enabled", False)
+    playlist_results = values.get("bootstrap_playlist_results") or []
+    results_html = ""
+    if playlist_results:
+        items = []
+        for pl in playlist_results:
+            pl_id = str(pl.get("id") or "")
+            name = pl.get("name") or pl_id or "Playlist"
+            items.append(
+                "<li>"
+                f'<button type="submit" name="pick_bootstrap_playlist" value="{html.escape(pl_id)}" '
+                'formnovalidate class="afm-btn afm-btn-secondary" style="width:100%;text-align:left;">'
+                f"{html.escape(name)}"
+                "</button></li>"
+            )
+        results_html = "<ul class='afm-seed-results'>" + "".join(items) + "</ul>"
+    return (
+        "<section class='afm-panel'>"
+        + _panel_heading(
+            "Bootstrap opener",
+            "Optional Navidrome playlist cold-start — ongoing programming stays AudioMuse-driven",
+        )
+        + "<p class='hint'>Tracks from the opener play first at deploy/bootstrap; refills use your programming query.</p>"
+        + "<label class='afm-check-label'><input type='checkbox' name='bootstrap_enabled'"
+        + f"{' checked' if bootstrap_enabled else ''}> Use Navidrome playlist opener</label>"
+        + "<div class='afm-field afm-seed-search-row'>"
+        + f"<input name='bootstrap_playlist_search' class='afm-text-input' placeholder='Search playlists…' "
+        + f"value='{html.escape(str(values.get('bootstrap_playlist_search', '')))}'>"
+        + "<button type='submit' name='action' value='search_bootstrap_playlist' formnovalidate "
+        + "class='afm-btn afm-btn-secondary'>Search</button></div>"
+        + f"{results_html}"
+        + "<div class='afm-field'>"
+        + _field_label("Playlist id")
+        + f"<input name='bootstrap_playlist_id' class='afm-text-input' "
+        + f"value='{html.escape(str(values.get('bootstrap_playlist_id', '')))}'></div>"
+        + "<div class='afm-field'>"
+        + _field_label("Opener track limit")
+        + f"<input type='number' name='bootstrap_track_limit' min='5' max='80' "
+        + f"value='{html.escape(str(values.get('bootstrap_track_limit', BOOTSTRAP_TRACK_LIMIT_DEFAULT)))}'>"
+        + "</div></section>"
+    )
+
+
+def _chat_designer_fields_html(values: dict[str, Any]) -> str:
+    return (
+        "<section class='afm-panel'>"
+        + _panel_heading(
+            "Chat designer (one-shot)",
+            "Natural-language channel design — not used for living cron",
+        )
+        + "<p class='hint'>Slow LLM call. Use for initial ideas, then tweak programming and deploy. "
+        "Requires AudioMuse chat/AI configured.</p>"
+        + "<div class='afm-field'>"
+        + _field_label("Describe your station")
+        + f"<textarea name='chat_prompt' rows='3' class='afm-text-input' "
+        + f"placeholder='e.g. upbeat 80s synthpop for a morning commute'>{html.escape(str(values.get('chat_prompt', '')))}</textarea>"
+        + "</div>"
+        + "<button type='submit' name='action' value='chat_preview' formnovalidate "
+        + "class='afm-btn afm-btn-secondary'>Generate playlist preview</button>"
+        + f"<input type='hidden' name='design_notes' value='{html.escape(str(values.get('design_notes', '')))}'>"
+        + "</section>"
+    )
+
+
+def _discover_channels_html() -> str:
+    task = _last_clustering_task()
+    task_note = ""
+    if task:
+        status = task.get("status") or task.get("state") or "unknown"
+        task_note = f"<p class='hint'>Last clustering task: {html.escape(str(status))}</p>"
+    playlists = _clustering_playlists()
+    rows: list[str] = []
+    for pl in playlists[:24]:
+        pl_id = str(pl.get("id") or pl.get("playlist_id") or "")
+        name = str(pl.get("name") or pl_id or "Cluster playlist")
+        mood = str(pl.get("mood") or pl.get("description") or "")
+        deploy_query = mood or name
+        rows.append(
+            "<tr>"
+            f"<td>{html.escape(name)}</td>"
+            f"<td>{html.escape(mood[:80])}</td>"
+            f'<td><button type="submit" name="discover_deploy" value="{html.escape(pl_id)}" '
+            f'form="afm-discover-form" formnovalidate class="afm-btn afm-btn-secondary">'
+            "Use in designer</button></td>"
+            f'<td><input type="hidden" name="discover_query_{html.escape(pl_id)}" '
+            f'value="{html.escape(deploy_query)}"></td>'
+            "</tr>"
+        )
+    table = (
+        "<p class='hint'>No clustering playlists found. Run clustering in AudioMuse first.</p>"
+        if not rows
+        else (
+            '<div class="afm-table-wrap"><table class="afm-table">'
+            "<thead><tr><th>Playlist</th><th>Mood / notes</th><th>Action</th><th></th></tr></thead>"
+            "<tbody>"
+            + "".join(rows)
+            + "</tbody></table></div>"
+        )
+    )
+    return (
+        '<section class="afm-section" id="discover">'
+        '<div class="afm-section-head">'
+        "<div><h2 class='afm-section-title'>Discover channels</h2>"
+        "<p class='afm-section-note'>Clustering playlists from AudioMuse — preview and deploy as stations.</p></div>"
+        '<form method="post" id="afm-discover-form" style="margin:0;">'
+        '<button type="submit" name="action" value="start_clustering" formnovalidate '
+        'class="afm-btn afm-btn-secondary">Run clustering</button>'
+        "</form></div>"
+        f"{task_note}{table}</section>"
     )
 
 
@@ -1984,8 +2448,8 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
         + "<div class='afm-field'>"
         + _field_label("When pool runs low")
         + f"<select name='refresh_mode' class='afm-select'>{_select_options(REFRESH_MODES, str(values.get('refresh_mode', 'similar_to_last')))}</select>"
-        + "<p class='hint'>For CLAP/lyrics/mood channels, the plugin saves a Song Alchemy anchor from your preview "
-        + "so Alchemy FM can keep refilling 24/7.</p></div>"
+        + "<p class='hint'>v3 deploys live programming to Alchemy FM — CLAP, lyrics, and mood refills "
+        + "re-run your original query instead of freezing a Song Alchemy anchor.</p></div>"
         + "<div class='afm-deploy-tail'>"
         + "<div class='afm-field-grid-3'>"
         + "<div><label>Queue target</label>"
@@ -2061,8 +2525,42 @@ def _edit_toolbar_html(values: dict[str, Any]) -> str:
     if values.get("living_enabled") or values.get("edit_pool_count"):
         pool_count = values.get("edit_pool_count", _pool_count(editing_slug))
         extra_badges = f'<span class="afm-badge afm-badge-living">Living · {pool_count} in pool</span>'
+    source_error = (values.get("edit_source_error") or "").strip()
+    error_badge = ""
+    if source_error:
+        short = source_error[:60] + ("…" if len(source_error) > 60 else "")
+        error_badge = (
+            f'<span class="afm-badge afm-badge-remote" title="{html.escape(source_error)}">'
+            f"Source error: {html.escape(short)}</span>"
+        )
     station_id = values.get("edit_station_id")
     id_note = f" · id {station_id}" if station_id else ""
+    op_buttons = ""
+    if station_id:
+        on_label = "Take off air" if values.get("edit_on_air") else "Put on air"
+        op_buttons = (
+            f'<form method="post" style="margin:0;display:inline;">'
+            f'<input type="hidden" name="editing_slug" value="{html.escape(editing_slug)}">'
+            f'<input type="hidden" name="op_station_id" value="{int(station_id)}">'
+            '<button type="submit" name="action" value="op_refresh_queue" formnovalidate '
+            'class="afm-btn afm-btn-secondary">Refresh queue</button>'
+            '<button type="submit" name="action" value="op_bootstrap" formnovalidate '
+            'class="afm-btn afm-btn-secondary">Rebuild pool</button>'
+            '<button type="submit" name="action" value="op_rebuild_m3u" formnovalidate '
+            'class="afm-btn afm-btn-secondary">Rebuild M3U</button>'
+            f'<button type="submit" name="action" value="op_toggle_enabled" formnovalidate '
+            f'class="afm-btn afm-btn-secondary">{html.escape(on_label)}</button>'
+            "</form>"
+            f'<form method="post" enctype="multipart/form-data" style="margin:0;display:inline;">'
+            f'<input type="hidden" name="editing_slug" value="{html.escape(editing_slug)}">'
+            f'<input type="hidden" name="op_station_id" value="{int(station_id)}">'
+            '<input type="file" name="artwork_file" accept="image/*" style="max-width:10rem;">'
+            '<button type="submit" name="action" value="op_upload_artwork" formnovalidate '
+            'class="afm-btn afm-btn-secondary">Upload art</button>'
+            '<button type="submit" name="action" value="op_delete_artwork" formnovalidate '
+            'class="afm-btn afm-btn-secondary">Remove art</button>'
+            "</form>"
+        )
     return (
         f'<div class="afm-edit-bar" id="designer">'
         "<div>"
@@ -2070,12 +2568,13 @@ def _edit_toolbar_html(values: dict[str, Any]) -> str:
         f'<h2 class="afm-edit-title">{html.escape(name)}</h2>'
         '<div class="afm-edit-meta">'
         f'<span class="afm-edit-slug">{html.escape(editing_slug)}{html.escape(id_note)}</span>'
-        f"{source_badge}{on_air_badge}"
+        f"{source_badge}{on_air_badge}{error_badge}"
         f'<span class="afm-badge afm-badge-queue">{html.escape(str(queued))} Queued</span>'
         f"{extra_badges}"
         "</div>"
         "</div>"
         '<div class="afm-edit-actions">'
+        f"{op_buttons}"
         f'<a href="{html.escape(url_for("alchemy_fm_bridge.home"))}" class="afm-btn afm-btn-secondary">← All stations</a>'
         '<button type="submit" form="afm-designer-form" name="action" value="new_channel" formnovalidate '
         'class="afm-btn afm-btn-secondary">New channel</button>'
@@ -2129,6 +2628,17 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
                 else '<span class="afm-badge afm-badge-remote">Remote Only</span>'
             )
             living_badge = '<span class="afm-badge afm-badge-living">Living</span>' if living else ""
+            pool_badge = ""
+            if living and slug:
+                pool_badge = f'<span class="afm-badge afm-badge-living">{_pool_count(slug)} pool</span>'
+            source_error = str(station.get("source_last_error") or "").strip()
+            error_badge = ""
+            if source_error:
+                short = source_error[:40] + ("…" if len(source_error) > 40 else "")
+                error_badge = (
+                    f'<span class="afm-badge afm-badge-remote" title="{html.escape(source_error)}">'
+                    f"Err: {html.escape(short)}</span>"
+                )
             edit_href = html.escape(url_for("alchemy_fm_bridge.home", edit=slug) + "#designer")
             edit_label = "Continue editing" if is_editing else "Edit"
             edit_btn_class = "afm-btn afm-btn-primary" if is_editing else "afm-btn afm-btn-secondary"
@@ -2140,7 +2650,7 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
                 f"<td><span class='afm-programming-type'>{html.escape(type_label)}</span></td>"
                 f'<td class="afm-status-cell"><div class="afm-badge-row">{on_air_badge}{profile_badge}'
                 f'<span class="afm-badge afm-badge-queue">{html.escape(queued)} Queued</span>'
-                f"{living_badge}</div></td>"
+                f"{living_badge}{pool_badge}{error_badge}</div></td>"
                 f'<td class="afm-actions-cell"><div class="afm-row-actions">'
                 f'<a href="{edit_href}" class="{edit_btn_class}">{html.escape(edit_label)}</a>'
                 f'<form method="post" style="margin:0;" onsubmit="return confirm({json.dumps(confirm_msg)});">'
@@ -2208,10 +2718,31 @@ def _form_values_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
         "saved_anchor_id": profile.get("anchor_id") or "",
     }
     filters = profile.get("filters") or {}
-    for key in ("tempo_min", "tempo_max", "energy_min", "energy_max"):
+    for key in (
+        "tempo_min",
+        "tempo_max",
+        "energy_min",
+        "energy_max",
+        "year_min",
+        "year_max",
+        "genre_include",
+        "genre_exclude",
+        "mood_include",
+        "exclude_artists",
+    ):
         val = filters.get(key)
-        if val is not None:
-            values[f"filter_{key}"] = val
+        if val is not None and val != "" and val != []:
+            if isinstance(val, list):
+                values[f"filter_{key}"] = ", ".join(val)
+            else:
+                values[f"filter_{key}"] = val
+    bootstrap = profile.get("bootstrap") or {}
+    if bootstrap.get("type") == "navidrome_playlist":
+        values["bootstrap_enabled"] = True
+        values["bootstrap_playlist_id"] = bootstrap.get("playlist_id", "")
+        values["bootstrap_track_limit"] = bootstrap.get("track_limit", BOOTSTRAP_TRACK_LIMIT_DEFAULT)
+    values["design_notes"] = profile.get("design_notes") or ""
+    values["chat_prompt"] = profile.get("design_notes") or values.get("chat_prompt", "")
     living = profile.get("living") or {}
     values["living_enabled"] = bool(living.get("enabled"))
     values["living_auto_add"] = bool(living.get("auto_add_on_analyze", living.get("enabled")))
@@ -2436,9 +2967,24 @@ def home():
             flash = _flash_html("New channel — design programming, preview tracks, then deploy.", "ok")
 
     if request.method == "POST":
-        action = (request.form.get("action") or "preview").strip()
+        action = (request.form.get("action") or "").strip()
+        discover_id = (request.form.get("discover_deploy") or "").strip()
 
-        if action == "edit":
+        if discover_id:
+            query_key = f"discover_query_{discover_id}"
+            clap_query = (request.form.get(query_key) or "").strip()
+            values.update(
+                {
+                    "programming_type": "clap_query",
+                    "clap_query": clap_query,
+                    "name": clap_query[:60] or f"Cluster {discover_id}",
+                }
+            )
+            flash = _flash_html(
+                "Cluster playlist loaded into designer — preview, then deploy.",
+                "ok",
+            )
+        elif action == "edit":
             load_slug = (request.form.get("load_slug") or "").strip()
             if load_slug:
                 return redirect(url_for("alchemy_fm_bridge.home", edit=load_slug) + "#designer")
@@ -2469,6 +3015,13 @@ def home():
             values["living_auto_add"] = request.form.get("living_auto_add") == "on"
             values["living_auto_refresh"] = request.form.get("living_auto_refresh") == "on"
 
+            values["bootstrap_enabled"] = request.form.get("bootstrap_enabled") == "on"
+
+            pick_bootstrap = (request.form.get("pick_bootstrap_playlist") or "").strip()
+            if pick_bootstrap:
+                values["bootstrap_playlist_id"] = pick_bootstrap
+                values["bootstrap_enabled"] = True
+
             pick_seed = (request.form.get("pick_seed") or "").strip()
             if pick_seed:
                 values["seed_id"] = pick_seed
@@ -2477,29 +3030,111 @@ def home():
                     values["seed_search_results"] = _search_tracks(request.form.get("seed_search") or "")
             elif action == "search_seed":
                 values["seed_search_results"] = _search_tracks(request.form.get("seed_search") or "")
+            elif action == "search_bootstrap_playlist":
+                values["bootstrap_playlist_results"] = _search_playlists(
+                    request.form.get("bootstrap_playlist_search") or ""
+                )
+            elif action == "start_clustering":
+                try:
+                    _clustering_start()
+                    flash = _flash_html(
+                        "Clustering started in AudioMuse. Check Active Tasks, then refresh this page.",
+                        "ok",
+                    )
+                except ChannelDesignerError as exc:
+                    flash = _flash_html(str(exc), "error")
+            elif action.startswith("op_"):
+                edit_slug = (request.form.get("editing_slug") or "").strip()
+                station_id = int(request.form.get("op_station_id") or "0")
+                if station_id <= 0:
+                    flash = _flash_html("No Alchemy FM station id for this operation.", "error")
+                else:
+                    try:
+                        client = _client()
+                        if action == "op_refresh_queue":
+                            client.refresh_queue(station_id)
+                            flash = _flash_html("Queue refresh requested.", "ok")
+                        elif action == "op_bootstrap":
+                            client.bootstrap_station(station_id)
+                            flash = _flash_html("Station pool/bootstrap rebuild started.", "ok")
+                        elif action == "op_rebuild_m3u":
+                            client.rebuild_m3u(station_id)
+                            flash = _flash_html("queue.m3u rebuilt from database.", "ok")
+                        elif action == "op_toggle_enabled":
+                            remote = None
+                            for st in client.test_connection():
+                                if int(st.get("id") or 0) == station_id:
+                                    remote = st
+                                    break
+                            current = bool(remote.get("enabled")) if remote else False
+                            client.set_station_enabled(station_id, not current)
+                            flash = _flash_html(
+                                "Station taken off air." if current else "Station put on air.",
+                                "ok",
+                            )
+                        elif action == "op_delete_artwork":
+                            client.delete_artwork(station_id)
+                            flash = _flash_html("Station artwork removed.", "ok")
+                        elif action == "op_upload_artwork":
+                            upload = request.files.get("artwork_file")
+                            if not upload or not upload.filename:
+                                raise ChannelDesignerError("Choose an image file to upload.")
+                            data = upload.read()
+                            if not data:
+                                raise ChannelDesignerError("Uploaded file is empty.")
+                            client.upload_artwork(
+                                station_id,
+                                upload.filename,
+                                data,
+                                upload.mimetype or "image/jpeg",
+                            )
+                            flash = _flash_html("Station artwork uploaded.", "ok")
+                        if edit_slug:
+                            loaded = _apply_loaded_channel(edit_slug)
+                            values, preview_tracks, _ = loaded
+                    except ChannelDesignerError as exc:
+                        flash = _flash_html(str(exc), "error")
             elif action == "test":
                 try:
                     stations = _client().test_connection()
                     flash = _flash_html(f"Alchemy FM connected — {len(stations)} station(s) on air.", "ok")
                 except ChannelDesignerError as exc:
                     flash = _flash_html(str(exc), "error")
-            else:
+            elif action in ("preview", "push", "chat_preview"):
                 try:
                     profile = profile_from_form(request.form)
                     values = _form_values_from_profile(profile)
                     if (request.form.get("editing_slug") or "").strip():
                         values["editing_slug"] = request.form.get("editing_slug").strip()
+                    slug = profile["station"]["slug"]
 
-                    if action == "preview":
-                        raw = preview_programming(profile)
+                    if action == "chat_preview":
+                        prompt = (request.form.get("chat_prompt") or "").strip()
+                        raw = _chat_playlist_tracks(prompt)
                         if not raw:
-                            raise ChannelDesignerError("No tracks matched this programming.")
+                            raise ChannelDesignerError("Chat designer returned no tracks.")
+                        profile["design_notes"] = prompt
+                        profile["programming"] = {
+                            "type": "clap_query",
+                            "query": prompt[:120],
+                            "limit": PREVIEW_LIMIT_DEFAULT,
+                        }
+                        values = _form_values_from_profile(profile)
+                        values["chat_prompt"] = prompt
                         preview_tracks = apply_track_filters(enrich_preview(raw), profile)
+                        item_ids = [t["item_id"] for t in preview_tracks]
+                        _record_audition(slug, item_ids)
+                        _save_channel(profile, preview_ids=item_ids)
+                        flash = _flash_html(
+                            f"Chat preview — {len(preview_tracks)} tracks. Tweak programming/filters, then deploy.",
+                            "ok",
+                        )
+                    elif action == "preview":
+                        preview_tracks = _merged_programming_tracks(profile, slug)
                         if not preview_tracks:
                             raise ChannelDesignerError(
-                                "Tracks matched programming but none passed your tempo/energy filters."
+                                "No tracks matched programming (and living pool, if enabled)."
                             )
-                        slug = profile["station"]["slug"]
                         item_ids = [t["item_id"] for t in preview_tracks]
                         _record_audition(slug, item_ids)
                         if (profile.get("living") or {}).get("enabled"):
@@ -2511,15 +3146,10 @@ def home():
                             "ok",
                         )
                     elif action == "push":
-                        raw = preview_programming(profile)
-                        if not raw:
-                            raise ChannelDesignerError(
-                                "No tracks to deploy. Preview programming first or broaden your criteria."
-                            )
-                        preview_tracks = apply_track_filters(enrich_preview(raw), profile)
+                        preview_tracks = _merged_programming_tracks(profile, slug)
                         if not preview_tracks:
                             raise ChannelDesignerError(
-                                "No tracks passed your filters. Relax tempo/energy bounds or preview again."
+                                "No tracks to deploy. Preview programming first or broaden your criteria."
                             )
                         payload = channel_profile_to_alchemy_payload(profile, preview_tracks)
                         slug = payload["slug"]
@@ -2538,23 +3168,22 @@ def home():
                             station=station,
                             action=push_action,
                         )
-                        anchor_note = ""
-                        if profile["programming"]["type"] not in DIRECT_ALCHEMY_TYPES:
-                            anchor_note = (
-                                f" Created Song Alchemy anchor {profile.get('anchor_id')} for 24/7 refill."
-                            )
                         flash = _flash_html(
                             f"Channel '{station.get('name')}' {push_action} on Alchemy FM "
-                            f"(id {station.get('id')}).{anchor_note}",
+                            f"(id {station.get('id')}) with live {profile['programming']['type']} programming.",
                             "ok",
                         )
                         values = _form_values_from_profile(profile)
                         values["editing_slug"] = slug
+                        if station:
+                            values["edit_station_id"] = int(station.get("id") or 0)
+                            values["edit_on_air"] = bool(station.get("enabled"))
+                            values["edit_queued"] = station.get("queued_count", "?")
                         logger.info(
-                            "alchemy_fm_bridge deployed slug=%s action=%s anchor=%s",
+                            "alchemy_fm_bridge deployed slug=%s action=%s type=%s",
                             slug,
                             push_action,
-                            profile.get("anchor_id"),
+                            profile["programming"]["type"],
                         )
                 except ChannelDesignerError as exc:
                     slug = (
@@ -2594,7 +3223,9 @@ def home():
         f"{designer_section_open}"
         "<form method='post' id='afm-designer-form' class='afm-designer-form'>"
         f"{_programming_fields_html(values)}"
+        f"{_chat_designer_fields_html(values)}"
         f"{_filters_fields_html(values)}"
+        f"{_bootstrap_fields_html(values)}"
         f"{_living_fields_html(values)}"
         f"{_deploy_fields_html(values)}"
         "</form>"
@@ -2606,12 +3237,13 @@ def home():
     if editing_slug:
         main_flow = f"{edit_bar}{designer_form}{stations_html}"
     else:
-        main_flow = f"{stations_html}{designer_form}"
+        main_flow = f"{stations_html}{_discover_channels_html()}{designer_form}"
 
     body = (
         f"{_page_styles()}"
         '<div class="afm-shell">'
-        f"<p class='afm-lede'>Channel Designer v{PLUGIN_VERSION} — design in AudioMuse, broadcast on Alchemy FM.</p>"
+        f"<p class='afm-lede'>Channel Designer v{PLUGIN_VERSION} — live programming on Alchemy FM. "
+        "Upgrade note: delete pre-v3 stations and redeploy fresh.</p>"
         f"{flash}"
         f"{main_flow}"
         "</div>"

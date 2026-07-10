@@ -5,6 +5,14 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy — preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "3.0.0",
+      "min_core_version": "2.5.0",
+      "changelog": "Big-bang v3: living pool merge, richer filters, operator tools, Navidrome bootstrap opener, clustering discover, chat one-shot designer, live CLAP/lyrics/mood refill on Alchemy FM (redeploy stations required).",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "75786300d1d99ca4c73758a848403cca"
+    },
+    {
       "version": "2.3.16",
       "min_core_version": "2.5.0",
       "changelog": "Hotfix: syntax error in v2.3.15 field label string concatenation.",
