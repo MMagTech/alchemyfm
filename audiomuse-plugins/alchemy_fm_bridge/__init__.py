@@ -24,7 +24,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.3.15"
+PLUGIN_VERSION = "2.3.16"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1824,46 +1824,55 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
     return (
         "<section class='afm-panel afm-programming-panel'>"
         + _panel_heading("Programming", "How AudioMuse finds tracks")
-        + "<div class='afm-field'>" + _field_label("Programming type", mandatory=True)
-        f"<select name='programming_type' id='programming_type' class='afm-select'>"
-        f"{_select_options(PROGRAMMING_TYPES, ptype)}</select></div>"
-        f"<div id='field-clap' class='afm-field'{hidden('clap_query')}>"
+        + "<div class='afm-field'>"
+        + _field_label("Programming type", mandatory=True)
+        + f"<select name='programming_type' id='programming_type' class='afm-select'>"
+        + f"{_select_options(PROGRAMMING_TYPES, ptype)}</select></div>"
+        + f"<div id='field-clap' class='afm-field'{hidden('clap_query')}>"
         + _field_label("Sonic vibe (describe the sound)", mandatory=True)
-        f"<input name='clap_query' class='afm-text-input' placeholder='e.g. late night rock' "
-        f"value='{html.escape(str(values.get('clap_query', '')))}'>"
-        "<p class='hint'>Uses CLAP text-to-audio search across your analyzed library.</p></div>"
-        f"<div id='field-lyrics' class='afm-field'{hidden('lyrics_query')}>"
+        + f"<input name='clap_query' class='afm-text-input' placeholder='e.g. late night rock' "
+        + f"value='{html.escape(str(values.get('clap_query', '')))}'>"
+        + "<p class='hint'>Uses CLAP text-to-audio search across your analyzed library.</p></div>"
+        + f"<div id='field-lyrics' class='afm-field'{hidden('lyrics_query')}>"
         + _field_label("Lyrics theme", mandatory=True)
-        f"<input name='lyrics_query' class='afm-text-input' placeholder='e.g. songs about the open road' "
-        f"value='{html.escape(str(values.get('lyrics_query', '')))}'>"
-        "<p class='hint'>Semantic lyrics search — meaning and themes, not just keywords.</p></div>"
-        f"<div id='field-mood' class='afm-field afm-field-grid'{hidden('mood_centroid')}>"
-        "<div>" + _field_label("Mood", mandatory=True) + "<select name='mood_name' class='afm-select'>" + mood_opts + "</select></div>"
-        "<div>" + _field_label("Cluster", mandatory=True) + "<select name='centroid_index' id='centroid_index' class='afm-select'>" + centroid_opts + "</select></div>"
-        "<p class='hint' style='grid-column:1/-1;'>Each mood has sub-clusters from your library analysis — pick one that matches "
-        "the vibe (tags show the dominant traits in that cluster).</p></div>"
-        f"<div id='field-anchor' class='afm-field'{hidden('alchemy_anchor')}>"
+        + f"<input name='lyrics_query' class='afm-text-input' placeholder='e.g. songs about the open road' "
+        + f"value='{html.escape(str(values.get('lyrics_query', '')))}'>"
+        + "<p class='hint'>Semantic lyrics search — meaning and themes, not just keywords.</p></div>"
+        + f"<div id='field-mood' class='afm-field afm-field-grid'{hidden('mood_centroid')}>"
+        + "<div>"
+        + _field_label("Mood", mandatory=True)
+        + "<select name='mood_name' class='afm-select'>"
+        + mood_opts
+        + "</select></div>"
+        + "<div>"
+        + _field_label("Cluster", mandatory=True)
+        + "<select name='centroid_index' id='centroid_index' class='afm-select'>"
+        + centroid_opts
+        + "</select></div>"
+        + "<p class='hint' style='grid-column:1/-1;'>Each mood has sub-clusters from your library analysis — pick one that matches "
+        + "the vibe (tags show the dominant traits in that cluster).</p></div>"
+        + f"<div id='field-anchor' class='afm-field'{hidden('alchemy_anchor')}>"
         + _field_label("Song Alchemy anchor", mandatory=True)
-        f"<select name='anchor_id' class='afm-select'>{''.join(anchor_opts)}</select></div>"
-        f"<div id='field-seed' class='afm-field afm-seed-field'{hidden('similar_seed')}>"
+        + f"<select name='anchor_id' class='afm-select'>{''.join(anchor_opts)}</select></div>"
+        + f"<div id='field-seed' class='afm-field afm-seed-field'{hidden('similar_seed')}>"
         + _field_label("Search seed track")
-        "<div class='afm-seed-search-row'>"
-        f"<input name='seed_search' class='afm-text-input afm-seed-search-input' "
-        f"placeholder='Title or artist…' value='{html.escape(str(values.get('seed_search', '')))}'>"
-        "<button type='submit' name='action' value='search_seed' formnovalidate "
-        "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Search</button>"
-        "</div>"
-        "<p class='hint'>Search your library and pick a result, or enter a track item id below.</p>"
-        f"{seed_results_html}"
-        "<div class='afm-seed-id-field'>"
+        + "<div class='afm-seed-search-row'>"
+        + f"<input name='seed_search' class='afm-text-input afm-seed-search-input' "
+        + f"placeholder='Title or artist…' value='{html.escape(str(values.get('seed_search', '')))}'>"
+        + "<button type='submit' name='action' value='search_seed' formnovalidate "
+        + "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Search</button>"
+        + "</div>"
+        + "<p class='hint'>Search your library and pick a result, or enter a track item id below.</p>"
+        + f"{seed_results_html}"
+        + "<div class='afm-seed-id-field'>"
         + _field_label("Track item id", mandatory=True)
-        f"<input name='seed_id' class='afm-text-input' placeholder='Filled when you pick a search result' "
-        f"value='{html.escape(str(values.get('seed_id', '')))}'>"
-        "</div></div>"
-        "<div class='afm-field'>"
+        + f"<input name='seed_id' class='afm-text-input' placeholder='Filled when you pick a search result' "
+        + f"value='{html.escape(str(values.get('seed_id', '')))}'>"
+        + "</div></div>"
+        + "<div class='afm-field'>"
         + _field_label("Preview size")
-        f"<input type='number' name='preview_limit' min='10' max='80' value='{html.escape(str(values.get('preview_limit', PREVIEW_LIMIT_DEFAULT)))}'>"
-        "</div></section>"
+        + f"<input type='number' name='preview_limit' min='10' max='80' value='{html.escape(str(values.get('preview_limit', PREVIEW_LIMIT_DEFAULT)))}'>"
+        + "</div></section>"
     )
 
 
@@ -1956,43 +1965,48 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
     return (
         "<section class='afm-panel'>"
         + _panel_heading(panel_title, "Station on Alchemy FM")
-        + "<div class='afm-field'>" + _field_label("Channel name", mandatory=True)
-        f"<input name='name' required value='{html.escape(str(values.get('name', '')))}'></div>"
-        "<div class='afm-field'>" + _field_label("Slug")
-        f"<input name='slug' placeholder='auto from name' "
-        f"value='{html.escape(str(values.get('slug', editing_slug or '')))}'{slug_readonly}>"
-        f"{slug_extra}</div>"
-        "<div class='afm-field'>" + _field_label("Description")
-        f"<textarea name='description' maxlength='120' rows='2' "
-        "placeholder='Max 120 characters — shorter, punchier lines work best on the homepage'>"
-        f"{html.escape(str(values.get('description', '')))}</textarea></div>"
-        "<div class='afm-field'>" + _field_label("Icecast mount")
-        f"<input name='icecast_mount' placeholder='/channel-slug' value='{html.escape(str(values.get('icecast_mount', '')))}'></div>"
-        "<div class='afm-field'>" + _field_label("When pool runs low")
-        f"<select name='refresh_mode' class='afm-select'>{_select_options(REFRESH_MODES, str(values.get('refresh_mode', 'similar_to_last')))}</select>"
-        "<p class='hint'>For CLAP/lyrics/mood channels, the plugin saves a Song Alchemy anchor from your preview "
-        "so Alchemy FM can keep refilling 24/7.</p></div>"
+        + "<div class='afm-field'>"
+        + _field_label("Channel name", mandatory=True)
+        + f"<input name='name' required value='{html.escape(str(values.get('name', '')))}'></div>"
+        + "<div class='afm-field'>"
+        + _field_label("Slug")
+        + f"<input name='slug' placeholder='auto from name' "
+        + f"value='{html.escape(str(values.get('slug', editing_slug or '')))}'{slug_readonly}>"
+        + f"{slug_extra}</div>"
+        + "<div class='afm-field'>"
+        + _field_label("Description")
+        + f"<textarea name='description' maxlength='120' rows='2' "
+        + "placeholder='Max 120 characters — shorter, punchier lines work best on the homepage'>"
+        + f"{html.escape(str(values.get('description', '')))}</textarea></div>"
+        + "<div class='afm-field'>"
+        + _field_label("Icecast mount")
+        + f"<input name='icecast_mount' placeholder='/channel-slug' value='{html.escape(str(values.get('icecast_mount', '')))}'></div>"
+        + "<div class='afm-field'>"
+        + _field_label("When pool runs low")
+        + f"<select name='refresh_mode' class='afm-select'>{_select_options(REFRESH_MODES, str(values.get('refresh_mode', 'similar_to_last')))}</select>"
+        + "<p class='hint'>For CLAP/lyrics/mood channels, the plugin saves a Song Alchemy anchor from your preview "
+        + "so Alchemy FM can keep refilling 24/7.</p></div>"
         + "<div class='afm-deploy-tail'>"
-        "<div class='afm-field-grid-3'>"
-        "<div><label>Queue target</label>"
-        f"<input type='number' name='queue_target' min='5' max='200' value='{html.escape(str(values.get('queue_target', 30)))}'></div>"
-        "<div><label>Refresh below</label>"
-        f"<input type='number' name='refresh_threshold' min='1' max='100' value='{html.escape(str(values.get('refresh_threshold', 10)))}'></div>"
-        "<div><label>Artist separation (min)</label>"
-        f"<input type='number' name='artist_separation_minutes' min='0' value='{html.escape(str(values.get('artist_separation_minutes', 90)))}'></div>"
-        "</div>"
-        "<div class='afm-check-group'>"
-        "<label class='afm-check-label'><input type='checkbox' name='enabled'"
-        f"{' checked' if values.get('enabled', True) else ''}> Start on air after push</label>"
-        "<label class='afm-check-label'><input type='checkbox' name='bootstrap_queue'"
-        f"{' checked' if values.get('bootstrap_queue', True) else ''}> Bootstrap queue immediately</label>"
-        "</div>"
-        f"<input type='hidden' name='saved_anchor_id' value='{html.escape(str(values.get('saved_anchor_id', '')))}'>"
-        "<div class='afm-form-actions'>"
-        f"<button type='submit' name='action' value='push' class='afm-btn afm-btn-primary'>{html.escape(deploy_label)}</button>"
-        "<button type='submit' name='action' value='preview' class='afm-btn afm-btn-secondary'>Preview Programming</button>"
-        "<button type='submit' name='action' value='test' formnovalidate class='afm-btn afm-btn-secondary'>Test connection</button>"
-        "</div></div></section>"
+        + "<div class='afm-field-grid-3'>"
+        + "<div><label>Queue target</label>"
+        + f"<input type='number' name='queue_target' min='5' max='200' value='{html.escape(str(values.get('queue_target', 30)))}'></div>"
+        + "<div><label>Refresh below</label>"
+        + f"<input type='number' name='refresh_threshold' min='1' max='100' value='{html.escape(str(values.get('refresh_threshold', 10)))}'></div>"
+        + "<div><label>Artist separation (min)</label>"
+        + f"<input type='number' name='artist_separation_minutes' min='0' value='{html.escape(str(values.get('artist_separation_minutes', 90)))}'></div>"
+        + "</div>"
+        + "<div class='afm-check-group'>"
+        + "<label class='afm-check-label'><input type='checkbox' name='enabled'"
+        + f"{' checked' if values.get('enabled', True) else ''}> Start on air after push</label>"
+        + "<label class='afm-check-label'><input type='checkbox' name='bootstrap_queue'"
+        + f"{' checked' if values.get('bootstrap_queue', True) else ''}> Bootstrap queue immediately</label>"
+        + "</div>"
+        + f"<input type='hidden' name='saved_anchor_id' value='{html.escape(str(values.get('saved_anchor_id', '')))}'>"
+        + "<div class='afm-form-actions'>"
+        + f"<button type='submit' name='action' value='push' class='afm-btn afm-btn-primary'>{html.escape(deploy_label)}</button>"
+        + "<button type='submit' name='action' value='preview' class='afm-btn afm-btn-secondary'>Preview Programming</button>"
+        + "<button type='submit' name='action' value='test' formnovalidate class='afm-btn afm-btn-secondary'>Test connection</button>"
+        + "</div></div></section>"
     )
 
 
