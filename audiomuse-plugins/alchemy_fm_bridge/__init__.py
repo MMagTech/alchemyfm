@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.1.0"
+PLUGIN_VERSION = "3.1.1"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1815,9 +1815,8 @@ def _designer_flow_overview_html() -> str:
 def _page_header_html() -> str:
     return (
         '<header class="afm-page-header">'
-        '<h2 class="afm-page-title">Live Programming for Alchemy FM</h2>'
         f'<a href="{html.escape(HELP_DOC_URL)}" class="afm-help-link" target="_blank" '
-        'rel="noopener noreferrer">Help</a>'
+        'rel="noopener noreferrer">Channel Designer Help</a>'
         "</header>"
     )
 
@@ -1841,22 +1840,13 @@ def _page_styles() -> str:
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 0.55rem;
-  margin: 0 0 1.65rem;
-  padding-bottom: 1.1rem;
+  margin: 0 0 1.35rem;
+  padding-bottom: 0.85rem;
   border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.1));
 }
-.afm-page-title {
-  margin: 0;
-  font-size: 1.55rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  color: var(--text, inherit);
-  text-transform: none;
-}
 .afm-help-link {
-  font-size: 0.88rem;
-  font-weight: 500;
+  font-size: 1.02rem;
+  font-weight: 600;
   color: var(--muted, #94a3b8);
   text-decoration: none;
   border-bottom: 1px solid transparent;
