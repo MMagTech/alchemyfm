@@ -22,21 +22,9 @@ Third-party [AudioMuse-AI](https://github.com/NeptuneHub/AudioMuse-AI) plugins m
 
 CLAP, lyrics, and mood channels are **auditioned in AudioMuse**, then compiled into a Song Alchemy anchor so Alchemy FM can refill queues around the clock.
 
-### Plugin not showing v2 in AudioMuse?
+### Install
 
-GitHub is live immediately; AudioMuse caches the catalog (~1 hour, or until you refresh).
-
-1. **Plugins → Repositories** — confirm this URL is listed:
-   ```
-   https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/manifest.json
-   ```
-2. **Remove** that repository → **Add** it again → **Catalog → Refresh catalog**
-3. If already installed at an older version: check **Installed** tab (not Catalog) for **Update**
-4. Click **Apply now (restart)** after install/update
-5. Requires AudioMuse core **2.5.0+** (`min_core_version` in plugin.json)
-
-If the catalog still shows v1, wait 5 minutes (GitHub CDN cache) and refresh again.
-
+Requires AudioMuse core **2.5.0+** (`min_core_version` in `plugin.json`).
 
 1. **Plugins → Repositories → Add**
    ```
@@ -44,16 +32,32 @@ If the catalog still shows v1, wait 5 minutes (GitHub CDN cache) and refresh aga
    ```
 2. **Plugins → Catalog → Refresh catalog**
 3. Install **Alchemy FM Channel Designer** → **Apply now (restart)**
+4. In plugin **Settings**, set Alchemy FM URL + admin credentials (e.g. `https://alchemyfm.example.com` or LAN `http://192.168.1.100:8080`)
+
+### Plugin not showing the latest version?
+
+GitHub is live immediately; AudioMuse caches the catalog (~1 hour, or until you refresh).
+
+1. **Plugins → Repositories** — confirm the manifest URL above is listed
+2. **Remove** that repository → **Add** it again → **Catalog → Refresh catalog**
+3. If already installed at an older version: check the **Installed** tab (not Catalog) for **Update**
+4. Click **Apply now (restart)** after install/update
+
+If the catalog still shows an old version, wait 5 minutes (GitHub CDN cache) and refresh again.
+
+Plugin updates do **not** require pulling new Alchemy FM Docker images — only refresh and apply in AudioMuse.
 
 ### Workflow
 
-1. **Settings** — Alchemy FM URL + admin credentials (e.g. `https://alchemyfm.example.com` or a LAN URL like `http://192.168.1.100:8080`)
+1. **Settings** — Alchemy FM URL + admin credentials
 2. **Alchemy FM** menu — Channel Designer
 3. Pick programming type (CLAP, lyrics, mood, anchor, or seed)
 4. Optional: set tempo/energy filters and enable **Living channel**
 5. **Preview programming** — review tracks with BPM / energy / mood
 6. **Deploy to Alchemy FM** — creates/updates station + optional bootstrap
-7. Enable **Administration → Scheduled Tasks → plugin.alchemy_fm_bridge.refresh_living** for nightly pool refresh
+7. Enable **Administration → Scheduled Tasks → Alchemy FM** for nightly pool refresh (task id: `plugin.alchemy_fm_bridge.refresh_living`)
+
+Operate deployed stations (On/Off, appearance, broadcast encoding) in [Alchemy FM admin](https://github.com/MMagTech/alchemyfm#quick-start-local-docker) — not in the plugin.
 
 ### Local development
 
