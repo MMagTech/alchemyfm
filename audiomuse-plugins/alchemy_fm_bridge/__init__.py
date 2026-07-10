@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.10"
+PLUGIN_VERSION = "3.0.11"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -2419,20 +2419,33 @@ def _page_styles() -> str:
   width: 100% !important;
   max-width: 100% !important;
 }
-.afm-seed-field .afm-seed-search-row {
+.afm-seed-search-row {
   display: flex;
-  gap: 0.75rem;
-  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+.afm-seed-search-row .afm-seed-search-input,
+.afm-seed-search-row .afm-text-input {
+  flex: 1 1 14rem;
+  min-width: 0;
+  width: auto !important;
+  max-width: none !important;
+  margin: 0;
+}
+.afm-seed-search-row .afm-seed-search-btn,
+.afm-seed-search-row > .afm-btn {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.afm-seed-field .afm-seed-search-row {
   margin-top: 0.35rem;
 }
 .afm-seed-field .afm-seed-search-input {
   flex: 1 1 16rem;
-  min-width: 0;
-  width: auto !important;
-  max-width: none !important;
 }
 .afm-seed-field .afm-seed-search-btn {
-  flex: 0 0 auto;
   align-self: center;
 }
 .afm-seed-field .afm-seed-id-field {
@@ -2545,8 +2558,8 @@ def _page_styles() -> str:
 .afm-bootstrap-panel .afm-panel-note { margin-top: 0.25rem; }
 .afm-bootstrap-panel > .hint { margin: 0 0 0.9rem; }
 .afm-bootstrap-panel .afm-check-group { margin: 0 0 1rem; }
-.afm-bootstrap-panel .afm-field { margin-top: 0.75rem; }
-.afm-bootstrap-panel .afm-seed-search-row { margin-top: 0; }
+.afm-bootstrap-panel .afm-field { margin-top: 0.85rem; }
+.afm-bootstrap-panel .afm-field + .afm-field { margin-top: 1rem; }
 .afm-seed-results {
   list-style: none;
   padding: 0;
