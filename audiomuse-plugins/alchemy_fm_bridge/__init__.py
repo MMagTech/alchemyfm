@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.9"
+PLUGIN_VERSION = "3.0.10"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -2239,6 +2239,20 @@ def _page_styles() -> str:
   margin: 0;
   padding-top: 0.15rem;
 }
+.afm-filter-explainer {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: color-mix(in srgb, var(--accent, #6366f1) 6%, transparent);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--muted, #94a3b8);
+}
+.afm-filter-explainer p { margin: 0.45rem 0; }
+.afm-filter-explainer p:first-child { margin-top: 0; }
+.afm-filter-explainer p:last-child { margin-bottom: 0; }
+.afm-filter-explainer strong { color: var(--text, inherit); }
 .afm-preview-results-panel {
   scroll-margin-top: 1rem;
 }
@@ -2795,6 +2809,24 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
     )
 
 
+def _filters_explainer_html() -> str:
+    return (
+        "<div class='afm-filter-explainer'>"
+        "<p><strong>When filters run:</strong> In AudioMuse only — when you "
+        "<strong>Preview Programming</strong> (Step 3). If <strong>Living Channel</strong> is on, "
+        "they also apply when new analyzed songs join the pool or cron refreshes it.</p>"
+        "<p><strong>When filters do not run:</strong> Alchemy FM on-air playback. "
+        "When the queue runs low, refills use <strong>Step 2 Programming</strong> and "
+        "<strong>Step 5 Playback Rules</strong> — not these filters.</p>"
+        "<p><strong>First station?</strong> Leave filters empty until Preview Results look mostly right, "
+        "then add rules to cut outliers (e.g. tempo range, block an artist).</p>"
+        "<p><strong>After Preview:</strong> The <strong>Filter Check</strong> panel below the fields "
+        "shows which genre/mood terms matched — use the <strong>Genre</strong> column in Preview Results "
+        "to see exact spellings.</p>"
+        "</div>"
+    )
+
+
 def _filters_fields_html(values: dict[str, Any], *, mood_labels: list[str] | None = None) -> str:
     mood_labels = mood_labels if mood_labels is not None else _audiomuse_mood_labels()
     feedback = _filter_feedback_html(values.get("filter_feedback"))
@@ -2816,10 +2848,10 @@ def _filters_fields_html(values: dict[str, Any], *, mood_labels: list[str] | Non
         + _step_panel_heading(
             "Optional",
             "Filters",
-            "Tighten preview and living-pool results. Skip on your first station — fix the programming query first.",
+            "Trims Preview and Living pool tracks. Does not control on-air refills when the queue runs low.",
             optional=True,
         )
-        + "<p class='hint'>Applies to preview and living auto-add/cron. Genre and mood must match analyzed metadata exactly.</p>"
+        + _filters_explainer_html()
         + "<div class='afm-field-grid'>"
         "<div><label>Tempo Min (BPM)</label>"
         f"<input type='number' name='filter_tempo_min' min='0' step='1' "
@@ -2840,20 +2872,22 @@ def _filters_fields_html(values: dict[str, Any], *, mood_labels: list[str] | Non
         f"<input type='number' name='filter_year_max' min='1900' max='2100' step='1' "
         f"value='{html.escape(str(values.get('filter_year_max', '')))}' placeholder='any'></div>"
         "</div>"
+        + "<p class='hint'>Tempo, energy, and year use analyzed score data. Leave blank for no limit.</p>"
         + "<div class='afm-field'>"
         + _field_label("Genre Include")
-        + f"<input name='filter_genre_include' class='afm-text-input' placeholder='exact top_genre, e.g. rock' "
+        + f"<input name='filter_genre_include' class='afm-text-input' placeholder='e.g. rock — exact Top Genre from Preview Results' "
         + f"value='{html.escape(str(values.get('filter_genre_include', '')))}'></div>"
         + "<div class='afm-field'>"
         + _field_label("Genre Exclude")
-        + f"<input name='filter_genre_exclude' class='afm-text-input' placeholder='exact top_genre' "
+        + f"<input name='filter_genre_exclude' class='afm-text-input' placeholder='e.g. classical — exact Top Genre spelling' "
         + f"value='{html.escape(str(values.get('filter_genre_exclude', '')))}'></div>"
         + "<div class='afm-field'>"
         + _field_label("Mood Tags Include")
         + f"<input name='filter_mood_include' id='filter_mood_include' class='afm-text-input' "
         + f"list='afm-mood-labels' placeholder='melancholic, dreamy' "
         + f"value='{html.escape(str(values.get('filter_mood_include', '')))}'>"
-        + "<p class='hint'>Pick from suggestions — must match AudioMuse mood labels on analyzed tracks.</p>"
+        + "<p class='hint'>Choose from suggestions — each tag must match how AudioMuse labeled that track "
+        "(not free-text lyrics or titles).</p>"
         + "<p id='afm-mood-inline-hint' class='afm-mood-inline-hint' aria-live='polite'></p></div>"
         + "<div class='afm-field'>"
         + _field_label("Exclude Artists")
@@ -2867,7 +2901,7 @@ def _filters_fields_html(values: dict[str, Any], *, mood_labels: list[str] | Non
         + "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Search</button>"
         + "</div>"
         + f"{artist_results_html}"
-        + "<p class='hint'>Artist names must match library spelling exactly (case-insensitive).</p></div>"
+        + "<p class='hint'>Must match artist name in your library (search above to add). Case-insensitive.</p></div>"
         + _mood_datalist_html(mood_labels)
         + f"{feedback}"
         + "</section>"
