@@ -5,6 +5,14 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy — preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "3.0.8",
+      "min_core_version": "2.5.0",
+      "changelog": "Clarify Discover Channels and CLAP field: sonic vibe search matches sound, not lyrics.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "c7dace91458421f9757ab6b275e14781"
+    },
+    {
       "version": "3.0.7",
       "min_core_version": "2.5.0",
       "changelog": "Title Case fix: step titles (Station Identity, Preview Programming), panel headings, flow overview, and station list copy.",

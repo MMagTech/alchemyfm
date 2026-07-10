@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.7"
+PLUGIN_VERSION = "3.0.8"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -2686,7 +2686,8 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
         + _field_label("Sonic Vibe (Describe the Sound)", mandatory=True)
         + f"<input name='clap_query' class='afm-text-input' placeholder='e.g. late night rock' "
         + f"value='{html.escape(str(values.get('clap_query', '')))}'>"
-        + "<p class='hint'>Uses CLAP text-to-audio search across your analyzed library.</p></div>"
+        + "<p class='hint'>Matches how tracks <strong>sound</strong> — not lyrics. For theme or meaning, use "
+        "<strong>Lyrics Theme</strong> instead of Sonic Vibe.</p></div>"
         + f"<div id='field-lyrics' class='afm-field'{hidden('lyrics_query')}>"
         + _field_label("Lyrics Theme", mandatory=True)
         + f"<input name='lyrics_query' class='afm-text-input' placeholder='e.g. songs about the open road' "
@@ -2933,8 +2934,9 @@ def _discover_channels_html() -> str:
         '<span class="afm-helper-badge">Helper</span>'
         '<span><span class="afm-collapsible-title">Discover Channels</span>'
         '<span class="afm-collapsible-hint">Browse clustering playlists. '
-        "<strong>Use in Designer</strong> prefills Step 2 with a CLAP query from the cluster name — "
-        "it does not import cluster tracks or deploy.</span></span>"
+        "<strong>Use in Designer</strong> prefills Step 2 with a <strong>Sonic Vibe (CLAP)</strong> query from the cluster name — "
+        "it finds tracks that <em>sound</em> like that description, not songs with those words in the lyrics. "
+        "It does not import cluster tracks or deploy.</span></span>"
         "</summary>"
         '<div class="afm-collapsible-body">'
         '<div class="afm-form-actions afm-form-actions-inline" style="margin-bottom:0.75rem;">'
