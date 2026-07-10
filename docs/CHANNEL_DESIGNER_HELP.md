@@ -112,7 +112,7 @@ Fill **Channel + deploy** (same form, bottom):
 | **Slug** | Fixed after first deploy — identifies the station |
 | **Description** | Short homepage blurb |
 | **Icecast mount** | e.g. `/yachtrock` |
-| **When pool runs low** | How refills drift (similar to last played, seed, or pool) |
+| **When pool runs low** | How refills expand when the queue runs low — see **When pool runs low** below |
 | **Queue target / Refresh below / Artist separation** | Playback queue behavior on Alchemy FM |
 | **Start on air after push** | Goes live immediately if checked |
 | **Bootstrap queue immediately** | Fills queue on deploy |
@@ -170,7 +170,9 @@ Slug cannot change after first deploy.
 
 ## Filters (detail)
 
-Optional rules narrow **preview**, **living auto-add**, and **cron refresh** for **this station only**:
+Optional rules narrow **preview**, **living auto-add**, and **cron refresh** for **this station only**. They do **not** apply to Alchemy FM on-air refills — those use **Step 2 Programming** and **Step 5 Playback Rules**.
+
+Expand **Explanation** on the Filters step for a quick summary. Rules include:
 
 - Tempo and energy bounds
 - Year min/max
@@ -186,7 +188,7 @@ After **Preview Programming**, the Filters panel shows a **Filter check** summar
 
 Optional **Navidrome playlist** cold-start for **this station**:
 
-- **Search** Navidrome playlists by name and **pick** a result (sets Playlist ID automatically), or paste an id manually.
+- **Search** Navidrome playlists by **title** and **pick** a result (sets Playlist ID automatically), or paste an id manually.
 - Click **Verify** to confirm AudioMuse can resolve the playlist and load opener tracks.
 - On **Preview**, a bootstrap warning appears if verification fails; **Deploy** blocks until the playlist verifies.
 - Opener tracks play first at deploy/bootstrap; refills use your programming query.
@@ -244,13 +246,17 @@ For encoding, themes, and heart playlist, use **Alchemy FM Admin** — not the p
 
 ## When pool runs low
 
-**Continuation mode** on deploy (per station):
+**Step 5 — 24/7 Playback Rules** controls Alchemy FM refills when the queue drops below **Refresh below**. Expand **Explanation** on that step for tier-by-tier detail.
+
+Every refill first re-runs your **Step 2 programming** query, then reuses unplayed tracks from the imported pool, then may expand with similar/anchor tiers depending on the mode.
 
 | Mode | Behavior |
 |------|----------|
-| **Similar to Last Played** | Drift from the last track (recommended for variety). |
-| **Similar to Programming Seed** | Stay near the fixed seed. |
-| **Stay in Source Pool** | Reuse imported pool; allows repeats. |
+| **Similar to Last Played** | After the pool is exhausted, pulls tracks similar to whatever just played. Can drift over time (recommended). |
+| **No Repeats** | Same expansion as Similar to Last Played, but never replays pool tracks that already aired. |
+| **Similar to Programming Seed** | Stays near one fixed anchor track — less drift. |
+| **Programming Only** | Re-queries Step 2 and uses the pool once — no similar expansion and no pool repeats. |
+| **Stay in Source Pool** | Reuses imported tracks and allows repeats before leaving the pool. No similar-track drift. |
 
 ---
 

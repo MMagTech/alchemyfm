@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.11"
+PLUGIN_VERSION = "3.1.3"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -328,7 +328,9 @@ PROGRAMMING_TYPE_LABELS.update(
 
 REFRESH_MODES = (
     ("similar_to_last", "Similar to Last Played (Recommended)"),
+    ("no_repeats", "No Repeats (Fresh Tracks First)"),
     ("similar_to_seed", "Similar to Programming Seed"),
+    ("programming_only", "Programming Only (Re-Query Step 2)"),
     ("source_only", "Stay in Source Pool (Allow Repeats)"),
 )
 
@@ -893,17 +895,34 @@ def _bootstrap_from_form(form) -> dict[str, Any] | None:
 
 
 def _search_playlists(query: str) -> list[dict[str, Any]]:
+    """Navidrome playlist search — matches playlist title only (AudioMuse /api/search_playlists)."""
     query = query.strip()
     if len(query) < 2:
         return []
-    for params in ({"query": query}, {"search_query": query, "end": "20"}):
-        try:
-            data = audiomuse_get("/api/search_playlists", params={k: str(v) for k, v in params.items()})
-        except ChannelDesignerError:
+    try:
+        data = audiomuse_get("/api/search_playlists", params={"query": query})
+    except ChannelDesignerError:
+        return []
+    if not isinstance(data, list):
+        return []
+    needle = query.lower()
+    results: list[dict[str, Any]] = []
+    for row in data:
+        if not isinstance(row, dict):
             continue
-        if isinstance(data, list) and data:
-            return [row for row in data if isinstance(row, dict) and row.get("id")]
-    return []
+        pl_id = row.get("id") or row.get("Id")
+        name = str(row.get("name") or row.get("Name") or "").strip()
+        if not pl_id or not name:
+            continue
+        if needle not in name.lower():
+            continue
+        count = row.get("count")
+        if count is None:
+            count = row.get("songCount")
+        if count is None:
+            count = row.get("ChildCount")
+        results.append({"id": str(pl_id), "name": name, "count": count})
+    return results[:50]
 
 
 def _verify_bootstrap_playlist(playlist_id: str, *, limit: int) -> dict[str, Any]:
@@ -1813,9 +1832,8 @@ def _designer_flow_overview_html() -> str:
 def _page_header_html() -> str:
     return (
         '<header class="afm-page-header">'
-        '<h2 class="afm-page-title">Live Programming for Alchemy FM</h2>'
         f'<a href="{html.escape(HELP_DOC_URL)}" class="afm-help-link" target="_blank" '
-        'rel="noopener noreferrer">Help</a>'
+        'rel="noopener noreferrer">Channel Designer Help</a>'
         "</header>"
     )
 
@@ -1834,27 +1852,111 @@ def _page_styles() -> str:
   box-sizing: border-box;
   color: var(--text, inherit);
 }
+/* Light mode only — bridge AudioMuse theme tokens; dark mode rules unchanged */
+html:not(.dark-mode) .afm-shell {
+  --text: var(--text-main, #1f2937);
+  --muted: var(--text-muted, #4b5563);
+  --border: var(--border-color, #e5e7eb);
+  --field: var(--bg-input, #ffffff);
+  --bg: var(--bg-card, #ffffff);
+  --accent: var(--color-primary, #2563eb);
+}
+html:not(.dark-mode) .afm-shell .afm-panel,
+html:not(.dark-mode) .afm-shell .afm-table-wrap,
+html:not(.dark-mode) .afm-shell .afm-edit-bar {
+  background: var(--bg-card, #ffffff);
+}
+html:not(.dark-mode) .afm-shell .afm-flash-ok {
+  color: #166534;
+  background: color-mix(in srgb, var(--color-success, #16a34a) 12%, #ffffff);
+  border-color: color-mix(in srgb, var(--color-success, #16a34a) 35%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-flash-error {
+  color: #991b1b;
+  background: color-mix(in srgb, var(--color-danger, #dc2626) 10%, #ffffff);
+  border-color: color-mix(in srgb, var(--color-danger, #dc2626) 32%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-badge-live {
+  color: #15803d;
+  background: color-mix(in srgb, var(--color-success, #16a34a) 14%, #ffffff);
+  border-color: color-mix(in srgb, var(--color-success, #16a34a) 28%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-badge-off {
+  color: var(--text-muted, #4b5563);
+  background: color-mix(in srgb, var(--text-muted, #4b5563) 10%, #ffffff);
+  border-color: var(--border-color, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-badge-queue {
+  color: #1d4ed8;
+  background: color-mix(in srgb, var(--color-primary, #2563eb) 12%, #ffffff);
+  border-color: color-mix(in srgb, var(--color-primary, #2563eb) 24%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-badge-saved {
+  color: #6d28d9;
+  background: color-mix(in srgb, #8b5cf6 12%, #ffffff);
+  border-color: color-mix(in srgb, #8b5cf6 24%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-badge-remote {
+  color: #c2410c;
+  background: color-mix(in srgb, #f97316 12%, #ffffff);
+  border-color: color-mix(in srgb, #f97316 24%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-badge-living {
+  color: #0e7490;
+  background: color-mix(in srgb, #06b6d4 12%, #ffffff);
+  border-color: color-mix(in srgb, #06b6d4 24%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-step-badge {
+  color: #1d4ed8;
+  background: color-mix(in srgb, var(--color-primary, #2563eb) 12%, #ffffff);
+  border-color: color-mix(in srgb, var(--color-primary, #2563eb) 24%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-step-badge-optional,
+html:not(.dark-mode) .afm-shell .afm-helper-badge {
+  color: #475569;
+  background: color-mix(in srgb, #64748b 10%, #ffffff);
+  border-color: color-mix(in srgb, #64748b 22%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-btn-danger {
+  color: #b91c1c;
+  border-color: color-mix(in srgb, var(--color-danger, #dc2626) 40%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-btn-danger:hover {
+  color: #991b1b;
+  background: color-mix(in srgb, var(--color-danger, #dc2626) 10%, #ffffff);
+  border-color: color-mix(in srgb, var(--color-danger, #dc2626) 55%, #e5e7eb);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-danger, #dc2626) 18%, transparent);
+}
+html:not(.dark-mode) .afm-shell .afm-btn:hover {
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+}
+html:not(.dark-mode) .afm-shell .afm-select-menu {
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+}
+html:not(.dark-mode) .afm-shell .afm-select-option:hover,
+html:not(.dark-mode) .afm-shell .afm-select-option.is-selected {
+  background: color-mix(in srgb, var(--color-primary, #2563eb) 12%, #ffffff);
+  color: var(--text-main, #1f2937);
+}
+html:not(.dark-mode) .afm-shell .afm-filter-term-ok { color: #15803d; }
+html:not(.dark-mode) .afm-shell .afm-filter-term-warn,
+html:not(.dark-mode) .afm-shell .afm-mood-inline-hint { color: #c2410c; }
+html:not(.dark-mode) .afm-shell .afm-collapsible-explainer,
+html:not(.dark-mode) .afm-shell .afm-filter-feedback {
+  background: color-mix(in srgb, var(--color-primary, #2563eb) 6%, #ffffff);
+}
 .afm-page-header {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 0.55rem;
-  margin: 0 0 1.65rem;
-  padding-bottom: 1.1rem;
+  margin: 0 0 1.35rem;
+  padding-bottom: 0.85rem;
   border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.1));
 }
-.afm-page-title {
-  margin: 0;
-  font-size: 1.55rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  color: var(--text, inherit);
-  text-transform: none;
-}
 .afm-help-link {
-  font-size: 0.88rem;
-  font-weight: 500;
+  font-size: 1.02rem;
+  font-weight: 600;
   color: var(--muted, #94a3b8);
   text-decoration: none;
   border-bottom: 1px solid transparent;
@@ -2240,11 +2342,10 @@ def _page_styles() -> str:
   padding-top: 0.15rem;
 }
 .afm-filter-explainer {
-  margin: 0 0 1rem;
-  padding: 0.85rem 1rem;
-  border-radius: 10px;
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
-  background: color-mix(in srgb, var(--accent, #6366f1) 6%, transparent);
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
   font-size: 0.88rem;
   line-height: 1.55;
   color: var(--muted, #94a3b8);
@@ -2253,6 +2354,40 @@ def _page_styles() -> str:
 .afm-filter-explainer p:first-child { margin-top: 0; }
 .afm-filter-explainer p:last-child { margin-bottom: 0; }
 .afm-filter-explainer strong { color: var(--text, inherit); }
+.afm-collapsible-explainer {
+  margin: 0 0 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  background: color-mix(in srgb, var(--accent, #6366f1) 6%, transparent);
+  overflow: hidden;
+}
+.afm-collapsible-explainer > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.65rem 0.9rem;
+  font-size: 0.88rem;
+  font-weight: 650;
+  color: var(--text, inherit);
+}
+.afm-collapsible-explainer > summary::-webkit-details-marker { display: none; }
+.afm-collapsible-explainer > summary::before {
+  content: "▸";
+  flex: 0 0 auto;
+  color: var(--muted, #94a3b8);
+  transition: transform 0.15s ease;
+}
+.afm-collapsible-explainer[open] > summary::before {
+  transform: rotate(90deg);
+}
+.afm-collapsible-explainer[open] > summary {
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+}
+.afm-collapsible-explainer-body {
+  padding: 0.75rem 0.9rem 0.9rem;
+}
 .afm-preview-results-panel {
   scroll-margin-top: 1rem;
 }
@@ -2580,6 +2715,55 @@ def _page_styles() -> str:
 }
 .afm-seed-results button:hover { background: color-mix(in srgb, var(--accent, #6366f1) 12%, transparent); }
 .afm-seed-results li:last-child button { border-bottom: none; }
+.afm-bootstrap-search-field { position: relative; }
+.afm-bootstrap-results { margin-top: 0.4rem; }
+.afm-bootstrap-results-label {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted, #94a3b8);
+}
+.afm-bootstrap-results-empty {
+  margin: 0.45rem 0 0;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--muted, #94a3b8);
+}
+.afm-bootstrap-menu {
+  list-style: none;
+  margin: 0;
+  padding: 0.3rem;
+  max-height: 14rem;
+  overflow-y: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+  background: var(--bg, #0f172a);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+html:not(.dark-mode) .afm-shell .afm-bootstrap-menu {
+  background: var(--bg-card, #ffffff);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.1);
+}
+.afm-bootstrap-pick {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  padding: 0.5rem 0.65rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text, inherit);
+  font: inherit;
+  line-height: 1.35;
+  cursor: pointer;
+}
+.afm-bootstrap-pick:hover,
+.afm-bootstrap-pick:focus-visible {
+  background: color-mix(in srgb, var(--accent, #6366f1) 16%, transparent);
+  outline: none;
+}
+#bootstrap-opener { scroll-margin-top: 1rem; }
 @media (max-width: 720px) {
   .afm-field-grid, .afm-field-grid-3 { grid-template-columns: 1fr; }
   .afm-edit-bar { padding: 0.9rem; }
@@ -2822,9 +3006,17 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
     )
 
 
-def _filters_explainer_html() -> str:
+def _collapsible_explainer_html(body: str) -> str:
     return (
-        "<div class='afm-filter-explainer'>"
+        "<details class='afm-collapsible-explainer'>"
+        "<summary>Explanation</summary>"
+        f"<div class='afm-collapsible-explainer-body afm-filter-explainer'>{body}</div>"
+        "</details>"
+    )
+
+
+def _filters_explainer_html() -> str:
+    return _collapsible_explainer_html(
         "<p><strong>When filters run:</strong> In AudioMuse only — when you "
         "<strong>Preview Programming</strong> (Step 3). If <strong>Living Channel</strong> is on, "
         "they also apply when new analyzed songs join the pool or cron refreshes it.</p>"
@@ -2836,7 +3028,27 @@ def _filters_explainer_html() -> str:
         "<p><strong>After Preview:</strong> The <strong>Filter Check</strong> panel below the fields "
         "shows which genre/mood terms matched — use the <strong>Genre</strong> column in Preview Results "
         "to see exact spellings.</p>"
-        "</div>"
+    )
+
+
+def _playback_rules_explainer_html() -> str:
+    return _collapsible_explainer_html(
+        "<p><strong>When these rules run:</strong> Alchemy FM on-air playback only — when the queue "
+        "drops below <strong>Refresh Below</strong>. They do not change Preview Programming or Living "
+        "pool filters.</p>"
+        "<p><strong>Refill order:</strong> Every refill first re-runs your <strong>Step 2 Programming</strong> "
+        "query, then reuses unplayed tracks from the imported pool, then expands with similar/anchor tiers "
+        "depending on the mode below.</p>"
+        "<p><strong>Similar to Last Played:</strong> After the pool is exhausted, pulls tracks similar to "
+        "whatever just played. The channel can drift over time — good default for variety.</p>"
+        "<p><strong>No Repeats:</strong> Same expansion as Similar to Last Played, but never replays pool "
+        "tracks that already aired. Best when you want fresh recommendations before any repeat.</p>"
+        "<p><strong>Similar to Programming Seed:</strong> Stays near one fixed anchor track from the "
+        "station identity — less drift than Similar to Last Played.</p>"
+        "<p><strong>Programming Only:</strong> Re-queries Step 2 and uses the pool once — no similar-track "
+        "expansion and no pool repeats. Stops when those are exhausted.</p>"
+        "<p><strong>Stay in Source Pool:</strong> Reuses imported tracks and allows repeats before leaving "
+        "the pool. No similar-track drift.</p>"
     )
 
 
@@ -2921,44 +3133,63 @@ def _filters_fields_html(values: dict[str, Any], *, mood_labels: list[str] | Non
     )
 
 
+def _bootstrap_playlist_results_html(results: list[dict[str, Any]], *, query: str = "") -> str:
+    if not results:
+        if query.strip():
+            return (
+                "<p class='afm-bootstrap-results-empty'>"
+                f"No Navidrome playlists with <strong>{html.escape(query.strip())}</strong> in the title. "
+                "Try a shorter name or paste a playlist id below.</p>"
+            )
+        return ""
+    items = []
+    for pl in results:
+        pl_id = str(pl.get("id") or "")
+        name = pl.get("name") or pl_id or "Playlist"
+        count = pl.get("count")
+        count_s = f" · {count} tracks" if count is not None else ""
+        items.append(
+            "<li role='presentation'>"
+            f'<button type="submit" name="pick_bootstrap_playlist" value="{html.escape(pl_id)}" '
+            'formnovalidate class="afm-bootstrap-pick" role="option">'
+            f"{html.escape(name)}{html.escape(count_s)}"
+            "</button></li>"
+        )
+    count_label = f"{len(results)} playlist{'s' if len(results) != 1 else ''}"
+    return (
+        "<div class='afm-bootstrap-results'>"
+        f"<p class='afm-bootstrap-results-label'>{html.escape(count_label)} — pick one</p>"
+        "<ul class='afm-bootstrap-menu' role='listbox'>"
+        + "".join(items)
+        + "</ul></div>"
+    )
+
+
 def _bootstrap_fields_html(values: dict[str, Any]) -> str:
     bootstrap_enabled = values.get("bootstrap_enabled", False)
     playlist_results = values.get("bootstrap_playlist_results") or []
-    results_html = ""
-    if playlist_results:
-        items = []
-        for pl in playlist_results:
-            pl_id = str(pl.get("id") or "")
-            name = pl.get("name") or pl_id or "Playlist"
-            count = pl.get("count")
-            count_s = f" · {count} tracks" if count is not None else ""
-            items.append(
-                "<li>"
-                f'<button type="submit" name="pick_bootstrap_playlist" value="{html.escape(pl_id)}" '
-                'formnovalidate class="afm-btn afm-btn-secondary" style="width:100%;text-align:left;">'
-                f"{html.escape(name)}{html.escape(count_s)}"
-                "</button></li>"
-            )
-        results_html = "<ul class='afm-seed-results'>" + "".join(items) + "</ul>"
+    search_query = str(values.get("bootstrap_playlist_search", ""))
+    results_html = _bootstrap_playlist_results_html(playlist_results, query=search_query)
     feedback = _bootstrap_feedback_html(values.get("bootstrap_check"))
     return (
-        "<section class='afm-panel afm-bootstrap-panel afm-step-panel'>"
+        "<section class='afm-panel afm-bootstrap-panel afm-step-panel' id='bootstrap-opener'>"
         + _step_panel_heading(
             "Optional",
             "Bootstrap Opener",
             "A Navidrome playlist that plays first at deploy only. After that, Step 2 programming takes over.",
             optional=True,
         )
-        + "<p class='hint'>Search and pick a playlist, or paste an id and click Verify. Deploy blocks if verification fails.</p>"
+        + "<p class='hint'>Search by <strong>playlist title</strong> (not track contents). Pick a result or paste an id and click Verify.</p>"
         + "<div class='afm-check-group'>"
         + "<label class='afm-check-label'><input type='checkbox' name='bootstrap_enabled'"
         + f"{' checked' if bootstrap_enabled else ''}> Use Navidrome Playlist Opener</label>"
         + "</div>"
-        + "<div class='afm-field'>"
+        + "<div class='afm-field afm-bootstrap-search-field'>"
         + _field_label("Search Navidrome Playlists")
         + "<div class='afm-seed-search-row'>"
-        + f"<input name='bootstrap_playlist_search' class='afm-text-input afm-seed-search-input' "
-        + f"placeholder='Playlist name…' value='{html.escape(str(values.get('bootstrap_playlist_search', '')))}'>"
+        + f"<input name='bootstrap_playlist_search' id='bootstrap_playlist_search' "
+        + "class='afm-text-input afm-seed-search-input' "
+        + f"placeholder='Playlist name…' value='{html.escape(search_query)}' autocomplete='off'>"
         + "<button type='submit' name='action' value='search_bootstrap_playlist' formnovalidate "
         + "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Search</button>"
         + "</div>"
@@ -3176,12 +3407,11 @@ def _playback_rules_fields_html(values: dict[str, Any]) -> str:
             "24/7 Playback Rules",
             "Controls how Alchemy FM refills the queue when tracks run low — not the initial vibe (that is Step 2).",
         )
+        + _playback_rules_explainer_html()
         + "<div class='afm-field'>"
         + _field_label("When Pool Runs Low")
         + f"<select name='refresh_mode' class='afm-select'>{_select_options(REFRESH_MODES, str(values.get('refresh_mode', 'similar_to_last')))}</select>"
-        + "<p class='hint'><strong>Similar to Last Played</strong> drifts with each track. "
-        "<strong>Similar to Programming Seed</strong> stays near one anchor track. "
-        "<strong>Stay in Source Pool</strong> reuses imported tracks.</p></div>"
+        + "</div>"
         + "<div class='afm-field-grid-3'>"
         + "<div><label>Queue Target</label>"
         + f"<input type='number' name='queue_target' min='5' max='200' value='{html.escape(str(values.get('queue_target', 30)))}'>"
@@ -3512,10 +3742,12 @@ def _page_script(
     mood_labels: list[str] | None = None,
     *,
     scroll_to_preview: bool = False,
+    scroll_to_bootstrap: bool = False,
 ) -> str:
     mood_json = json.dumps(mood_centroids or {})
     mood_labels_json = json.dumps(mood_labels or [])
     scroll_flag = "true" if scroll_to_preview else "false"
+    bootstrap_scroll_flag = "true" if scroll_to_bootstrap else "false"
     return f"""
 <script type="application/json" id="mood-centroids-data">{mood_json}</script>
 <script type="application/json" id="mood-labels-data">{mood_labels_json}</script>
@@ -3723,6 +3955,24 @@ def _page_script(
       scrollToPreviewResults();
     }}
   }}
+
+  function scrollToBootstrapOpener() {{
+    const el = document.getElementById('bootstrap-opener');
+    if (!el) return;
+    window.requestAnimationFrame(() => {{
+      el.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+      const searchInput = document.getElementById('bootstrap_playlist_search');
+      if (searchInput) searchInput.focus({{ preventScroll: true }});
+    }});
+  }}
+  const shouldScrollBootstrap = {bootstrap_scroll_flag} || window.location.hash === '#bootstrap-opener';
+  if (shouldScrollBootstrap) {{
+    if (document.readyState === 'loading') {{
+      document.addEventListener('DOMContentLoaded', scrollToBootstrapOpener);
+    }} else {{
+      scrollToBootstrapOpener();
+    }}
+  }}
 }})();
 </script>
 """
@@ -3813,6 +4063,7 @@ def home():
             if pick_bootstrap:
                 values["bootstrap_playlist_id"] = pick_bootstrap
                 values["bootstrap_enabled"] = True
+                values["scroll_to_bootstrap"] = True
                 limit = max(
                     5,
                     min(80, int(request.form.get("bootstrap_track_limit") or BOOTSTRAP_TRACK_LIMIT_DEFAULT)),
@@ -3834,10 +4085,11 @@ def home():
             elif action == "search_seed":
                 values["seed_search_results"] = _search_tracks(request.form.get("seed_search") or "")
             elif action == "search_bootstrap_playlist":
-                values["bootstrap_playlist_results"] = _search_playlists(
-                    request.form.get("bootstrap_playlist_search") or ""
-                )
+                values["bootstrap_playlist_search"] = request.form.get("bootstrap_playlist_search") or ""
+                values["bootstrap_playlist_results"] = _search_playlists(values["bootstrap_playlist_search"])
+                values["scroll_to_bootstrap"] = True
             elif action == "verify_bootstrap_playlist":
+                values["scroll_to_bootstrap"] = True
                 limit = max(
                     5,
                     min(80, int(request.form.get("bootstrap_track_limit") or BOOTSTRAP_TRACK_LIMIT_DEFAULT)),
@@ -4043,6 +4295,7 @@ def home():
     )
     designer_section_close = "</section>" if not editing_slug else ""
     scroll_to_preview = bool(values.get("scroll_to_preview"))
+    scroll_to_bootstrap = bool(values.get("scroll_to_bootstrap"))
     preview_block = _preview_results_html(
         preview_tracks,
         highlight=scroll_to_preview,
@@ -4086,7 +4339,7 @@ def home():
         f"{flash}"
         f"{main_flow}"
         "</div>"
-        f"{_page_script(_mood_centroids_data(), mood_labels, scroll_to_preview=scroll_to_preview)}"
+        f"{_page_script(_mood_centroids_data(), mood_labels, scroll_to_preview=scroll_to_preview, scroll_to_bootstrap=scroll_to_bootstrap)}"
     )
     return render_page(body, title="Alchemy FM Channel Designer")
 

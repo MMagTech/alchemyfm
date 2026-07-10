@@ -122,7 +122,9 @@ When a station exhausts fresh tracks from its primary source:
 
 | Mode | Behavior |
 |------|----------|
-| `source_only` (default) | Reuse tracks from the imported pool. No drift. |
+| `source_only` (default) | Reuse tracks from the imported pool; allow repeats before leaving. No drift. |
+| `programming_only` | Re-run Step 2 programming and use the pool once — no similar expansion or pool repeats. |
+| `no_repeats` | Like `similar_to_last` (anchor + seed + similar-to-last tiers) but never replays pool tracks. |
 | `similar_to_seed` | Pull similar tracks from a fixed seed in the pool. |
 | `similar_to_last` | Pull similar tracks from whatever just played (can wander). |
 

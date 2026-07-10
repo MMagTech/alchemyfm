@@ -5,6 +5,38 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy — preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "3.1.3",
+      "min_core_version": "2.5.0",
+      "changelog": "Bootstrap playlist search: title-only matches, compact results menu, stay scrolled on Search/Verify/Pick.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "43340158cee605a3fb26e7359d875186"
+    },
+    {
+      "version": "3.1.2",
+      "min_core_version": "2.5.0",
+      "changelog": "Light mode polish: map AudioMuse theme tokens and fix badge, input, and dropdown contrast. Dark mode unchanged.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "791ff2b76bc2e9997d38810398b97e01"
+    },
+    {
+      "version": "3.1.1",
+      "min_core_version": "2.5.0",
+      "changelog": "Remove page title; larger Channel Designer Help link. Help doc updated for v3.1 continuation modes and Explanation panels.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "dda99b016cbeefeb6dbbd2c6171d8403"
+    },
+    {
+      "version": "3.1.0",
+      "min_core_version": "2.5.0",
+      "changelog": "Add Programming Only and No Repeats continuation modes; collapsible Explanation panels for Filters and Playback Rules.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "720d1dce5408db289ce46eaadae80a70"
+    },
+    {
       "version": "3.0.11",
       "min_core_version": "2.5.0",
       "changelog": "Fix bootstrap/filter search rows: flex layout and gap between inputs and Search/Verify buttons.",

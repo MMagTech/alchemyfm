@@ -189,9 +189,10 @@ similar_seed     → GET /api/similar_tracks?item_id=
 | 0 | Always (best-effort) | Programming batch from `source_type` / `source_ref` |
 | 1 | If short | `StationPoolItem` reuse |
 | 1b | `continuation_mode == source_only` | Pool repeats |
-| 2 | Not `source_only` | Identity anchor |
-| 3 | Not `source_only` | Similar to identity seed |
-| 4 | `similar_to_last` | Similar to last played |
+| 1 (stop) | `programming_only` | Stop after tier 1 — no similar tiers |
+| 2 | Not `source_only` or `programming_only` | Identity anchor |
+| 3 | Not `source_only` or `programming_only` | Similar to identity seed |
+| 4 | `similar_to_last` or `no_repeats` | Similar to last played |
 
 ### Key admin API endpoints (plugin uses subset)
 
