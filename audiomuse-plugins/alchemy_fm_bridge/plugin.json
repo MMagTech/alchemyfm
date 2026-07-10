@@ -5,6 +5,14 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy — preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "3.0.5",
+      "min_core_version": "2.5.0",
+      "changelog": "Designer flow UX: numbered steps, purpose text above each section, logical reorder (identity → program → preview → optional → playback → deploy).",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "2a492f438496c7b7292164b4a47e9efb"
+    },
+    {
       "version": "3.0.4",
       "min_core_version": "2.5.0",
       "changelog": "Bootstrap assist: fix playlist search API param, verify button, auto-check on pick/preview/deploy, track counts in search results.",
