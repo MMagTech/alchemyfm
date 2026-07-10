@@ -24,7 +24,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.3.2"
+PLUGIN_VERSION = "2.3.3"
 PLUGIN_ID = "alchemy_fm_bridge"
 
 ALCHEMY_FM_USER_AGENT = (
@@ -1144,61 +1144,329 @@ def _flash_html(message: str, level: str = "ok") -> str:
     return f'<p class="afm-flash {level_class}">{html.escape(message)}</p>'
 
 
+def _panel_heading(title: str, note: str = "") -> str:
+    note_html = f'<p class="afm-panel-note">{html.escape(note)}</p>' if note else ""
+    return (
+        f'<div class="afm-panel-heading">'
+        f'<h3 class="afm-panel-title">{html.escape(title)}</h3>'
+        f"{note_html}"
+        "</div>"
+    )
+
+
 def _page_styles() -> str:
     return """
 <style>
-.afm-shell { max-width: 58rem; margin: 0 auto; }
-.afm-lede { color: var(--muted, #64748b); margin: 0 0 1.25rem; line-height: 1.55; }
-.afm-flash { padding: 0.75rem 1rem; border-radius: 10px; margin: 0 0 1rem; }
-.afm-flash-ok { background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; }
-.afm-flash-error { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
-.afm-section { margin: 0 0 1.75rem; }
-.afm-section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 0.85rem; flex-wrap: wrap; }
-.afm-section-title { margin: 0; font-size: 1.15rem; }
-.afm-section-note { margin: 0.15rem 0 0; color: var(--muted, #64748b); font-size: 0.92rem; }
-.afm-station-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.85rem; }
-.afm-station-card { border: 1px solid #dbe3ef; border-radius: 12px; padding: 0.95rem 1rem; background: #fff; display: grid; gap: 0.65rem; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); }
-.afm-station-card.is-editing { border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb, 0 8px 24px rgba(37, 99, 235, 0.12); }
-.afm-station-card-head { display: flex; justify-content: space-between; gap: 0.75rem; align-items: flex-start; }
-.afm-station-name { margin: 0; font-size: 1rem; line-height: 1.3; }
-.afm-station-slug { color: var(--muted, #64748b); font-size: 0.84rem; margin-top: 0.15rem; }
-.afm-station-programming { margin: 0; font-size: 0.9rem; line-height: 1.45; color: #334155; }
-.afm-station-programming strong { display: block; font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b; margin-bottom: 0.15rem; }
-.afm-station-stats { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-.afm-station-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.15rem; }
-.afm-badge { display: inline-flex; align-items: center; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; line-height: 1.4; }
-.afm-badge-live { background: #dcfce7; color: #166534; }
-.afm-badge-off { background: #f1f5f9; color: #475569; }
-.afm-badge-queue { background: #eff6ff; color: #1d4ed8; }
-.afm-badge-saved { background: #f5f3ff; color: #6d28d9; }
-.afm-badge-remote { background: #fff7ed; color: #c2410c; }
-.afm-badge-living { background: #ecfeff; color: #0e7490; }
-.afm-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; padding: 0.48rem 0.85rem; border-radius: 8px; border: 1px solid #cbd5e1; background: #fff; color: #0f172a; font: inherit; cursor: pointer; text-decoration: none; line-height: 1.2; }
-.afm-btn:hover { background: #f8fafc; }
-.afm-btn-primary { background: #2563eb; border-color: #2563eb; color: #fff; }
-.afm-btn-primary:hover { background: #1d4ed8; }
-.afm-btn-secondary { background: #f8fafc; }
-.afm-btn-danger { background: #fff; border-color: #fecaca; color: #b91c1c; }
-.afm-btn-danger:hover { background: #fef2f2; }
-.afm-edit-bar { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; flex-wrap: wrap; padding: 1rem 1.1rem; margin: 0 0 1rem; border: 1px solid #bfdbfe; border-radius: 14px; background: linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%); }
-.afm-edit-eyebrow { display: block; font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: #2563eb; margin-bottom: 0.2rem; }
-.afm-edit-title { margin: 0; font-size: 1.35rem; line-height: 1.2; }
-.afm-edit-meta { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.55rem; align-items: center; }
-.afm-edit-slug { color: #475569; font-size: 0.9rem; }
+.afm-shell {
+  max-width: none;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  color: var(--text, inherit);
+}
+.afm-lede {
+  color: var(--muted, #94a3b8);
+  margin: 0 0 1.25rem;
+  line-height: 1.55;
+}
+.afm-flash {
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  margin: 0 0 1rem;
+  line-height: 1.45;
+}
+.afm-flash-ok {
+  background: color-mix(in srgb, #22c55e 14%, transparent);
+  border: 1px solid color-mix(in srgb, #22c55e 45%, transparent);
+  color: var(--text, #ecfdf5);
+}
+.afm-flash-error {
+  background: color-mix(in srgb, #ef4444 14%, transparent);
+  border: 1px solid color-mix(in srgb, #ef4444 45%, transparent);
+  color: var(--text, #fef2f2);
+}
+.afm-section { margin: 0 0 1.75rem; min-width: 0; }
+.afm-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+  flex-wrap: wrap;
+}
+.afm-section-title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted, #94a3b8);
+}
+.afm-section-note {
+  margin: 0.35rem 0 0;
+  color: var(--muted, #94a3b8);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+.afm-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+  background: var(--field, rgba(255, 255, 255, 0.04));
+}
+.afm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+  min-width: 640px;
+}
+.afm-table th {
+  text-align: left;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted, #94a3b8);
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  white-space: nowrap;
+}
+.afm-table td {
+  padding: 0.75rem 0.85rem;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  vertical-align: top;
+  color: var(--text, inherit);
+  line-height: 1.45;
+  word-break: break-word;
+}
+.afm-table tbody tr:last-child td { border-bottom: none; }
+.afm-table tbody tr.is-editing { background: color-mix(in srgb, var(--accent, #6366f1) 10%, transparent); }
+.afm-station-primary { font-weight: 600; color: var(--text, inherit); line-height: 1.35; }
+.afm-station-meta { margin-top: 0.2rem; font-size: 0.84rem; color: var(--muted, #94a3b8); }
+.afm-programming-type {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted, #94a3b8);
+  margin-bottom: 0.2rem;
+}
+.afm-programming-detail { color: var(--text, inherit); }
+.afm-badge-row { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+.afm-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.afm-badge-live {
+  background: color-mix(in srgb, #22c55e 18%, transparent);
+  color: #86efac;
+  border-color: color-mix(in srgb, #22c55e 35%, transparent);
+}
+.afm-badge-off {
+  background: color-mix(in srgb, var(--muted, #64748b) 16%, transparent);
+  color: var(--muted, #cbd5e1);
+  border-color: var(--border, rgba(255, 255, 255, 0.12));
+}
+.afm-badge-queue {
+  background: color-mix(in srgb, #3b82f6 16%, transparent);
+  color: #93c5fd;
+  border-color: color-mix(in srgb, #3b82f6 30%, transparent);
+}
+.afm-badge-saved {
+  background: color-mix(in srgb, #8b5cf6 16%, transparent);
+  color: #c4b5fd;
+  border-color: color-mix(in srgb, #8b5cf6 30%, transparent);
+}
+.afm-badge-remote {
+  background: color-mix(in srgb, #f97316 14%, transparent);
+  color: #fdba74;
+  border-color: color-mix(in srgb, #f97316 28%, transparent);
+}
+.afm-badge-living {
+  background: color-mix(in srgb, #06b6d4 14%, transparent);
+  color: #67e8f9;
+  border-color: color-mix(in srgb, #06b6d4 28%, transparent);
+}
+.afm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.48rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.16));
+  background: var(--field, rgba(255, 255, 255, 0.06));
+  color: var(--text, inherit);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+.afm-btn:hover { filter: brightness(1.08); }
+.afm-btn-primary {
+  background: var(--accent, #6366f1);
+  border-color: var(--accent, #6366f1);
+  color: #fff;
+}
+.afm-btn-secondary { background: var(--field, rgba(255, 255, 255, 0.06)); }
+.afm-btn-danger {
+  background: transparent;
+  border-color: color-mix(in srgb, #ef4444 45%, transparent);
+  color: #fca5a5;
+}
+.afm-row-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; }
+.afm-edit-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  padding: 1rem 1.1rem;
+  margin: 0 0 1rem;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+  background: var(--field, rgba(255, 255, 255, 0.04));
+  overflow: visible;
+}
+.afm-edit-eyebrow {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted, #94a3b8);
+  margin-bottom: 0.25rem;
+}
+.afm-edit-title {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.25;
+  color: var(--text, inherit);
+  word-break: break-word;
+}
+.afm-edit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.55rem;
+  align-items: center;
+}
+.afm-edit-slug { color: var(--muted, #94a3b8); font-size: 0.88rem; }
 .afm-edit-actions { display: flex; gap: 0.55rem; flex-wrap: wrap; align-items: center; }
-.afm-designer-panel { border: 1px solid #dbe3ef; border-radius: 14px; padding: 1rem; background: #fff; }
-.afm-designer-panel + .afm-designer-panel { margin-top: 0.85rem; }
-.afm-designer-panel legend { font-size: 0.98rem; padding: 0 0.35rem; }
-.afm-designer-panel label { display: block; font-weight: 600; margin-bottom: 0.25rem; }
-.afm-designer-panel input[type="text"], .afm-designer-panel input[type="number"], .afm-designer-panel input[type="password"], .afm-designer-panel textarea, .afm-designer-panel select { width: 100%; max-width: 100%; box-sizing: border-box; }
-.afm-form-actions { display: flex; gap: 0.65rem; flex-wrap: wrap; margin-top: 0.35rem; }
-.afm-empty { color: var(--muted, #64748b); margin: 0; }
-.afm-designer-panel input.is-readonly { opacity: 0.75; }
+.afm-panel {
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+  padding: 1rem 1.05rem 1.05rem;
+  margin: 0 0 0.85rem;
+  background: var(--field, rgba(255, 255, 255, 0.04));
+  overflow: visible;
+  min-width: 0;
+}
+.afm-panel-heading { margin: 0 0 0.85rem; }
+.afm-panel-title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted, #94a3b8);
+}
+.afm-panel-note {
+  margin: 0.3rem 0 0;
+  color: var(--muted, #94a3b8);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+.afm-panel label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted, #94a3b8);
+  margin-bottom: 0.35rem;
+}
+.afm-panel input[type="text"],
+.afm-panel input[type="number"],
+.afm-panel input[type="password"],
+.afm-panel input[type="search"],
+.afm-panel textarea,
+.afm-panel select {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  color: var(--text, inherit);
+  background: var(--bg, rgba(0, 0, 0, 0.25));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+}
+.afm-panel .hint {
+  margin: 0.35rem 0 0;
+  color: var(--muted, #94a3b8);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+.afm-field { margin-top: 0.85rem; }
+.afm-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.afm-field-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.afm-form-actions { display: flex; gap: 0.65rem; flex-wrap: wrap; margin-top: 0.75rem; }
+.afm-designer-form { display: grid; gap: 0; min-width: 0; }
+.afm-empty { color: var(--muted, #94a3b8); margin: 0; line-height: 1.45; }
+.afm-panel input.is-readonly { opacity: 0.75; }
+.afm-check-label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  margin: 0.35rem 0;
+  font-size: 0.92rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text, inherit);
+}
+.afm-check-label input { width: auto; margin-top: 0.15rem; }
+.afm-seed-results {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  overflow: hidden;
+}
+.afm-seed-results button {
+  width: 100%;
+  text-align: left;
+  padding: 0.55rem 0.65rem;
+  border: none;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  background: transparent;
+  color: var(--text, inherit);
+  cursor: pointer;
+}
+.afm-seed-results button:hover { background: color-mix(in srgb, var(--accent, #6366f1) 12%, transparent); }
+.afm-seed-results li:last-child button { border-bottom: none; }
 @media (max-width: 720px) {
-  .afm-station-grid { grid-template-columns: 1fr; }
+  .afm-field-grid, .afm-field-grid-3 { grid-template-columns: 1fr; }
   .afm-edit-bar { padding: 0.9rem; }
   .afm-edit-actions { width: 100%; }
-  .afm-edit-actions .afm-btn { flex: 1 1 auto; }
 }
 </style>
 """
@@ -1297,25 +1565,21 @@ def _preview_table_html(tracks: list[dict[str, Any]]) -> str:
         energy_s = f"{float(energy):.2f}" if energy is not None else "—"
         rows.append(
             "<tr>"
-            f"<td style='padding:0.4rem 0.6rem;border-bottom:1px solid #eee;'>{html.escape(track['title'])}</td>"
-            f"<td style='padding:0.4rem 0.6rem;border-bottom:1px solid #eee;'>{html.escape(track['author'])}</td>"
-            f"<td style='padding:0.4rem 0.6rem;border-bottom:1px solid #eee;'>{tempo_s}</td>"
-            f"<td style='padding:0.4rem 0.6rem;border-bottom:1px solid #eee;'>{energy_s}</td>"
-            f"<td style='padding:0.4rem 0.6rem;border-bottom:1px solid #eee;'>{html.escape(track.get('mood') or '—')}</td>"
+            f"<td>{html.escape(track['title'])}</td>"
+            f"<td>{html.escape(track['author'])}</td>"
+            f"<td>{tempo_s}</td>"
+            f"<td>{energy_s}</td>"
+            f"<td>{html.escape(track.get('mood') or '—')}</td>"
             "</tr>"
         )
     return (
         f"<p><strong>{len(tracks)}</strong> tracks in preview (from your AudioMuse library analysis).</p>"
-        "<table style='width:100%;border-collapse:collapse;font-size:0.92rem;'>"
+        '<div class="afm-table-wrap"><table class="afm-table">'
         "<thead><tr>"
-        "<th style='text-align:left;padding:0.4rem 0.6rem;border-bottom:1px solid #ccc;'>Title</th>"
-        "<th style='text-align:left;padding:0.4rem 0.6rem;border-bottom:1px solid #ccc;'>Artist</th>"
-        "<th style='text-align:left;padding:0.4rem 0.6rem;border-bottom:1px solid #ccc;'>BPM</th>"
-        "<th style='text-align:left;padding:0.4rem 0.6rem;border-bottom:1px solid #ccc;'>Energy</th>"
-        "<th style='text-align:left;padding:0.4rem 0.6rem;border-bottom:1px solid #ccc;'>Mood</th>"
+        "<th>Title</th><th>Artist</th><th>BPM</th><th>Energy</th><th>Mood</th>"
         "</tr></thead><tbody>"
         + "".join(rows)
-        + "</tbody></table>"
+        + "</tbody></table></div>"
     )
 
 
@@ -1343,7 +1607,7 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
                 f"{html.escape(title)} — {html.escape(artist)}"
                 "</button></li>"
             )
-        seed_results_html = "<ul style='list-style:none;padding:0;margin:0.5rem 0;'>" + "".join(items) + "</ul>"
+        seed_results_html = "<ul class='afm-seed-results'>" + "".join(items) + "</ul>"
 
     anchor_opts = ['<option value="">Choose anchor…</option>']
     for anchor in _anchors():
@@ -1354,50 +1618,50 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
         )
 
     return (
-        "<fieldset class='afm-designer-panel'>"
-        "<legend><strong>Programming</strong> — how AudioMuse finds tracks</legend>"
-        "<div><label>Programming type</label>"
+        "<section class='afm-panel'>"
+        + _panel_heading("Programming", "How AudioMuse finds tracks")
+        + "<div><label>Programming type</label>"
         f"<select name='programming_type' id='programming_type'>"
         f"{_select_options(PROGRAMMING_TYPES, ptype)}</select></div>"
-        f"<div id='field-clap'{hidden('clap_query')} style='margin-top:0.75rem;'>"
+        f"<div id='field-clap' class='afm-field'{hidden('clap_query')}>"
         "<label>Sonic vibe (describe the sound)</label>"
-        f"<input name='clap_query' style='width:100%;' placeholder='e.g. late-night yacht rock, warm and mellow' "
+        f"<input name='clap_query' placeholder='e.g. late-night yacht rock, warm and mellow' "
         f"value='{html.escape(str(values.get('clap_query', '')))}'>"
         "<p class='hint'>Uses CLAP text-to-audio search across your analyzed library.</p></div>"
-        f"<div id='field-lyrics'{hidden('lyrics_query')} style='margin-top:0.75rem;'>"
+        f"<div id='field-lyrics' class='afm-field'{hidden('lyrics_query')}>"
         "<label>Lyrics theme</label>"
-        f"<input name='lyrics_query' style='width:100%;' placeholder='e.g. songs about the open road' "
+        f"<input name='lyrics_query' placeholder='e.g. songs about the open road' "
         f"value='{html.escape(str(values.get('lyrics_query', '')))}'>"
         "<p class='hint'>Semantic lyrics search — meaning and themes, not just keywords.</p></div>"
-        f"<div id='field-mood'{hidden('mood_centroid')} style='margin-top:0.75rem;display:grid;gap:0.5rem;'>"
+        f"<div id='field-mood' class='afm-field afm-field-grid'{hidden('mood_centroid')}>"
         "<div><label>Mood</label><select name='mood_name'>" + mood_opts + "</select></div>"
         "<div><label>Cluster</label><select name='centroid_index' id='centroid_index'>" + centroid_opts + "</select></div>"
-        "<p class='hint'>Each mood has sub-clusters from your library analysis — pick one that matches "
+        "<p class='hint' style='grid-column:1/-1;'>Each mood has sub-clusters from your library analysis — pick one that matches "
         "the vibe (tags show the dominant traits in that cluster).</p></div>"
-        f"<div id='field-anchor'{hidden('alchemy_anchor')} style='margin-top:0.75rem;'>"
+        f"<div id='field-anchor' class='afm-field'{hidden('alchemy_anchor')}>"
         "<label>Song Alchemy anchor</label>"
         f"<select name='anchor_id'>{''.join(anchor_opts)}</select></div>"
-        f"<div id='field-seed'{hidden('similar_seed')} style='margin-top:0.75rem;'>"
+        f"<div id='field-seed' class='afm-field'{hidden('similar_seed')}>"
         "<label>Search seed track</label>"
         f"<input name='seed_search' value='{html.escape(str(values.get('seed_search', '')))}'> "
-        "<button type='submit' name='action' value='search_seed' formnovalidate>Search</button>"
+        "<button type='submit' name='action' value='search_seed' formnovalidate class='afm-btn afm-btn-secondary'>Search</button>"
         f"{seed_results_html}"
         f"<input name='seed_id' placeholder='Track item id' value='{html.escape(str(values.get('seed_id', '')))}'>"
         "</div>"
-        "<div style='margin-top:0.75rem;'>"
-        "<label>Preview size</label> "
+        "<div class='afm-field'>"
+        "<label>Preview size</label>"
         f"<input type='number' name='preview_limit' min='10' max='80' value='{html.escape(str(values.get('preview_limit', PREVIEW_LIMIT_DEFAULT)))}'>"
-        "</div></fieldset>"
+        "</div></section>"
     )
 
 
 def _filters_fields_html(values: dict[str, Any]) -> str:
     return (
-        "<fieldset class='afm-designer-panel'>"
-        "<legend><strong>Filters</strong> — narrow preview and living pool by analysis</legend>"
-        "<p class='hint'>Optional tempo and energy bounds apply to preview results and to songs "
+        "<section class='afm-panel'>"
+        + _panel_heading("Filters", "Narrow preview and living pool by analysis")
+        + "<p class='hint'>Optional tempo and energy bounds apply to preview results and to songs "
         "auto-added when living channels are enabled.</p>"
-        "<div style='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0.75rem;'>"
+        + "<div class='afm-field-grid'>"
         "<div><label>Tempo min (BPM)</label>"
         f"<input type='number' name='filter_tempo_min' min='0' step='1' "
         f"value='{html.escape(str(values.get('filter_tempo_min', '')))}' placeholder='any'></div>"
@@ -1410,7 +1674,7 @@ def _filters_fields_html(values: dict[str, Any]) -> str:
         "<div><label>Energy max (0–1)</label>"
         f"<input type='number' name='filter_energy_max' min='0' max='1' step='0.01' "
         f"value='{html.escape(str(values.get('filter_energy_max', '')))}' placeholder='any'></div>"
-        "</div></fieldset>"
+        "</div></section>"
     )
 
 
@@ -1426,20 +1690,20 @@ def _living_fields_html(values: dict[str, Any]) -> str:
     auto_add = values.get("living_auto_add", living_enabled)
     auto_refresh = values.get("living_auto_refresh", living_enabled)
     return (
-        "<fieldset class='afm-designer-panel'>"
-        "<legend><strong>Living channel</strong> — evolve as your library grows</legend>"
-        "<p class='hint'>When enabled, newly analyzed songs that pass filters can join the channel pool. "
+        "<section class='afm-panel'>"
+        + _panel_heading("Living channel", "Evolve as your library grows")
+        + "<p class='hint'>When enabled, newly analyzed songs that pass filters can join the channel pool. "
         "The nightly cron task re-runs programming, refreshes the pool, and optionally updates Alchemy FM.</p>"
         f"{pool_note}"
-        "<label><input type='checkbox' name='living_enabled'"
-        f"{' checked' if living_enabled else ''}> Enable living channel</label><br>"
-        "<label><input type='checkbox' name='living_auto_add'"
-        f"{' checked' if auto_add else ''}> Auto-add new analyzed songs that pass filters</label><br>"
-        "<label><input type='checkbox' name='living_auto_refresh'"
+        "<label class='afm-check-label'><input type='checkbox' name='living_enabled'"
+        f"{' checked' if living_enabled else ''}> Enable living channel</label>"
+        "<label class='afm-check-label'><input type='checkbox' name='living_auto_add'"
+        f"{' checked' if auto_add else ''}> Auto-add new analyzed songs that pass filters</label>"
+        "<label class='afm-check-label'><input type='checkbox' name='living_auto_refresh'"
         f"{' checked' if auto_refresh else ''}> Nightly refresh: re-score pool and push to Alchemy FM</label>"
         "<p class='hint'>Enable the <code>plugin.alchemy_fm_bridge.refresh_living</code> schedule under "
         "Administration → Scheduled Tasks (default: 03:00 daily, disabled until you turn it on).</p>"
-        "</fieldset>"
+        "</section>"
     )
 
 
@@ -1452,22 +1716,18 @@ def _audition_history_html(slug: str | None = None) -> str:
         return f"<p class='hint'>{html.escape(hint)}</p>"
 
     body = (
-        "<table style='width:100%;border-collapse:collapse;font-size:0.92rem;margin-top:0.5rem;'>"
-        "<thead><tr>"
-        "<th style='text-align:left;padding:0.4rem 0.6rem;border-bottom:1px solid #ccc;'>When</th>"
-        "<th style='text-align:left;padding:0.4rem 0.6rem;border-bottom:1px solid #ccc;'>Channel</th>"
-        "<th style='text-align:left;padding:0.4rem 0.6rem;border-bottom:1px solid #ccc;'>Tracks</th>"
-        "</tr></thead><tbody>"
+        '<div class="afm-table-wrap"><table class="afm-table">'
+        "<thead><tr><th>When</th><th>Channel</th><th>Tracks</th></tr></thead><tbody>"
     )
     for channel_slug, run_at, track_count, _track_ids_json in rows:
         body += (
             "<tr>"
-            f"<td style='padding:0.4rem 0.6rem;border-bottom:1px solid #eee;'>{html.escape(str(run_at))}</td>"
-            f"<td style='padding:0.4rem 0.6rem;border-bottom:1px solid #eee;'>{html.escape(str(channel_slug))}</td>"
-            f"<td style='padding:0.4rem 0.6rem;border-bottom:1px solid #eee;'>{int(track_count)}</td>"
+            f"<td>{html.escape(str(run_at))}</td>"
+            f"<td>{html.escape(str(channel_slug))}</td>"
+            f"<td>{int(track_count)}</td>"
             "</tr>"
         )
-    return body + "</tbody></table>"
+    return body + "</tbody></table></div>"
 
 
 def _deploy_fields_html(values: dict[str, Any]) -> str:
@@ -1480,26 +1740,25 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
             "<p class='hint'>Slug is fixed after first deploy (Alchemy FM identifies stations by slug).</p>"
         )
     deploy_label = "Save changes to Alchemy FM" if editing_slug else "Deploy to Alchemy FM"
-    step_label = "Broadcast settings" if editing_slug else "2. Channel + deploy"
+    panel_title = "Broadcast settings" if editing_slug else "Channel + deploy"
     return (
-        "<fieldset class='afm-designer-panel'>"
-        f"<legend><strong>{html.escape(step_label)}</strong> — station on Alchemy FM</legend>"
-        "<div style='display:grid;gap:0.75rem;'>"
-        "<div><label>Channel name</label>"
+        "<section class='afm-panel'>"
+        + _panel_heading(panel_title, "Station on Alchemy FM")
+        + "<div class='afm-field'><label>Channel name</label>"
         f"<input name='name' required value='{html.escape(str(values.get('name', '')))}'></div>"
-        "<div><label>Slug</label>"
+        "<div class='afm-field'><label>Slug</label>"
         f"<input name='slug' placeholder='auto from name' "
         f"value='{html.escape(str(values.get('slug', editing_slug or '')))}'{slug_readonly}>"
         f"{slug_extra}</div>"
-        "<div><label>Description</label>"
+        "<div class='afm-field'><label>Description</label>"
         f"<textarea name='description' maxlength='120' rows='2'>{html.escape(str(values.get('description', '')))}</textarea></div>"
-        "<div><label>Icecast mount</label>"
+        "<div class='afm-field'><label>Icecast mount</label>"
         f"<input name='icecast_mount' placeholder='/channel-slug' value='{html.escape(str(values.get('icecast_mount', '')))}'></div>"
-        "<div><label>When pool runs low</label>"
+        "<div class='afm-field'><label>When pool runs low</label>"
         f"<select name='refresh_mode'>{_select_options(REFRESH_MODES, str(values.get('refresh_mode', 'similar_to_last')))}</select>"
         "<p class='hint'>For CLAP/lyrics/mood channels, the plugin saves a Song Alchemy anchor from your preview "
         "so Alchemy FM can keep refilling 24/7.</p></div>"
-        "<div style='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0.75rem;'>"
+        + "<div class='afm-field-grid-3'>"
         "<div><label>Queue target</label>"
         f"<input type='number' name='queue_target' min='5' max='200' value='{html.escape(str(values.get('queue_target', 30)))}'></div>"
         "<div><label>Refresh below</label>"
@@ -1507,16 +1766,16 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
         "<div><label>Artist separation (min)</label>"
         f"<input type='number' name='artist_separation_minutes' min='0' value='{html.escape(str(values.get('artist_separation_minutes', 90)))}'></div>"
         "</div>"
-        "<label><input type='checkbox' name='enabled'"
-        f"{' checked' if values.get('enabled', True) else ''}> Start on air after push</label> "
-        "<label><input type='checkbox' name='bootstrap_queue'"
+        "<label class='afm-check-label'><input type='checkbox' name='enabled'"
+        f"{' checked' if values.get('enabled', True) else ''}> Start on air after push</label>"
+        "<label class='afm-check-label'><input type='checkbox' name='bootstrap_queue'"
         f"{' checked' if values.get('bootstrap_queue', True) else ''}> Bootstrap queue immediately</label>"
         f"<input type='hidden' name='saved_anchor_id' value='{html.escape(str(values.get('saved_anchor_id', '')))}'>"
         "<div class='afm-form-actions'>"
         f"<button type='submit' name='action' value='push' class='afm-btn afm-btn-primary'>{html.escape(deploy_label)}</button>"
         "<button type='submit' name='action' value='preview' class='afm-btn afm-btn-secondary'>Preview programming</button>"
         "<button type='submit' name='action' value='test' formnovalidate class='afm-btn afm-btn-secondary'>Test connection</button>"
-        "</div></div></fieldset>"
+        "</div></section>"
     )
 
 
@@ -1538,11 +1797,11 @@ def _programming_detail(profile: dict[str, Any] | None, station: dict[str, Any])
             mood = programming.get("mood") or ""
             cluster = programming.get("centroid_index")
             detail = f"{mood} · cluster {cluster}" if cluster is not None else mood
-        return type_label, str(detail)[:96], living, has_saved
+        return type_label, str(detail), living, has_saved
     source_type = str(station.get("source_type") or "?")
     source_ref = str(station.get("source_ref") or "")
     type_label = PROGRAMMING_TYPE_LABELS.get(source_type, source_type.replace("_", " ").title())
-    return type_label, source_ref[:96], False, False
+    return type_label, source_ref, False, False
 
 
 def _programming_label(profile: dict[str, Any] | None, station: dict[str, Any]) -> str:
@@ -1608,9 +1867,11 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
     editing_slug = (editing_slug or "").strip().lower()
     local = _local_channels_by_slug()
     if not stations:
-        cards = '<p class="afm-empty">No stations yet. Use the designer below to create your first channel.</p>'
+        table_html = (
+            '<p class="afm-empty">No stations yet. Use the designer below to create your first channel.</p>'
+        )
     else:
-        cards = ['<div class="afm-station-grid">']
+        rows: list[str] = []
         for station in sorted(stations, key=lambda s: str(s.get("name") or s.get("slug") or "")):
             slug = str(station.get("slug") or "")
             slug_key = slug.lower()
@@ -1625,7 +1886,7 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
                     profile = None
             type_label, detail, living, has_saved = _programming_detail(profile, station)
             is_editing = slug_key == editing_slug
-            card_class = "afm-station-card is-editing" if is_editing else "afm-station-card"
+            row_class = ' class="is-editing"' if is_editing else ""
             on_air_badge = (
                 '<span class="afm-badge afm-badge-live">On air</span>'
                 if station.get("enabled")
@@ -1638,32 +1899,36 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
             )
             living_badge = '<span class="afm-badge afm-badge-living">Living</span>' if living else ""
             edit_href = html.escape(url_for("alchemy_fm_bridge.home", edit=slug) + "#designer")
-            edit_label = "Continue editing" if is_editing else "Edit station"
+            edit_label = "Continue editing" if is_editing else "Edit"
             edit_btn_class = "afm-btn afm-btn-primary" if is_editing else "afm-btn afm-btn-secondary"
             confirm_msg = f"Delete station {name} ({slug})? This removes it from Alchemy FM permanently."
-            cards.append(
-                f'<article class="{card_class}">'
-                '<div class="afm-station-card-head">'
-                f"<div><h3 class='afm-station-name'>{html.escape(name)}</h3>"
-                f"<div class='afm-station-slug'>{html.escape(slug)} · id {station_id}</div></div>"
-                f"{on_air_badge}"
-                "</div>"
-                f"<p class='afm-station-programming'><strong>{html.escape(type_label)}</strong>"
-                f"{html.escape(detail or '—')}</p>"
-                f'<div class="afm-station-stats">{profile_badge}'
+            rows.append(
+                f"<tr{row_class}>"
+                f"<td><div class='afm-station-primary'>{html.escape(name)}</div>"
+                f"<div class='afm-station-meta'>{html.escape(slug)} · id {station_id}</div></td>"
+                f"<td><span class='afm-programming-type'>{html.escape(type_label)}</span>"
+                f"<span class='afm-programming-detail'>{html.escape(detail or '—')}</span></td>"
+                f'<td><div class="afm-badge-row">{on_air_badge}{profile_badge}'
                 f'<span class="afm-badge afm-badge-queue">{html.escape(queued)} queued</span>'
-                f"{living_badge}</div>"
-                '<div class="afm-station-actions">'
+                f"{living_badge}</div></td>"
+                f'<td><div class="afm-row-actions">'
                 f'<a href="{edit_href}" class="{edit_btn_class}">{html.escape(edit_label)}</a>'
                 f'<form method="post" style="margin:0;" onsubmit="return confirm({json.dumps(confirm_msg)});">'
                 f'<input type="hidden" name="action" value="delete">'
                 f'<input type="hidden" name="station_id" value="{station_id}">'
                 f'<input type="hidden" name="delete_slug" value="{html.escape(slug)}">'
                 '<button type="submit" class="afm-btn afm-btn-danger">Delete</button>'
-                "</form></div></article>"
+                "</form></div></td>"
+                "</tr>"
             )
-        cards.append("</div>")
-        cards = "".join(cards)
+        table_html = (
+            '<div class="afm-table-wrap"><table class="afm-table">'
+            "<thead><tr>"
+            "<th>Station</th><th>Programming</th><th>Status</th><th>Actions</th>"
+            "</tr></thead><tbody>"
+            + "".join(rows)
+            + "</tbody></table></div>"
+        )
 
     title = "Other stations" if editing_slug else "Your stations"
     note = (
@@ -1684,7 +1949,7 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
         f"<p class='afm-section-note'>{html.escape(note)}</p></div>"
         f"{new_channel}"
         "</div>"
-        f"{cards}"
+        f"{table_html}"
         "</section>"
     )
 
@@ -1971,31 +2236,31 @@ def home():
     editing_slug = (values.get("editing_slug") or "").strip()
     stations_html = _stations_section_html(editing_slug or None)
     edit_bar = _edit_toolbar_html(values)
-    designer_anchor = "" if editing_slug else '<div id="designer"></div>'
-    designer_heading = (
-        "<div class='afm-section-head' style='margin-top:0.5rem;'>"
+    designer_section_open = (
+        '<section class="afm-section" id="designer">'
+        '<div class="afm-section-head">'
         "<div><h2 class='afm-section-title'>Channel designer</h2>"
         "<p class='afm-section-note'>Program the vibe, preview tracks, then deploy to Alchemy FM.</p></div>"
         "</div>"
         if not editing_slug
         else ""
     )
+    designer_section_close = "</section>" if not editing_slug else ""
     preview_block = (
-        "<fieldset class='afm-designer-panel'>"
-        "<legend><strong>Preview</strong></legend>"
-        f"{_preview_table_html(preview_tracks)}"
-        "</fieldset>"
+        "<section class='afm-panel'>"
+        + _panel_heading("Preview", "Tracks matching your programming and filters")
+        + f"{_preview_table_html(preview_tracks)}"
+        + "</section>"
     )
     audition_block = (
-        "<fieldset class='afm-designer-panel'>"
-        "<legend><strong>Audition history</strong></legend>"
-        f"{_audition_history_html(editing_slug or None)}"
-        "</fieldset>"
+        "<section class='afm-panel'>"
+        + _panel_heading("Audition history", "Recent preview runs for this channel")
+        + f"{_audition_history_html(editing_slug or None)}"
+        + "</section>"
     )
     designer_form = (
-        f"{designer_anchor}"
-        f"{designer_heading}"
-        "<form method='post' id='afm-designer-form' class='afm-designer-form' style='display:grid;gap:0.5rem;'>"
+        f"{designer_section_open}"
+        "<form method='post' id='afm-designer-form' class='afm-designer-form'>"
         f"{_programming_fields_html(values)}"
         f"{_filters_fields_html(values)}"
         f"{_living_fields_html(values)}"
@@ -2003,6 +2268,7 @@ def home():
         "</form>"
         f"{preview_block}"
         f"{audition_block}"
+        f"{designer_section_close}"
     )
 
     if editing_slug:
