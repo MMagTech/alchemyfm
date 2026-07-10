@@ -24,7 +24,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.3.12"
+PLUGIN_VERSION = "2.3.15"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1161,6 +1161,10 @@ def _panel_heading(title: str, note: str = "") -> str:
     )
 
 
+def _field_label(text: str, *, mandatory: bool = False) -> str:
+    suffix = " (mandatory)" if mandatory else ""
+    return f"<label>{html.escape(text)}{suffix}</label>"
+
 def _page_styles() -> str:
     return """
 <style>
@@ -1260,14 +1264,11 @@ def _page_styles() -> str:
 .afm-station-meta { margin-top: 0.2rem; font-size: 0.84rem; color: var(--muted, #94a3b8); }
 .afm-programming-type {
   display: block;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted, #94a3b8);
-  margin-bottom: 0.2rem;
+  line-height: 1.4;
+  color: var(--text, inherit);
 }
-.afm-programming-detail { color: var(--text, inherit); }
 .afm-badge-row { display: flex; flex-wrap: nowrap; gap: 0.35rem; align-items: center; }
 .afm-table .afm-badge-row { gap: 0.28rem; }
 .afm-table .afm-badge { font-size: 0.68rem; padding: 0.14rem 0.48rem; }
@@ -1460,13 +1461,89 @@ def _page_styles() -> str:
   border-radius: 8px;
   padding: 0.45rem 0.6rem;
 }
-.afm-panel select {
-  color-scheme: dark light;
+.afm-select-wrap {
+  position: relative;
+  width: 100%;
+}
+.afm-select-native {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.afm-select-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  box-sizing: border-box;
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+  background: var(--field, rgba(15, 23, 42, 0.55));
+  color: var(--text, #e2e8f0);
+  font: inherit;
+  line-height: 1.35;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.afm-select-trigger::after {
+  content: "";
+  flex: 0 0 auto;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg) translateY(-1px);
+  opacity: 0.72;
+}
+.afm-select-wrap.is-open .afm-select-trigger,
+.afm-select-trigger:focus-visible {
+  border-color: color-mix(in srgb, var(--accent, #6366f1) 65%, var(--border, rgba(255, 255, 255, 0.14)));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #6366f1) 40%, transparent);
+  outline: none;
+}
+.afm-select-menu {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  right: 0;
+  max-height: 16rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.35rem;
+  list-style: none;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+  background: var(--bg, #0f172a);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+}
+.afm-select-menu[hidden] { display: none; }
+.afm-select-option {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  padding: 0.52rem 0.65rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text, #e2e8f0);
+  font: inherit;
+  line-height: 1.35;
   cursor: pointer;
 }
-.afm-panel select option {
-  background-color: #1e293b;
-  color: #f1f5f9;
+.afm-select-option:hover,
+.afm-select-option.is-selected {
+  background: color-mix(in srgb, var(--accent, #6366f1) 20%, transparent);
+  color: var(--text, #f8fafc);
 }
 .afm-programming-panel .afm-field:has(.afm-text-input) {
   width: 100%;
@@ -1747,29 +1824,29 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
     return (
         "<section class='afm-panel afm-programming-panel'>"
         + _panel_heading("Programming", "How AudioMuse finds tracks")
-        + "<div class='afm-field'><label>Programming type</label>"
+        + "<div class='afm-field'>" + _field_label("Programming type", mandatory=True)
         f"<select name='programming_type' id='programming_type' class='afm-select'>"
         f"{_select_options(PROGRAMMING_TYPES, ptype)}</select></div>"
         f"<div id='field-clap' class='afm-field'{hidden('clap_query')}>"
-        "<label>Sonic vibe (describe the sound)</label>"
+        + _field_label("Sonic vibe (describe the sound)", mandatory=True)
         f"<input name='clap_query' class='afm-text-input' placeholder='e.g. late night rock' "
         f"value='{html.escape(str(values.get('clap_query', '')))}'>"
         "<p class='hint'>Uses CLAP text-to-audio search across your analyzed library.</p></div>"
         f"<div id='field-lyrics' class='afm-field'{hidden('lyrics_query')}>"
-        "<label>Lyrics theme</label>"
+        + _field_label("Lyrics theme", mandatory=True)
         f"<input name='lyrics_query' class='afm-text-input' placeholder='e.g. songs about the open road' "
         f"value='{html.escape(str(values.get('lyrics_query', '')))}'>"
         "<p class='hint'>Semantic lyrics search — meaning and themes, not just keywords.</p></div>"
         f"<div id='field-mood' class='afm-field afm-field-grid'{hidden('mood_centroid')}>"
-        "<div><label>Mood</label><select name='mood_name' class='afm-select'>" + mood_opts + "</select></div>"
-        "<div><label>Cluster</label><select name='centroid_index' id='centroid_index' class='afm-select'>" + centroid_opts + "</select></div>"
+        "<div>" + _field_label("Mood", mandatory=True) + "<select name='mood_name' class='afm-select'>" + mood_opts + "</select></div>"
+        "<div>" + _field_label("Cluster", mandatory=True) + "<select name='centroid_index' id='centroid_index' class='afm-select'>" + centroid_opts + "</select></div>"
         "<p class='hint' style='grid-column:1/-1;'>Each mood has sub-clusters from your library analysis — pick one that matches "
         "the vibe (tags show the dominant traits in that cluster).</p></div>"
         f"<div id='field-anchor' class='afm-field'{hidden('alchemy_anchor')}>"
-        "<label>Song Alchemy anchor</label>"
+        + _field_label("Song Alchemy anchor", mandatory=True)
         f"<select name='anchor_id' class='afm-select'>{''.join(anchor_opts)}</select></div>"
         f"<div id='field-seed' class='afm-field afm-seed-field'{hidden('similar_seed')}>"
-        "<label>Search seed track</label>"
+        + _field_label("Search seed track")
         "<div class='afm-seed-search-row'>"
         f"<input name='seed_search' class='afm-text-input afm-seed-search-input' "
         f"placeholder='Title or artist…' value='{html.escape(str(values.get('seed_search', '')))}'>"
@@ -1779,12 +1856,12 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
         "<p class='hint'>Search your library and pick a result, or enter a track item id below.</p>"
         f"{seed_results_html}"
         "<div class='afm-seed-id-field'>"
-        "<label>Track item id</label>"
+        + _field_label("Track item id", mandatory=True)
         f"<input name='seed_id' class='afm-text-input' placeholder='Filled when you pick a search result' "
         f"value='{html.escape(str(values.get('seed_id', '')))}'>"
         "</div></div>"
         "<div class='afm-field'>"
-        "<label>Preview size</label>"
+        + _field_label("Preview size")
         f"<input type='number' name='preview_limit' min='10' max='80' value='{html.escape(str(values.get('preview_limit', PREVIEW_LIMIT_DEFAULT)))}'>"
         "</div></section>"
     )
@@ -1879,19 +1956,19 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
     return (
         "<section class='afm-panel'>"
         + _panel_heading(panel_title, "Station on Alchemy FM")
-        + "<div class='afm-field'><label>Channel name</label>"
+        + "<div class='afm-field'>" + _field_label("Channel name", mandatory=True)
         f"<input name='name' required value='{html.escape(str(values.get('name', '')))}'></div>"
-        "<div class='afm-field'><label>Slug</label>"
+        "<div class='afm-field'>" + _field_label("Slug")
         f"<input name='slug' placeholder='auto from name' "
         f"value='{html.escape(str(values.get('slug', editing_slug or '')))}'{slug_readonly}>"
         f"{slug_extra}</div>"
-        "<div class='afm-field'><label>Description</label>"
+        "<div class='afm-field'>" + _field_label("Description")
         f"<textarea name='description' maxlength='120' rows='2' "
         "placeholder='Max 120 characters — shorter, punchier lines work best on the homepage'>"
         f"{html.escape(str(values.get('description', '')))}</textarea></div>"
-        "<div class='afm-field'><label>Icecast mount</label>"
+        "<div class='afm-field'>" + _field_label("Icecast mount")
         f"<input name='icecast_mount' placeholder='/channel-slug' value='{html.escape(str(values.get('icecast_mount', '')))}'></div>"
-        "<div class='afm-field'><label>When pool runs low</label>"
+        "<div class='afm-field'>" + _field_label("When pool runs low")
         f"<select name='refresh_mode' class='afm-select'>{_select_options(REFRESH_MODES, str(values.get('refresh_mode', 'similar_to_last')))}</select>"
         "<p class='hint'>For CLAP/lyrics/mood channels, the plugin saves a Song Alchemy anchor from your preview "
         "so Alchemy FM can keep refilling 24/7.</p></div>"
@@ -2024,7 +2101,7 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
                     profile = json.loads(local[slug][2] or "{}")
                 except json.JSONDecodeError:
                     profile = None
-            type_label, detail, living, has_saved = _programming_detail(profile, station)
+            type_label, _detail, living, has_saved = _programming_detail(profile, station)
             is_editing = slug_key == editing_slug
             row_class = ' class="is-editing"' if is_editing else ""
             on_air_badge = (
@@ -2045,9 +2122,8 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
             rows.append(
                 f"<tr{row_class}>"
                 f"<td><div class='afm-station-primary'>{html.escape(name)}</div>"
-                f"<div class='afm-station-meta'>{html.escape(slug)} · id {station_id}</div></td>"
-                f"<td><span class='afm-programming-type'>{html.escape(type_label)}</span>"
-                f"<span class='afm-programming-detail'>{html.escape(detail or '—')}</span></td>"
+                f"<div class='afm-station-meta'>{html.escape(slug)}</div></td>"
+                f"<td><span class='afm-programming-type'>{html.escape(type_label)}</span></td>"
                 f'<td class="afm-status-cell"><div class="afm-badge-row">{on_air_badge}{profile_badge}'
                 f'<span class="afm-badge afm-badge-queue">{html.escape(queued)} Queued</span>'
                 f"{living_badge}</div></td>"
@@ -2204,6 +2280,108 @@ def _page_script(mood_centroids: dict[str, Any] | None = None) -> str:
     moodSelect.addEventListener('change', fillClusters);
     fillClusters();
   }}
+
+  function closeAllSelectMenus(exceptMenu) {{
+    document.querySelectorAll('.afm-select-wrap.is-open').forEach((wrap) => {{
+      const menu = wrap.querySelector('.afm-select-menu');
+      if (menu && menu !== exceptMenu) {{
+        menu.hidden = true;
+        wrap.classList.remove('is-open');
+      }}
+    }});
+  }}
+
+  function syncAfmSelect(select) {{
+    const wrap = select.closest('.afm-select-wrap');
+    if (!wrap) return;
+    const trigger = wrap.querySelector('.afm-select-trigger');
+    const menu = wrap.querySelector('.afm-select-menu');
+    if (!trigger || !menu) return;
+    const selected = select.options[select.selectedIndex];
+    trigger.textContent = selected ? selected.textContent : 'Choose…';
+    menu.querySelectorAll('.afm-select-option').forEach((btn) => {{
+      const on = btn.dataset.value === select.value;
+      btn.classList.toggle('is-selected', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    }});
+  }}
+
+  function buildAfmSelectMenu(select) {{
+    const wrap = select.closest('.afm-select-wrap');
+    if (!wrap) return;
+    const menu = wrap.querySelector('.afm-select-menu');
+    if (!menu) return;
+    menu.innerHTML = '';
+    Array.from(select.options).forEach((opt) => {{
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'afm-select-option';
+      btn.setAttribute('role', 'option');
+      btn.dataset.value = opt.value;
+      btn.textContent = opt.textContent;
+      if (opt.selected) btn.classList.add('is-selected');
+      btn.addEventListener('click', () => {{
+        select.value = opt.value;
+        select.dispatchEvent(new Event('change', {{ bubbles: true }}));
+        menu.hidden = true;
+        wrap.classList.remove('is-open');
+        syncAfmSelect(select);
+      }});
+      menu.appendChild(btn);
+    }});
+    syncAfmSelect(select);
+  }}
+
+  function enhanceAfmSelect(select) {{
+    if (!select || select.dataset.afmEnhanced === '1') return;
+    select.dataset.afmEnhanced = '1';
+    select.classList.add('afm-select-native');
+
+    const wrap = document.createElement('div');
+    wrap.className = 'afm-select-wrap';
+    select.parentNode.insertBefore(wrap, select);
+    wrap.appendChild(select);
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'afm-select-trigger';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+
+    const menu = document.createElement('div');
+    menu.className = 'afm-select-menu';
+    menu.setAttribute('role', 'listbox');
+    menu.hidden = true;
+
+    trigger.addEventListener('click', () => {{
+      if (menu.hidden) {{
+        buildAfmSelectMenu(select);
+        closeAllSelectMenus(menu);
+        menu.hidden = false;
+        wrap.classList.add('is-open');
+      }} else {{
+        menu.hidden = true;
+        wrap.classList.remove('is-open');
+      }}
+    }});
+
+    select.addEventListener('change', () => syncAfmSelect(select));
+    new MutationObserver(() => buildAfmSelectMenu(select)).observe(select, {{
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['selected', 'value'],
+    }});
+
+    wrap.appendChild(trigger);
+    wrap.appendChild(menu);
+    buildAfmSelectMenu(select);
+  }}
+
+  document.querySelectorAll('.afm-panel select.afm-select').forEach(enhanceAfmSelect);
+  document.addEventListener('click', (event) => {{
+    if (!event.target.closest('.afm-select-wrap')) closeAllSelectMenus(null);
+  }});
+
   if (location.hash === '#designer') {{
     const target = document.getElementById('designer');
     if (target) target.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
