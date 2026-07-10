@@ -39,8 +39,9 @@ Do this once for plugin setup, then repeat steps 2–7 for each new channel.
 On a **new** channel you see, top to bottom:
 
 1. **Your Stations** — pick existing or **+ New channel**
-2. **Discover Channels** — optional inspiration from clustering playlists
-3. **Channel Designer** form — where you build the station
+2. **Chat Designer** — optional LLM brainstorm before Step 2 (collapsed helper)
+3. **Discover Channels** — optional inspiration from clustering playlists
+4. **Channel Designer** form — numbered steps to build the station
 4. **Preview** / **Audition history** — after you run Preview
 
 ### 2. Choose how the station is programmed (required)
@@ -221,10 +222,13 @@ Wait for clustering to finish (check **Active Tasks**) before expecting playlist
 
 ## Chat designer (helper)
 
-Natural-language playlist ideas via `POST /chat/api/chatPlaylist`. Requires AudioMuse chat/AI configured.
+Collapsed helper at the **top of the form** (before Step 1), alongside Discover Channels. Use when you are not sure what to put in **Step 2 Programming**.
 
-- Slow (LLM) — use for initial ideas, then tweak programming and deploy.
-- **Not** wired to living cron and **not** saved as programming until you deploy from the main form.
+Natural-language ideas via `POST /chat/api/chatPlaylist`. Requires AudioMuse chat/AI configured.
+
+- **Generate Playlist Preview** sets Step 2 to a **Sonic Vibe (CLAP)** query from your prompt and shows Preview Results.
+- Slow (LLM) — tweak Programming and run **Preview Programming** before deploy.
+- **Not** wired to living cron and **does not** deploy to Alchemy FM.
 
 ---
 

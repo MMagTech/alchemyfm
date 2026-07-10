@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.1.3"
+PLUGIN_VERSION = "3.1.4"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1824,7 +1824,7 @@ def _designer_flow_overview_html() -> str:
         "<li><strong>Playback Rules</strong> — What happens when the pool runs low.</li>"
         "<li><strong>Deploy</strong> — Creates or updates the station on Alchemy FM.</li>"
         "</ol>"
-        "<p class='hint'>Discover Channels (collapsed helper below) and Chat Designer prefills ideas only — they do not deploy by themselves.</p>"
+        "<p class='hint'>Chat Designer and Discover Channels (collapsed helpers below) prefill Step 2 only — nothing deploys until Step 6.</p>"
         "</section>"
     )
 
@@ -3215,21 +3215,28 @@ def _bootstrap_fields_html(values: dict[str, Any]) -> str:
 
 def _chat_designer_fields_html(values: dict[str, Any]) -> str:
     return (
-        "<section class='afm-panel afm-helpers-panel'>"
-        + _panel_heading(
-            "Chat Designer",
-            "Brainstorm Only — Does Not Deploy or Set Programming Until You Copy Ideas Into Step 2",
-        )
-        + "<p class='hint'>Slow LLM call. Use for initial ideas, then set programming above and preview.</p>"
+        '<details class="afm-panel afm-collapsible-helper" id="chat-designer">'
+        "<summary>"
+        '<span class="afm-helper-badge">Helper</span>'
+        '<span><span class="afm-collapsible-title">Chat Designer</span>'
+        '<span class="afm-collapsible-hint">Use <strong>before Step 2</strong> when you are not sure what to program. '
+        "<strong>Generate Playlist Preview</strong> sets Step 2 to a <strong>Sonic Vibe (CLAP)</strong> query from your "
+        "description and shows Preview Results — it does not deploy.</span></span>"
+        "</summary>"
+        '<div class="afm-collapsible-body">'
+        "<p class='hint'>Slow LLM call — requires AudioMuse chat/AI configured. Tweak Programming after preview, "
+        "then use Step 3 Preview Programming before deploy.</p>"
         + "<div class='afm-field'>"
         + _field_label("Describe Your Station")
         + f"<textarea name='chat_prompt' rows='3' class='afm-text-input' "
         + f"placeholder='e.g. upbeat 80s synthpop for a morning commute'>{html.escape(str(values.get('chat_prompt', '')))}</textarea>"
         + "</div>"
+        + '<div class="afm-form-actions afm-form-actions-inline">'
         + "<button type='submit' name='action' value='chat_preview' formnovalidate "
         + "class='afm-btn afm-btn-secondary'>Generate Playlist Preview</button>"
+        + "</div>"
         + f"<input type='hidden' name='design_notes' value='{html.escape(str(values.get('design_notes', '')))}'>"
-        + "</section>"
+        + "</div></details>"
     )
 
 
@@ -4310,6 +4317,7 @@ def home():
         f"{designer_section_open}"
         "<form method='post' id='afm-designer-form' class='afm-designer-form'>"
         f"{_designer_flow_overview_html()}"
+        f"{_chat_designer_fields_html(values)}"
         f"{_discover_channels_html()}"
         f"{_station_identity_fields_html(values)}"
         f"{_programming_fields_html(values)}"
@@ -4319,7 +4327,6 @@ def home():
         f"{_living_fields_html(values)}"
         f"{_playback_rules_fields_html(values)}"
         f"{_deploy_actions_fields_html(values)}"
-        f"{_chat_designer_fields_html(values)}"
         "</form>"
         f"{preview_block}"
         f"{audition_block}"
