@@ -24,7 +24,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.3.5"
+PLUGIN_VERSION = "2.3.6"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1861,14 +1861,14 @@ def _edit_toolbar_html(values: dict[str, Any]) -> str:
     name = (values.get("name") or editing_slug).strip()
     source = values.get("profile_source") or "remote"
     source_badge = (
-        '<span class="afm-badge afm-badge-saved">Saved design</span>'
+        '<span class="afm-badge afm-badge-saved">Saved Design</span>'
         if source == "saved"
-        else '<span class="afm-badge afm-badge-remote">Alchemy FM only</span>'
+        else '<span class="afm-badge afm-badge-remote">Alchemy FM Only</span>'
     )
     on_air_badge = (
-        '<span class="afm-badge afm-badge-live">On air</span>'
+        '<span class="afm-badge afm-badge-live">On Air</span>'
         if values.get("edit_on_air")
-        else '<span class="afm-badge afm-badge-off">Off air</span>'
+        else '<span class="afm-badge afm-badge-off">Off Air</span>'
     )
     queued = values.get("edit_queued", "?")
     extra_badges = ""
@@ -1885,7 +1885,7 @@ def _edit_toolbar_html(values: dict[str, Any]) -> str:
         '<div class="afm-edit-meta">'
         f'<span class="afm-edit-slug">{html.escape(editing_slug)}{html.escape(id_note)}</span>'
         f"{source_badge}{on_air_badge}"
-        f'<span class="afm-badge afm-badge-queue">{html.escape(str(queued))} queued</span>'
+        f'<span class="afm-badge afm-badge-queue">{html.escape(str(queued))} Queued</span>'
         f"{extra_badges}"
         "</div>"
         "</div>"
@@ -1933,14 +1933,14 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
             is_editing = slug_key == editing_slug
             row_class = ' class="is-editing"' if is_editing else ""
             on_air_badge = (
-                '<span class="afm-badge afm-badge-live">On air</span>'
+                '<span class="afm-badge afm-badge-live">On Air</span>'
                 if station.get("enabled")
-                else '<span class="afm-badge afm-badge-off">Off air</span>'
+                else '<span class="afm-badge afm-badge-off">Off Air</span>'
             )
             profile_badge = (
-                '<span class="afm-badge afm-badge-saved">Saved design</span>'
+                '<span class="afm-badge afm-badge-saved">Saved Design</span>'
                 if has_saved
-                else '<span class="afm-badge afm-badge-remote">Remote only</span>'
+                else '<span class="afm-badge afm-badge-remote">Remote Only</span>'
             )
             living_badge = '<span class="afm-badge afm-badge-living">Living</span>' if living else ""
             edit_href = html.escape(url_for("alchemy_fm_bridge.home", edit=slug) + "#designer")
@@ -1954,7 +1954,7 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
                 f"<td><span class='afm-programming-type'>{html.escape(type_label)}</span>"
                 f"<span class='afm-programming-detail'>{html.escape(detail or '—')}</span></td>"
                 f'<td class="afm-status-cell"><div class="afm-badge-row">{on_air_badge}{profile_badge}'
-                f'<span class="afm-badge afm-badge-queue">{html.escape(queued)} queued</span>'
+                f'<span class="afm-badge afm-badge-queue">{html.escape(queued)} Queued</span>'
                 f"{living_badge}</div></td>"
                 f'<td class="afm-actions-cell"><div class="afm-row-actions">'
                 f'<a href="{edit_href}" class="{edit_btn_class}">{html.escape(edit_label)}</a>'

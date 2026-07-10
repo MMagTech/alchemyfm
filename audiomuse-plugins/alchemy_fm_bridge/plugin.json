@@ -5,6 +5,14 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy — preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "2.3.6",
+      "min_core_version": "2.5.0",
+      "changelog": "Title-case status badges: On Air, Remote Only, Saved Design, Queued. Includes 2.3.5 cron label and 2.3.4 UI polish.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "d018e263af926496e48126f14b6a5719"
+    },
+    {
       "version": "2.3.5",
       "min_core_version": "2.5.0",
       "changelog": "Show living-channel cron task as Alchemy FM on Scheduled Tasks; UI polish from 2.3.4 (badge row, button hover, spacing, copy tweaks).",
