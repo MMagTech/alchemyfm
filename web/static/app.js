@@ -127,6 +127,7 @@ const RadioApp = {
     if (options.waitForLoad) {
       const probe = new Image();
       const finish = () => {
+        if (options.isStale?.()) return;
         options.onApplied?.();
         mount();
       };

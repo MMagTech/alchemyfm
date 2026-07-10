@@ -374,6 +374,7 @@ const GlobalLivePlayer = {
     if (pending) {
       this.setMiniTrackLabel(track, 'Connecting…');
       if (art) {
+        art.dataset.trackKey = '';
         art.dataset.coverUrl = '';
         art.innerHTML = '<div class="live-mini-art-placeholder">♪</div>';
       }
@@ -397,23 +398,26 @@ const GlobalLivePlayer = {
 
     art.dataset.imgClass = 'live-mini-art-img';
     art.dataset.placeholder = '<div class="live-mini-art-placeholder">♪</div>';
-    const prevTrackKey = art.dataset.trackKey || '';
     const prevSlug = art.dataset.stationSlug || '';
-    if (slug) art.dataset.stationSlug = slug;
-    if (
-      forceGlitch ||
-      (trackKey && prevTrackKey && prevTrackKey !== trackKey) ||
-      (slug && prevSlug && prevSlug !== slug)
-    ) {
+    const prevCoverKey = art.dataset.trackKey || '';
+    const stationChanged = Boolean(slug && prevSlug && prevSlug !== slug);
+    const forceReset = stationChanged;
+    if (forceReset) {
+      art.dataset.trackKey = '';
+      art.dataset.coverUrl = '';
       art.innerHTML = art.dataset.placeholder;
     }
-    RadioApp.setCoverImage(art, artworkUrl, trackKey, {
+    if (slug) art.dataset.stationSlug = slug;
+    const coverKey = slug ? `${slug}\0${trackKey}` : trackKey;
+    RadioApp.setCoverImage(art, artworkUrl, coverKey, {
+      reset: forceReset,
       waitForLoad: true,
       forceGlitch: Boolean(
         forceGlitch ||
-        (trackKey && prevTrackKey && prevTrackKey !== trackKey) ||
-        (slug && prevSlug && prevSlug !== slug)
+        stationChanged ||
+        (coverKey && prevCoverKey && prevCoverKey !== coverKey)
       ),
+      isStale: () => epoch !== this._miniMetaEpoch,
       onApplied: () => {
         if (epoch !== this._miniMetaEpoch) return;
       },
