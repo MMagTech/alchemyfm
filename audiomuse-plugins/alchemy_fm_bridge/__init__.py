@@ -24,7 +24,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "2.3.6"
+PLUGIN_VERSION = "2.3.9"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1220,6 +1220,8 @@ def _page_styles() -> str:
   border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
   border-radius: 12px;
   background: var(--field, rgba(255, 255, 255, 0.04));
+  padding: 0.25rem 0.6rem 0.4rem 0.25rem;
+  box-sizing: border-box;
 }
 .afm-table {
   width: 100%;
@@ -1237,6 +1239,10 @@ def _page_styles() -> str:
   color: var(--muted, #94a3b8);
   border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.12));
   white-space: nowrap;
+}
+.afm-table th.afm-actions-col,
+.afm-table td.afm-actions-cell {
+  padding-right: 1rem;
 }
 .afm-table td {
   padding: 0.75rem 0.85rem;
@@ -1359,6 +1365,14 @@ def _page_styles() -> str:
   box-shadow: 0 2px 10px color-mix(in srgb, #ef4444 28%, transparent);
 }
 .afm-row-actions { display: flex; flex-wrap: nowrap; gap: 0.45rem; align-items: center; }
+.afm-table .afm-row-actions { padding-right: 0.1rem; }
+.afm-table .afm-btn:hover {
+  transform: none;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #6366f1) 35%, transparent);
+}
+.afm-table .afm-btn-danger:hover {
+  box-shadow: 0 0 0 1px color-mix(in srgb, #ef4444 55%, transparent);
+}
 .afm-edit-bar {
   display: flex;
   justify-content: space-between;
@@ -1400,7 +1414,7 @@ def _page_styles() -> str:
 .afm-panel {
   border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
   border-radius: 12px;
-  padding: 1rem 1.05rem 1.05rem;
+  padding: 1.1rem 1.15rem 1.2rem;
   margin: 0 0 0.85rem;
   background: var(--field, rgba(255, 255, 255, 0.04));
   overflow: visible;
@@ -1446,30 +1460,58 @@ def _page_styles() -> str:
   padding: 0.45rem 0.6rem;
 }
 .afm-panel .hint {
-  margin: 0.5rem 0 0;
+  margin: 0.55rem 0 0;
   color: var(--muted, #94a3b8);
   font-size: 0.84rem;
   line-height: 1.6;
 }
 .afm-panel .hint + .afm-check-group { margin-top: 1rem; }
+.afm-deploy-tail {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  margin-top: 0.2rem;
+}
+.afm-deploy-tail .afm-field-grid-3,
+.afm-deploy-tail .afm-check-group,
+.afm-deploy-tail .afm-form-actions {
+  margin-top: 0;
+}
 .afm-check-group {
   display: flex;
   flex-direction: column;
-  gap: 0.7rem;
+  gap: 0.75rem;
   margin-top: 0.85rem;
 }
-.afm-field { margin-top: 0.85rem; }
+.afm-field { margin-top: 1rem; }
+.afm-field:first-child { margin-top: 0; }
 .afm-field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
+  gap: 0.85rem;
+  margin-top: 1rem;
 }
 .afm-field-grid-3 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
+  gap: 0.85rem;
+  margin-top: 1rem;
 }
-.afm-form-actions { display: flex; gap: 0.65rem; flex-wrap: wrap; margin-top: 0.75rem; }
+.afm-field-grid-3 label,
+.afm-field-grid label {
+  margin-bottom: 0.4rem;
+}
+.afm-form-actions {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin-top: 1.2rem;
+  padding-top: 0.25rem;
+}
+.afm-deploy-tail .afm-form-actions {
+  padding-top: 0;
+  padding-bottom: 0.1rem;
+}
 .afm-designer-form { display: grid; gap: 0; min-width: 0; }
 .afm-empty { color: var(--muted, #94a3b8); margin: 0; line-height: 1.45; }
 .afm-panel input.is-readonly { opacity: 0.75; }
@@ -1803,7 +1845,8 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
         f"<select name='refresh_mode'>{_select_options(REFRESH_MODES, str(values.get('refresh_mode', 'similar_to_last')))}</select>"
         "<p class='hint'>For CLAP/lyrics/mood channels, the plugin saves a Song Alchemy anchor from your preview "
         "so Alchemy FM can keep refilling 24/7.</p></div>"
-        + "<div class='afm-field-grid-3'>"
+        + "<div class='afm-deploy-tail'>"
+        "<div class='afm-field-grid-3'>"
         "<div><label>Queue target</label>"
         f"<input type='number' name='queue_target' min='5' max='200' value='{html.escape(str(values.get('queue_target', 30)))}'></div>"
         "<div><label>Refresh below</label>"
@@ -1811,16 +1854,18 @@ def _deploy_fields_html(values: dict[str, Any]) -> str:
         "<div><label>Artist separation (min)</label>"
         f"<input type='number' name='artist_separation_minutes' min='0' value='{html.escape(str(values.get('artist_separation_minutes', 90)))}'></div>"
         "</div>"
+        "<div class='afm-check-group'>"
         "<label class='afm-check-label'><input type='checkbox' name='enabled'"
         f"{' checked' if values.get('enabled', True) else ''}> Start on air after push</label>"
         "<label class='afm-check-label'><input type='checkbox' name='bootstrap_queue'"
         f"{' checked' if values.get('bootstrap_queue', True) else ''}> Bootstrap queue immediately</label>"
+        "</div>"
         f"<input type='hidden' name='saved_anchor_id' value='{html.escape(str(values.get('saved_anchor_id', '')))}'>"
         "<div class='afm-form-actions'>"
         f"<button type='submit' name='action' value='push' class='afm-btn afm-btn-primary'>{html.escape(deploy_label)}</button>"
         "<button type='submit' name='action' value='preview' class='afm-btn afm-btn-secondary'>Preview Programming</button>"
         "<button type='submit' name='action' value='test' formnovalidate class='afm-btn afm-btn-secondary'>Test connection</button>"
-        "</div></section>"
+        "</div></div></section>"
     )
 
 
@@ -1969,7 +2014,7 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
         table_html = (
             '<div class="afm-table-wrap"><table class="afm-table">'
             "<thead><tr>"
-            "<th>Station</th><th>Programming</th><th>Status</th><th>Actions</th>"
+            "<th>Station</th><th>Programming</th><th>Status</th><th class='afm-actions-col'>Actions</th>"
             "</tr></thead><tbody>"
             + "".join(rows)
             + "</tbody></table></div>"

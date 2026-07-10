@@ -5,6 +5,30 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy — preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "2.3.9",
+      "min_core_version": "2.5.0",
+      "changelog": "More breathing room in deploy panel (queue fields, checkboxes, action buttons).",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "57cf241414831c40c37fe97841e7b893"
+    },
+    {
+      "version": "2.3.8",
+      "min_core_version": "2.5.0",
+      "changelog": "Looser spacing in deploy/broadcast panel; fix Delete button clip in station table (2.3.7).",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "1e1388a835b245239934d9cc3c7ae033"
+    },
+    {
+      "version": "2.3.7",
+      "min_core_version": "2.5.0",
+      "changelog": "Fix Delete button clipped at right edge of station table; extra actions column padding.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "aa13899fa2d9efc8bab06e8b28b3bc12"
+    },
+    {
       "version": "2.3.6",
       "min_core_version": "2.5.0",
       "changelog": "Title-case status badges: On Air, Remote Only, Saved Design, Queued. Includes 2.3.5 cron label and 2.3.4 UI polish.",
