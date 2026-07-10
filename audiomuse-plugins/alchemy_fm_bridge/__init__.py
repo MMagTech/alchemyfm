@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.1.4"
+PLUGIN_VERSION = "3.1.5"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1127,14 +1127,44 @@ def channel_profile_to_alchemy_payload(profile: dict[str, Any], tracks: list[dic
     }
 
 
-def profile_from_form(form) -> dict[str, Any]:
+def _station_identity_from_form(form, *, for_deploy: bool) -> dict[str, Any]:
+    editing_slug = (form.get("editing_slug") or "").strip()
     name = (form.get("name") or "").strip()
-    if not name:
+    slug = (form.get("slug") or "").strip()
+
+    if for_deploy and not name:
         raise ChannelDesignerError("Channel name is required.")
 
+    if not name:
+        for key in ("chat_prompt", "clap_query", "lyrics_query"):
+            candidate = (form.get(key) or "").strip()
+            if candidate:
+                name = candidate[:60]
+                break
+        if not name:
+            name = "New Channel"
+
+    if editing_slug:
+        slug = editing_slug
+    elif not slug:
+        slug = _slugify(name) or "draft-channel"
+
+    return {
+        "name": name,
+        "slug": slug,
+        "description": (form.get("description") or "").strip(),
+        "icecast_mount": _normalize_mount(form.get("icecast_mount") or slug),
+        "enabled": form.get("enabled") == "on",
+        "bootstrap_queue": form.get("bootstrap_queue") == "on",
+        "queue_target": max(5, min(200, int(form.get("queue_target") or 30))),
+        "refresh_threshold": max(1, min(100, int(form.get("refresh_threshold") or 10))),
+        "artist_separation_minutes": max(0, int(form.get("artist_separation_minutes") or 90)),
+    }
+
+
+def profile_from_form(form, *, for_deploy: bool = False) -> dict[str, Any]:
+    station = _station_identity_from_form(form, for_deploy=for_deploy)
     ptype = (form.get("programming_type") or "clap_query").strip()
-    editing_slug = (form.get("editing_slug") or "").strip()
-    slug = editing_slug or (form.get("slug") or "").strip() or _slugify(name)
     refresh_mode = (form.get("refresh_mode") or "similar_to_last").strip()
     if refresh_mode not in {key for key, _ in REFRESH_MODES}:
         raise ChannelDesignerError(f"Unsupported refresh mode: {refresh_mode}")
@@ -1163,17 +1193,7 @@ def profile_from_form(form) -> dict[str, Any]:
         "living": _living_from_form(form),
         "bootstrap": _bootstrap_from_form(form),
         "design_notes": (form.get("design_notes") or "").strip(),
-        "station": {
-            "name": name,
-            "slug": slug,
-            "description": (form.get("description") or "").strip(),
-            "icecast_mount": _normalize_mount(form.get("icecast_mount") or slug),
-            "enabled": form.get("enabled") == "on",
-            "bootstrap_queue": form.get("bootstrap_queue") == "on",
-            "queue_target": max(5, min(200, int(form.get("queue_target") or 30))),
-            "refresh_threshold": max(1, min(100, int(form.get("refresh_threshold") or 10))),
-            "artist_separation_minutes": max(0, int(form.get("artist_separation_minutes") or 90)),
-        },
+        "station": station,
         "anchor_id": (form.get("saved_anchor_id") or "").strip() or None,
     }
 
@@ -4177,7 +4197,8 @@ def home():
                     flash = _flash_html(str(exc), "error")
             elif action in ("preview", "push", "chat_preview"):
                 try:
-                    profile = profile_from_form(request.form)
+                    for_deploy = action == "push"
+                    profile = profile_from_form(request.form, for_deploy=for_deploy)
                     values = _form_values_from_profile(profile)
                     if (request.form.get("editing_slug") or "").strip():
                         values["editing_slug"] = request.form.get("editing_slug").strip()
@@ -4194,6 +4215,13 @@ def home():
                             "query": prompt[:120],
                             "limit": PREVIEW_LIMIT_DEFAULT,
                         }
+                        if not (request.form.get("name") or "").strip():
+                            profile["station"]["name"] = prompt[:60]
+                            if not (request.form.get("editing_slug") or "").strip():
+                                profile["station"]["slug"] = _slugify(profile["station"]["name"]) or "draft-channel"
+                                profile["station"]["icecast_mount"] = _normalize_mount(
+                                    profile["station"]["slug"]
+                                )
                         values = _form_values_from_profile(profile)
                         values["chat_prompt"] = prompt
                         unfiltered = enrich_preview(raw)
