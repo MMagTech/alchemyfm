@@ -111,6 +111,20 @@ def test_verify_deploy_ready_legacy_backend_allows_deploy():
     assert "AUDIOMUSE_API_TOKEN" in warning
 
 
+def test_merge_saved_programming_when_form_empty():
+    profile = {
+        "station": {"name": "Test", "slug": "test-slug"},
+        "programming": {"type": "clap_query", "query": "", "limit": 30},
+    }
+    saved = {
+        "station": {"name": "Test", "slug": "test-slug"},
+        "programming": {"type": "clap_query", "query": "late night rock", "limit": 30},
+    }
+    with patch.object(bridge, "_load_saved_channel", return_value=(saved, ["clap-1"])):
+        merged = bridge._merge_saved_programming_if_needed(profile, "test-slug")
+    assert merged["programming"]["query"] == "late night rock"
+
+
 def test_push_station_create_and_bootstrap():
     client = _RecordingClient()
     payload = bridge.channel_profile_to_alchemy_payload(

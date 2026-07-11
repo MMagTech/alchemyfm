@@ -26,7 +26,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.20"
+PLUGIN_VERSION = "3.2.21"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1472,6 +1472,8 @@ def _station_identity_from_form(form, *, for_deploy: bool) -> dict[str, Any]:
 
     if editing_slug:
         slug = editing_slug
+    elif (form.get("draft_slug") or "").strip():
+        slug = (form.get("draft_slug") or "").strip()
     elif not slug:
         slug = _slugify(name) or "draft-channel"
 
@@ -3558,8 +3560,56 @@ def _mood_centroids_data() -> dict[str, Any]:
     try:
         data = audiomuse_get("/api/mood_centroids")
         return data if isinstance(data, dict) else {}
-    except ChannelDesignerError:
+    except ChannelDesignerError as exc:
+        logger.warning("Could not load mood centroids for Step 2: %s", exc)
         return {}
+
+
+def _mood_centroids_step2_warning() -> str:
+    try:
+        audiomuse_get("/api/mood_centroids", timeout=10)
+    except ChannelDesignerError as exc:
+        if exc.status == 401:
+            return (
+                "Mood clusters could not load (AudioMuse 401). Set "
+                "<strong>audiomuse_api_token</strong> in plugin settings."
+            )
+        return f"Mood clusters could not load: {exc}"
+    return ""
+
+
+def _programming_incomplete(programming: dict[str, Any]) -> bool:
+    ptype = programming.get("type", "clap_query")
+    if ptype in ("clap_query", "lyrics_query"):
+        return len((programming.get("query") or "").strip()) < 3
+    if ptype == "mood_centroid":
+        return not programming.get("mood") or _parse_centroid_index(programming.get("centroid_index")) is None
+    if ptype == "alchemy_anchor":
+        return not str(programming.get("anchor_id") or "").strip()
+    if ptype == "similar_seed":
+        return not str(programming.get("seed_id") or "").strip()
+    return False
+
+
+def _merge_saved_programming_if_needed(profile: dict[str, Any], slug: str) -> dict[str, Any]:
+    programming = profile.get("programming") or {}
+    if not _programming_incomplete(programming):
+        return profile
+    loaded = _load_saved_channel(slug.strip())
+    if not loaded:
+        return profile
+    saved_profile, _ = loaded
+    saved_programming = saved_profile.get("programming")
+    if not isinstance(saved_programming, dict) or _programming_incomplete(saved_programming):
+        return profile
+    merged = dict(profile)
+    merged["programming"] = saved_programming
+    _agent_debug_log(
+        "deploy-used-saved-programming",
+        {"slug": slug, "type": saved_programming.get("type")},
+        "H4,H6",
+    )
+    return merged
 
 
 def _mood_cluster_label(meta: dict[str, Any], idx: int) -> str:
@@ -3735,6 +3785,10 @@ def _programming_fields_html(
 ) -> str:
     ptype = values.get("programming_type", "clap_query")
     hidden = lambda key: "" if ptype == key else " hidden"
+    step2_warning = _mood_centroids_step2_warning() if ptype == "mood_centroid" else ""
+    step2_warning_html = (
+        f"<p class='afm-flash afm-flash-warn'>{step2_warning}</p>" if step2_warning else ""
+    )
 
     mood_opts, centroid_opts = _mood_options(
         str(values.get("mood_name", "")),
@@ -3761,6 +3815,7 @@ def _programming_fields_html(
         )
         + _programming_explainer_html()
         + flash_html
+        + step2_warning_html
         + "<div class='afm-field'>"
         + _field_label("Programming Type", mandatory=True)
         + f"<select name='programming_type' id='programming_type' class='afm-select'>"
@@ -4317,6 +4372,7 @@ def _audition_history_html(slug: str | None = None) -> str:
 
 def _station_identity_fields_html(values: dict[str, Any]) -> str:
     editing_slug = (values.get("editing_slug") or "").strip()
+    draft_slug = (values.get("draft_slug") or "").strip()
     slug_readonly = " readonly class='is-readonly'" if editing_slug else ""
     slug_extra = ""
     if editing_slug:
@@ -4324,6 +4380,8 @@ def _station_identity_fields_html(values: dict[str, Any]) -> str:
             f"<input type='hidden' name='editing_slug' value='{html.escape(editing_slug)}'>"
             "<p class='hint'>Slug is fixed after first deploy.</p>"
         )
+    elif draft_slug:
+        slug_extra = f"<input type='hidden' name='draft_slug' value='{html.escape(draft_slug)}'>"
     return (
         "<section class='afm-panel afm-step-panel'>"
         + _step_panel_heading(
@@ -4850,6 +4908,7 @@ def _apply_draft_channel(
     values["chat_prompt"] = profile.get("design_notes") or values.get("chat_prompt", "")
     values["chat_designer_open"] = True
     values["slug"] = draft_slug
+    values["draft_slug"] = draft_slug
     preview_tracks = _preview_tracks_from_ids(preview_ids)
     return values, preview_tracks
 
@@ -4899,6 +4958,9 @@ def _page_script(
       const show = key === t;
       el.hidden = !show;
       el.style.display = show ? '' : 'none';
+      el.querySelectorAll('input, select, textarea').forEach((input) => {{
+        input.disabled = !show;
+      }});
     }});
   }}
   function clusterLabel(meta, idx) {{
@@ -4919,9 +4981,13 @@ def _page_script(
     if (!moodSelect || !clusterSelect) return;
     const mood = moodSelect.value;
     const prev = clusterSelect.value;
-    clusterSelect.innerHTML = '<option value="">Choose cluster…</option>';
     const list = moodData[mood];
-    if (!Array.isArray(list)) return;
+    if (!Array.isArray(list)) {{
+      if (clusterSelect.options.length > 1) return;
+      clusterSelect.innerHTML = '<option value="">Choose cluster…</option>';
+      return;
+    }}
+    clusterSelect.innerHTML = '<option value="">Choose cluster…</option>';
     list.forEach((meta, idx) => {{
       if (!meta || typeof meta !== 'object') return;
       const opt = document.createElement('option');
@@ -6433,10 +6499,12 @@ def home():
                 try:
                     for_deploy = action == "push"
                     profile = profile_from_form(request.form, for_deploy=for_deploy)
+                    slug = profile["station"]["slug"]
+                    if for_deploy:
+                        profile = _merge_saved_programming_if_needed(profile, slug)
                     values = _form_values_from_profile(profile)
                     if (request.form.get("editing_slug") or "").strip():
                         values["editing_slug"] = request.form.get("editing_slug").strip()
-                    slug = profile["station"]["slug"]
 
                     if action == "chat_preview":
                         result = _run_chat_preview_from_form(request.form)
