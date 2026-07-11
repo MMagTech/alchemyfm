@@ -12,7 +12,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from flask import Blueprint, request, redirect, url_for
+from flask import Blueprint, jsonify, request, redirect, url_for
 
 from plugin.api import (
     get_db,
@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.3"
+PLUGIN_VERSION = "3.2.4"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -2893,6 +2893,51 @@ html:not(.dark-mode) .afm-shell .afm-bootstrap-menu {
   background: color-mix(in srgb, var(--accent, #6366f1) 16%, transparent);
   outline: none;
 }
+.afm-artist-picker {
+  position: relative;
+  margin-top: 0.5rem;
+}
+.afm-artist-suggestions {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  right: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0.3rem;
+  max-height: 12rem;
+  overflow-y: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+  background: var(--bg, #0f172a);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+.afm-artist-suggestions[hidden] { display: none !important; }
+html:not(.dark-mode) .afm-shell .afm-artist-suggestions {
+  background: var(--bg-card, #ffffff);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.1);
+}
+.afm-artist-suggestion {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  padding: 0.5rem 0.65rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text, inherit);
+  font: inherit;
+  line-height: 1.35;
+  cursor: pointer;
+}
+.afm-artist-suggestion:hover,
+.afm-artist-suggestion:focus-visible,
+.afm-artist-suggestion.is-active {
+  background: color-mix(in srgb, var(--accent, #6366f1) 16%, transparent);
+  outline: none;
+}
 #bootstrap-opener { scroll-margin-top: 1rem; }
 @media (max-width: 720px) {
   .afm-field-grid, .afm-field-grid-3 { grid-template-columns: 1fr; }
@@ -3252,8 +3297,8 @@ def _filters_explainer_html() -> str:
         "to see exact spellings.</p>"
         "<p><strong>How to use:</strong> Set your filter fields, then click "
         "<strong>Apply Filters to Preview</strong> to trim the last preview list without re-running "
-        "programming. The <strong>Find Artist</strong> button only looks up library names to add to "
-        "Exclude Artists — it does not trim Preview Results by itself.</p>"
+        "programming. Under <strong>Exclude Artists</strong>, type to see library matches — "
+        "click a name to add it to the comma-separated list above.</p>"
         "<p><strong>Full refresh:</strong> To re-query AudioMuse from scratch (new tracks), use "
         "<strong>Preview Programming</strong> in Step 3.</p>"
     )
@@ -3288,19 +3333,7 @@ def _filters_fields_html(
 ) -> str:
     mood_labels = mood_labels if mood_labels is not None else _audiomuse_mood_labels()
     feedback = _filter_feedback_html(values.get("filter_feedback"))
-    exclude_artist_results = values.get("exclude_artist_results") or []
-    artist_results_html = ""
-    if exclude_artist_results:
-        items = []
-        for artist in exclude_artist_results:
-            items.append(
-                "<li>"
-                f'<button type="submit" name="pick_exclude_artist" value="{html.escape(artist)}" '
-                'formnovalidate class="afm-btn afm-btn-secondary" style="width:100%;text-align:left;">'
-                f"Add {html.escape(artist)}"
-                "</button></li>"
-            )
-        artist_results_html = "<ul class='afm-seed-results'>" + "".join(items) + "</ul>"
+    artist_search_url = html.escape(url_for("alchemy_fm_bridge.search_artists_api"))
     results_jump = ""
     if show_results_jump:
         results_jump = _jump_nav_button("View Preview Results", target_id="preview-results", direction="down")
@@ -3353,18 +3386,17 @@ def _filters_fields_html(
         + "<div class='afm-field'>"
         + _field_label("Exclude Artists")
         + f"<input name='filter_exclude_artists' id='filter_exclude_artists' class='afm-text-input' "
-        + f"placeholder='comma-separated artist names' "
+        + f"placeholder='Artists to exclude — added from picker below or type comma-separated' "
         + f"value='{html.escape(str(values.get('filter_exclude_artists', '')))}'>"
-        + "<div class='afm-seed-search-row'>"
-        + f"<input name='exclude_artist_search' class='afm-text-input afm-seed-search-input' "
-        + f"placeholder='Type artist name to look up…' value='{html.escape(str(values.get('exclude_artist_search', '')))}'>"
-        + "<button type='submit' name='action' value='search_exclude_artist' formnovalidate "
-        + "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Find Artist</button>"
+        + f'<div class="afm-artist-picker" id="afm-artist-picker" data-artist-search-url="{artist_search_url}">'
+        + '<input type="text" id="exclude_artist_typeahead" class="afm-text-input" autocomplete="off" '
+        + 'placeholder="Start typing an artist name…" role="combobox" aria-expanded="false" '
+        + 'aria-controls="afm-artist-suggestions" aria-autocomplete="list">'
+        + '<ul id="afm-artist-suggestions" class="afm-artist-suggestions" role="listbox" hidden></ul>'
         + "</div>"
-        + f"{artist_results_html}"
-        + "<p class='hint'>Looks up names in your library — pick one to add to the exclude list above. "
-        "Does not update Preview Results; click <strong>Apply Filters to Preview</strong> when your "
-        "exclude list (and other rules) are set.</p></div>"
+        + "<p class='hint'>Artists from your library appear as you type. Click one to add it to the list "
+        "above (comma-separated). Pick another to keep building the list. Then click "
+        "<strong>Apply Filters to Preview</strong>.</p></div>"
         + _mood_datalist_html(mood_labels)
         + f"{feedback}"
         + "<p class='hint afm-filters-workflow-hint'><strong>Filters fine-tune your last preview</strong> — "
@@ -4264,15 +4296,143 @@ def _page_script(
       scrollToBootstrapOpener();
     }}
   }}
+
+  (function initExcludeArtistTypeahead() {{
+    const picker = document.getElementById('afm-artist-picker');
+    const input = document.getElementById('exclude_artist_typeahead');
+    const menu = document.getElementById('afm-artist-suggestions');
+    const excludeField = document.getElementById('filter_exclude_artists');
+    if (!picker || !input || !menu || !excludeField) return;
+
+    const apiUrl = picker.getAttribute('data-artist-search-url') || '';
+    let debounceTimer = null;
+    let activeIndex = -1;
+    let currentArtists = [];
+
+    function closeMenu() {{
+      menu.innerHTML = '';
+      menu.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+      activeIndex = -1;
+      currentArtists = [];
+    }}
+
+    function appendArtist(name) {{
+      const term = String(name || '').trim();
+      if (!term) return;
+      const parts = (excludeField.value || '')
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean);
+      if (!parts.some((part) => part.toLowerCase() === term.toLowerCase())) {{
+        parts.push(term);
+      }}
+      excludeField.value = parts.join(', ');
+      input.value = '';
+      closeMenu();
+      input.focus();
+    }}
+
+    function setActive(index) {{
+      const buttons = menu.querySelectorAll('.afm-artist-suggestion');
+      buttons.forEach((btn, idx) => {{
+        btn.classList.toggle('is-active', idx === index);
+      }});
+      activeIndex = index;
+      const active = buttons[index];
+      if (active) active.scrollIntoView({{ block: 'nearest' }});
+    }}
+
+    function renderMenu(artists) {{
+      menu.innerHTML = '';
+      currentArtists = artists;
+      if (!artists.length) {{
+        closeMenu();
+        return;
+      }}
+      artists.forEach((artist, idx) => {{
+        const item = document.createElement('li');
+        item.setAttribute('role', 'presentation');
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'afm-artist-suggestion';
+        btn.setAttribute('role', 'option');
+        btn.textContent = artist;
+        btn.addEventListener('mousedown', (event) => {{
+          event.preventDefault();
+          appendArtist(artist);
+        }});
+        btn.addEventListener('mouseenter', () => setActive(idx));
+        item.appendChild(btn);
+        menu.appendChild(item);
+      }});
+      menu.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      setActive(0);
+    }}
+
+    async function fetchArtists(query) {{
+      if (!apiUrl) return [];
+      const resp = await fetch(apiUrl + '?q=' + encodeURIComponent(query), {{
+        headers: {{ Accept: 'application/json' }},
+      }});
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      return Array.isArray(data.artists) ? data.artists : [];
+    }}
+
+    input.addEventListener('input', () => {{
+      clearTimeout(debounceTimer);
+      const query = input.value.trim();
+      if (query.length < 2) {{
+        closeMenu();
+        return;
+      }}
+      debounceTimer = setTimeout(async () => {{
+        try {{
+          const artists = await fetchArtists(query);
+          renderMenu(artists);
+        }} catch (err) {{
+          closeMenu();
+        }}
+      }}, 280);
+    }});
+
+    input.addEventListener('keydown', (event) => {{
+      const buttons = menu.querySelectorAll('.afm-artist-suggestion');
+      if (!buttons.length) return;
+      if (event.key === 'ArrowDown') {{
+        event.preventDefault();
+        setActive(Math.min(activeIndex + 1, buttons.length - 1));
+      }} else if (event.key === 'ArrowUp') {{
+        event.preventDefault();
+        setActive(Math.max(activeIndex - 1, 0));
+      }} else if (event.key === 'Enter') {{
+        if (activeIndex >= 0 && currentArtists[activeIndex]) {{
+          event.preventDefault();
+          appendArtist(currentArtists[activeIndex]);
+        }}
+      }} else if (event.key === 'Escape') {{
+        closeMenu();
+      }}
+    }});
+
+    document.addEventListener('click', (event) => {{
+      if (!picker.contains(event.target)) closeMenu();
+    }});
+  }})();
 }})();
 </script>
 """
 
 
-_FILTER_REAPPLY_ACTIONS = frozenset(
-    {"apply_filters", "search_exclude_artist", "pick_exclude_artist"}
-)
+_FILTER_REAPPLY_ACTIONS = frozenset({"apply_filters"})
 
+
+@bp.route("/api/search-artists")
+def search_artists_api():
+    query = (request.args.get("q") or request.args.get("query") or "").strip()
+    return jsonify({"artists": _search_artists(query)})
 
 
 @bp.route("/", methods=["GET", "POST"])
@@ -4368,12 +4528,6 @@ def home():
                 values["programming_type"] = "similar_seed"
                 if request.form.get("seed_search"):
                     values["seed_search_results"] = _search_tracks(request.form.get("seed_search") or "")
-            pick_exclude_artist = (request.form.get("pick_exclude_artist") or "").strip()
-            if pick_exclude_artist:
-                values["filter_exclude_artists"] = _append_csv_term(
-                    request.form.get("filter_exclude_artists") or "",
-                    pick_exclude_artist,
-                )
             elif action == "search_seed":
                 values["seed_search_results"] = _search_tracks(request.form.get("seed_search") or "")
             elif action == "search_bootstrap_playlist":
@@ -4389,10 +4543,6 @@ def home():
                 values["bootstrap_check"] = _verify_bootstrap_playlist(
                     request.form.get("bootstrap_playlist_id") or "",
                     limit=limit,
-                )
-            elif action == "search_exclude_artist":
-                values["exclude_artist_results"] = _search_artists(
-                    request.form.get("exclude_artist_search") or ""
                 )
             elif action == "apply_filters":
                 values["scroll_to_preview"] = True
