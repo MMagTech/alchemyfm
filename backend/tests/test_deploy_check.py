@@ -50,16 +50,21 @@ async def test_deploy_check_audiomuse_connect_error():
 
 
 @pytest.mark.asyncio
-async def test_deploy_check_audiomuse_unauthorized():
+async def test_deploy_check_audiomuse_unauthorized(monkeypatch):
     import httpx
+    from app.services import deploy_check
     from app.services.deploy_check import check_deploy_dependencies
 
+    monkeypatch.setattr(deploy_check.settings, "audiomuse_url", "http://192.168.1.10:8387")
+    monkeypatch.setattr(deploy_check.settings, "audiomuse_api_token", "")
+    monkeypatch.setattr(deploy_check.settings, "navidrome_user", "admin")
+    monkeypatch.setattr(deploy_check.settings, "navidrome_password", "secret")
+
+    request = httpx.Request("GET", "http://192.168.1.10:8387/api/mood_centroids")
+    response = httpx.Response(401, request=request)
+    error = httpx.HTTPStatusError("Unauthorized", request=request, response=response)
+
     with (
-        patch.object(settings, "audiomuse_url", "http://192.168.1.10:8387"),
-        patch.object(settings, "navidrome_url", "http://192.168.1.10:4533"),
-        patch.object(settings, "audiomuse_api_token", ""),
-        patch.object(settings, "navidrome_user", "admin"),
-        patch.object(settings, "navidrome_password", "secret"),
         patch("app.services.deploy_check.httpx.AsyncClient") as mock_client_cls,
         patch(
             "app.services.deploy_check.navidrome_client._request",
@@ -67,13 +72,7 @@ async def test_deploy_check_audiomuse_unauthorized():
         ),
     ):
         mock_client = mock_client_cls.return_value.__aenter__.return_value
-        mock_response = mock_client.get.return_value
-        mock_response.status_code = 401
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Unauthorized",
-            request=httpx.Request("GET", "http://test/api/mood_centroids"),
-            response=mock_response,
-        )
+        mock_client.get = AsyncMock(side_effect=error)
 
         result = await check_deploy_dependencies()
 
