@@ -5,6 +5,14 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy — preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "3.2.7",
+      "min_core_version": "2.5.0",
+      "changelog": "Fix Chat Designer AJAX on mobile Safari: dedicated /api/chat-preview JSON endpoint, form-field AJAX detection, and clearer errors when the server returns HTML instead of JSON.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "ebfb42902785cc6813eef6372d6f2895"
+    },
+    {
       "version": "3.2.6",
       "min_core_version": "2.5.0",
       "changelog": "Chat preview uses AJAX so the generating banner stays visible for the full LLM wait, then redirects to Preview Results without snapping to the top.",
