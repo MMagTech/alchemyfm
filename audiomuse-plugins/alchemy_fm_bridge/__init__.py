@@ -6,6 +6,7 @@ import base64
 import html
 import json
 import re
+import time
 import uuid
 import urllib.error
 import urllib.parse
@@ -25,7 +26,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.17"
+PLUGIN_VERSION = "3.2.18"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -75,6 +76,12 @@ def _friendly_http_error(status: int, body: str) -> str:
 
 
 def _audiomuse_http_error_message(detail: str, status: int) -> str:
+    if status == 401:
+        return (
+            "AudioMuse returned 401 Unauthorized. Set the API token in Channel Designer "
+            "plugin settings and in Alchemy FM .env (AUDIOMUSE_API_TOKEN) — bootstrap "
+            "runs inside Alchemy FM and needs the .env token."
+        )
     if status == 404:
         return f"AudioMuse API route not found (HTTP 404). Update AudioMuse core or the Channel Designer plugin."
     try:
@@ -102,6 +109,29 @@ class ChannelDesignerError(Exception):
         self.status = status
 
 
+def _agent_debug_log(message: str, data: dict[str, Any], hypothesis_id: str) -> None:
+    # region agent log
+    try:
+        with open("debug-b5959d.log", "a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "sessionId": "b5959d",
+                        "runId": "initial",
+                        "hypothesisId": hypothesis_id,
+                        "location": "audiomuse-plugins/alchemy_fm_bridge/__init__.py",
+                        "message": message,
+                        "data": data,
+                        "timestamp": int(time.time() * 1000),
+                    }
+                )
+                + "\n"
+            )
+    except Exception:
+        pass
+    # endregion agent log
+
+
 class AlchemyFmClient:
     def __init__(self, base_url: str, username: str, password: str, timeout: float = 30.0) -> None:
         self.base_url = base_url.rstrip("/")
@@ -124,19 +154,78 @@ class AlchemyFmClient:
         url = f"{self.base_url}{path}"
         data = json.dumps(payload).encode("utf-8") if payload is not None else None
         req = urllib.request.Request(url, data=data, headers=self.headers, method=method)
+        _agent_debug_log(
+            "alchemy-request-start",
+            {"method": method, "base_url": self.base_url, "path": path, "has_payload": payload is not None},
+            "H1",
+        )
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 body = resp.read().decode("utf-8")
+                _agent_debug_log(
+                    "alchemy-request-success",
+                    {"method": method, "path": path, "status": getattr(resp, "status", None)},
+                    "H1",
+                )
                 return json.loads(body) if body else None
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
+            _agent_debug_log(
+                "alchemy-request-http-error",
+                {"method": method, "path": path, "status": exc.code, "detail_preview": detail[:300]},
+                "H1,H4",
+            )
             raise ChannelDesignerError(
                 _friendly_http_error(exc.code, detail), status=exc.code
             ) from exc
         except urllib.error.URLError as exc:
+            _agent_debug_log(
+                "alchemy-request-url-error",
+                {"method": method, "path": path, "reason": str(exc.reason)},
+                "H1",
+            )
             raise ChannelDesignerError(
                 f"Could not reach Alchemy FM at {self.base_url}: {exc.reason}"
             ) from exc
+
+    def _verify_deploy_ready_legacy_backend(self) -> None:
+        """Backend predates /api/admin/deploy-check — probe AudioMuse from plugin and warn."""
+        _agent_debug_log(
+            "deploy-check-missing-404",
+            {"base_url": self.base_url},
+            "H2",
+        )
+        try:
+            audiomuse_get("/api/mood_centroids", timeout=15)
+            _agent_debug_log("deploy-fallback-plugin-am-ok", {}, "H3")
+        except ChannelDesignerError as exc:
+            _agent_debug_log(
+                "deploy-fallback-plugin-am-fail",
+                {"status": exc.status, "message": str(exc)[:200]},
+                "H3",
+            )
+            if exc.status == 401:
+                raise ChannelDesignerError(
+                    "AudioMuse returned 401 Unauthorized.\n"
+                    "1. Channel Designer plugin settings: audiomuse_api_token\n"
+                    "2. Alchemy FM .env: AUDIOMUSE_API_TOKEN (same token — required for bootstrap)\n"
+                    "Copy the token from AudioMuse Settings → API."
+                ) from exc
+            raise ChannelDesignerError(
+                f"Cannot reach AudioMuse from plugin: {exc}\n"
+                "Fix AudioMuse connectivity before deploying."
+            ) from exc
+        raise ChannelDesignerError(
+            "Alchemy FM backend is outdated (missing /api/admin/deploy-check).\n"
+            "Pull ghcr.io/mmagtech/alchemyfm-backend:latest and restart.\n\n"
+            "Plugin can reach AudioMuse, but deploy/bootstrap runs inside Alchemy FM and needs "
+            "these in Alchemy FM .env:\n"
+            "  AUDIOMUSE_URL=http://192.168.x.x:8387\n"
+            "  AUDIOMUSE_API_TOKEN=<token from AudioMuse Settings → API>\n"
+            "  NAVIDROME_URL=http://192.168.x.x:4533\n"
+            "  NAVIDROME_USER=...\n"
+            "  NAVIDROME_PASSWORD=..."
+        )
 
     def verify_deploy_ready(self) -> None:
         """Ensure Alchemy FM can reach AudioMuse + Navidrome (bootstrap will fail otherwise)."""
@@ -144,6 +233,7 @@ class AlchemyFmClient:
             check = self._request("GET", "/api/admin/deploy-check")
         except ChannelDesignerError as exc:
             if exc.status == 404:
+                self._verify_deploy_ready_legacy_backend()
                 return
             raise
         if not isinstance(check, dict) or check.get("ok"):

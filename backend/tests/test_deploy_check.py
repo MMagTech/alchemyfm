@@ -45,6 +45,34 @@ async def test_deploy_check_audiomuse_connect_error():
     assert "Cannot connect to AudioMuse" in result["audiomuse"]["error"]
 
 
+@pytest.mark.asyncio
+async def test_deploy_check_audiomuse_unauthorized():
+    import httpx
+    from app.services.deploy_check import check_deploy_dependencies
+
+    with patch("app.services.deploy_check.settings") as mock_settings:
+        mock_settings.audiomuse_url = "http://192.168.1.10:8387"
+        mock_settings.navidrome_url = "http://192.168.1.10:4533"
+        mock_settings.audiomuse_api_token = ""
+        mock_settings.navidrome_user = "admin"
+        mock_settings.navidrome_password = "secret"
+        with patch("app.services.deploy_check.httpx.AsyncClient") as mock_client_cls:
+            mock_client = mock_client_cls.return_value.__aenter__.return_value
+            mock_response = mock_client.get.return_value
+            mock_response.status_code = 401
+            mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+                "Unauthorized",
+                request=httpx.Request("GET", "http://test/api/mood_centroids"),
+                response=mock_response,
+            )
+
+            result = await check_deploy_dependencies()
+
+    assert result["ok"] is False
+    assert result["audiomuse"]["ok"] is False
+    assert "AUDIOMUSE_API_TOKEN" in result["audiomuse"]["error"]
+
+
 def test_admin_deploy_check_endpoint(admin_client):
     with (
         patch(

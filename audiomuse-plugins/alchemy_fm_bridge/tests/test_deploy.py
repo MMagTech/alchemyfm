@@ -52,6 +52,8 @@ class _RecordingClient(bridge.AlchemyFmClient):
         payload: dict[str, Any] | None = None,
     ) -> Any:
         self.calls.append((method, path, payload))
+        if method == "GET" and path == "/api/admin/deploy-check":
+            return {"ok": True, "audiomuse": {"ok": True}, "navidrome": {"ok": True}}
         if method == "GET" and path == "/api/admin/stations":
             return []
         if method == "POST" and path == "/api/admin/stations":
@@ -69,6 +71,46 @@ class _RecordingClient(bridge.AlchemyFmClient):
         if method == "DELETE" and path.startswith("/api/admin/stations/"):
             return None
         raise AssertionError(f"Unexpected request: {method} {path}")
+
+
+def test_verify_deploy_ready_legacy_backend_audiomuse_401():
+    client = bridge.AlchemyFmClient("http://alchemyfm.test", "admin", "test-password")
+
+    def fake_request(method, path, payload=None):
+        if method == "GET" and path == "/api/admin/deploy-check":
+            raise bridge.ChannelDesignerError("Not Found", status=404)
+        raise AssertionError(f"Unexpected request: {method} {path}")
+
+    with (
+        patch.object(client, "_request", side_effect=fake_request),
+        patch.object(bridge, "audiomuse_get", side_effect=bridge.ChannelDesignerError("Unauthorized", status=401)),
+    ):
+        try:
+            client.verify_deploy_ready()
+            assert False, "expected ChannelDesignerError"
+        except bridge.ChannelDesignerError as exc:
+            assert "401" in str(exc)
+            assert "AUDIOMUSE_API_TOKEN" in str(exc)
+
+
+def test_verify_deploy_ready_legacy_backend_outdated():
+    client = bridge.AlchemyFmClient("http://alchemyfm.test", "admin", "test-password")
+
+    def fake_request(method, path, payload=None):
+        if method == "GET" and path == "/api/admin/deploy-check":
+            raise bridge.ChannelDesignerError("Not Found", status=404)
+        raise AssertionError(f"Unexpected request: {method} {path}")
+
+    with (
+        patch.object(client, "_request", side_effect=fake_request),
+        patch.object(bridge, "audiomuse_get", return_value={"centroids": []}),
+    ):
+        try:
+            client.verify_deploy_ready()
+            assert False, "expected ChannelDesignerError"
+        except bridge.ChannelDesignerError as exc:
+            assert "deploy-check" in str(exc)
+            assert "AUDIOMUSE_API_TOKEN" in str(exc)
 
 
 def test_push_station_create_and_bootstrap():

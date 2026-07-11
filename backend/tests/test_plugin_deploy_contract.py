@@ -86,6 +86,8 @@ def test_plugin_push_station_sequence(admin_client, bootstrap_mocks):
 
     def fake_request(method, path, body=None):
         calls.append((method, path, body))
+        if method == "GET" and path == "/api/admin/deploy-check":
+            return {"ok": True, "audiomuse": {"ok": True}, "navidrome": {"ok": True}}
         if method == "GET" and path == "/api/admin/stations":
             return []
         if method == "POST" and path == "/api/admin/stations":
