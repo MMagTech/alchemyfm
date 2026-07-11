@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.13"
+PLUGIN_VERSION = "3.2.14"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -795,6 +795,41 @@ def _search_artists(query: str) -> list[str]:
     return artists[:15]
 
 
+def _search_anchors(query: str) -> list[dict[str, Any]]:
+    anchors = _anchors()
+    q = query.strip().lower()
+    if not q:
+        return anchors[:20]
+    matched = [
+        anchor
+        for anchor in anchors
+        if q in str(anchor.get("name") or "").lower()
+        or q in str(anchor.get("id") or "")
+    ]
+    return matched[:15]
+
+
+def _search_genres(query: str) -> list[str]:
+    q = query.strip().lower()
+    genres: set[str] = set(STRATIFIED_GENRES)
+    if len(q) >= 2:
+        for track in _search_tracks(q):
+            genre = _track_genre(track)
+            if genre:
+                genres.add(genre)
+    if q:
+        return sorted(g for g in genres if q in g.lower())[:15]
+    return sorted(genres)[:15]
+
+
+def _search_moods(query: str) -> list[str]:
+    labels = _audiomuse_mood_labels()
+    q = query.strip().lower()
+    if not q:
+        return labels[:20]
+    return [label for label in labels if q in label.lower()][:15]
+
+
 def _filter_feedback_report(
     unfiltered: list[dict[str, Any]],
     filtered: list[dict[str, Any]],
@@ -1079,8 +1114,8 @@ def _bootstrap_feedback_html(check: dict[str, Any] | None) -> str:
         "<section class='afm-filter-feedback afm-bootstrap-feedback'>"
         "<h4 class='afm-filter-feedback-title'>Bootstrap Check</h4>"
         f"<p class='afm-filter-term-warn'>✗ {error}{id_note}</p>"
-        "<p class='hint'>Search Navidrome playlists above and pick a result, or paste a playlist id from "
-        "Navidrome/AudioMuse and click Verify.</p>"
+        "<p class='hint'>Search Navidrome playlists above and pick a result, or paste a playlist id — "
+        "verification runs automatically.</p>"
         "</section>"
     )
 
@@ -2421,6 +2456,7 @@ html:not(.dark-mode) .afm-shell .afm-filter-feedback {
   font-size: 0.92rem;
   min-width: 640px;
 }
+.afm-table tbody tr[hidden] { display: none; }
 .afm-table th {
   text-align: left;
   padding: 0.65rem 0.85rem;
@@ -3528,7 +3564,12 @@ def _preview_results_html(
     )
 
 
-def _programming_fields_html(values: dict[str, Any], *, track_search_url: str = "") -> str:
+def _programming_fields_html(
+    values: dict[str, Any],
+    *,
+    track_search_url: str = "",
+    anchor_search_url: str = "",
+) -> str:
     ptype = values.get("programming_type", "clap_query")
     hidden = lambda key: "" if ptype == key else " hidden"
 
@@ -3537,13 +3578,16 @@ def _programming_fields_html(values: dict[str, Any], *, track_search_url: str = 
         str(values.get("centroid_index", "")),
     )
 
-    anchor_opts = ['<option value="">Choose anchor…</option>']
-    for anchor in _anchors():
-        aid = str(anchor["id"])
-        sel = " selected" if aid == str(values.get("anchor_id", "")) else ""
-        anchor_opts.append(
-            f'<option value="{html.escape(aid)}"{sel}>{html.escape(anchor.get("name") or aid)}</option>'
-        )
+    anchor_list = _anchors()
+    selected_anchor_id = str(values.get("anchor_id", "")).strip()
+    anchor_display = ""
+    if selected_anchor_id:
+        for anchor in anchor_list:
+            if str(anchor.get("id")) == selected_anchor_id:
+                anchor_display = str(anchor.get("name") or selected_anchor_id)
+                break
+        if not anchor_display:
+            anchor_display = selected_anchor_id
 
     return (
         "<section class='afm-panel afm-programming-panel afm-step-panel' id='step-programming'>"
@@ -3583,7 +3627,16 @@ def _programming_fields_html(values: dict[str, Any], *, track_search_url: str = 
         + "the vibe (tags show the dominant traits in that cluster).</p></div>"
         + f"<div id='field-anchor' class='afm-field afm-type-field'{hidden('alchemy_anchor')}>"
         + _field_label("Song Alchemy Anchor", mandatory=True)
-        + f"<select name='anchor_id' class='afm-select'>{''.join(anchor_opts)}</select></div>"
+        + f"<div class='afm-seed-search-field' id='afm-anchor-picker' "
+        + f"data-anchor-search-url='{html.escape(anchor_search_url)}'>"
+        + f"<input id='anchor_search' class='afm-text-input' autocomplete='off' role='combobox' "
+        + "aria-expanded='false' aria-controls='afm-anchor-results' "
+        + f"placeholder='Anchor name…' value='{html.escape(anchor_display)}'>"
+        + f"<input type='hidden' name='anchor_id' id='anchor_id' "
+        + f"value='{html.escape(selected_anchor_id)}'>"
+        + "<div id='afm-anchor-results' class='afm-seed-track-results'></div>"
+        + "</div>"
+        + "<p class='hint'>Song Alchemy anchors appear as you type. Pick one to set the station vibe source.</p></div>"
         + f"<div id='field-seed' class='afm-field afm-seed-field afm-type-field'{hidden('similar_seed')}>"
         + _field_label("Search Seed Track")
         + f"<div class='afm-seed-search-field' id='afm-seed-track-picker' "
@@ -3638,7 +3691,7 @@ def _programming_explainer_html() -> str:
         "<p><strong>Sonic Vibe (CLAP):</strong> Describe how tracks <em>sound</em> — not lyrics.</p>"
         "<p><strong>Lyrics Theme:</strong> Search by meaning, story, or theme in lyrics.</p>"
         "<p><strong>Mood Cluster:</strong> Pick from your library analysis — mood + sub-cluster.</p>"
-        "<p><strong>Song Alchemy Anchor:</strong> Reuse an existing anchor playlist as the vibe source.</p>"
+        "<p><strong>Song Alchemy Anchor:</strong> Search anchors as you type and pick one.</p>"
         "<p><strong>Similar to Seed Track:</strong> Search by title or artist as you type, then pick one library track.</p>"
         "<p><strong>Preview Size:</strong> How many tracks to fetch per preview run (Step 3).</p>"
     )
@@ -3664,7 +3717,7 @@ def _bootstrap_explainer_html() -> str:
         "takes over for all ongoing playback.</p>"
         "<p><strong>Search:</strong> Type a playlist name — results appear as you type (title match only). "
         "Pick a result or paste a playlist id from Navidrome.</p>"
-        "<p><strong>Verify:</strong> Confirms AudioMuse can resolve the playlist. Deploy blocks if verification fails.</p>"
+        "<p><strong>Verify:</strong> Runs automatically when you pick a playlist or change the playlist id.</p>"
         "<p><strong>Opener Track Limit:</strong> Max tracks to import from the opener (rest of queue comes from programming).</p>"
         "<p><strong>Skip on first try:</strong> Leave unchecked until your Step 3 preview looks right.</p>"
     )
@@ -3733,6 +3786,8 @@ def _filters_fields_html(
     mood_labels: list[str] | None = None,
     show_results_jump: bool = False,
     flash_html: str = "",
+    genre_search_url: str = "",
+    mood_search_url: str = "",
 ) -> str:
     mood_labels = mood_labels if mood_labels is not None else _audiomuse_mood_labels()
     feedback = _filter_feedback_html(values.get("filter_feedback"))
@@ -3773,19 +3828,43 @@ def _filters_fields_html(
         + "<p class='hint'>Tempo, energy, and year use analyzed score data. Leave blank for no limit.</p>"
         + "<div class='afm-field'>"
         + _field_label("Genre Include")
-        + f"<input name='filter_genre_include' class='afm-text-input' placeholder='e.g. rock — exact Top Genre from Preview Results' "
-        + f"value='{html.escape(str(values.get('filter_genre_include', '')))}'></div>"
+        + f"<input name='filter_genre_include' id='filter_genre_include' class='afm-text-input' "
+        + "placeholder='e.g. rock — exact Top Genre from Preview Results' "
+        + f"value='{html.escape(str(values.get('filter_genre_include', '')))}'>"
+        + f"<div class='afm-artist-picker' id='afm-genre-include-picker' "
+        + f"data-genre-search-url='{html.escape(genre_search_url)}' data-target-field='filter_genre_include'>"
+        + '<input type="text" id="genre_include_typeahead" class="afm-text-input" autocomplete="off" '
+        + 'placeholder="Start typing a genre…" role="combobox" aria-expanded="false" '
+        + 'aria-controls="afm-genre-include-suggestions" aria-autocomplete="list">'
+        + '<ul id="afm-genre-include-suggestions" class="afm-artist-suggestions" role="listbox" hidden></ul>'
+        + "</div>"
+        + "<p class='hint'>Genres from your library appear as you type. Click to add comma-separated includes.</p></div>"
         + "<div class='afm-field'>"
         + _field_label("Genre Exclude")
-        + f"<input name='filter_genre_exclude' class='afm-text-input' placeholder='e.g. classical — exact Top Genre spelling' "
-        + f"value='{html.escape(str(values.get('filter_genre_exclude', '')))}'></div>"
+        + f"<input name='filter_genre_exclude' id='filter_genre_exclude' class='afm-text-input' "
+        + "placeholder='e.g. classical — exact Top Genre spelling' "
+        + f"value='{html.escape(str(values.get('filter_genre_exclude', '')))}'>"
+        + f"<div class='afm-artist-picker' id='afm-genre-exclude-picker' "
+        + f"data-genre-search-url='{html.escape(genre_search_url)}' data-target-field='filter_genre_exclude'>"
+        + '<input type="text" id="genre_exclude_typeahead" class="afm-text-input" autocomplete="off" '
+        + 'placeholder="Start typing a genre…" role="combobox" aria-expanded="false" '
+        + 'aria-controls="afm-genre-exclude-suggestions" aria-autocomplete="list">'
+        + '<ul id="afm-genre-exclude-suggestions" class="afm-artist-suggestions" role="listbox" hidden></ul>'
+        + "</div>"
+        + "<p class='hint'>Click suggestions to build a comma-separated exclude list.</p></div>"
         + "<div class='afm-field'>"
         + _field_label("Mood Tags Include")
         + f"<input name='filter_mood_include' id='filter_mood_include' class='afm-text-input' "
-        + f"list='afm-mood-labels' placeholder='melancholic, dreamy' "
+        + f"placeholder='melancholic, dreamy' "
         + f"value='{html.escape(str(values.get('filter_mood_include', '')))}'>"
-        + "<p class='hint'>Choose from suggestions — each tag must match how AudioMuse labeled that track "
-        "(not free-text lyrics or titles).</p>"
+        + f"<div class='afm-artist-picker' id='afm-mood-include-picker' "
+        + f"data-mood-search-url='{html.escape(mood_search_url)}' data-target-field='filter_mood_include'>"
+        + '<input type="text" id="mood_include_typeahead" class="afm-text-input" autocomplete="off" '
+        + 'placeholder="Start typing a mood tag…" role="combobox" aria-expanded="false" '
+        + 'aria-controls="afm-mood-include-suggestions" aria-autocomplete="list">'
+        + '<ul id="afm-mood-include-suggestions" class="afm-artist-suggestions" role="listbox" hidden></ul>'
+        + "</div>"
+        + "<p class='hint'>Mood tags from AudioMuse appear as you type. Each tag must match how tracks were labeled.</p>"
         + "<p id='afm-mood-inline-hint' class='afm-mood-inline-hint' aria-live='polite'></p></div>"
         + "<div class='afm-field'>"
         + _field_label("Exclude Artists")
@@ -3801,7 +3880,6 @@ def _filters_fields_html(
         + "<p class='hint'>Artists from your library appear as you type. Click one to add it to the list "
         "above (comma-separated). Pick another to keep building the list. Then click "
         "<strong>Apply Filters to Preview</strong>.</p></div>"
-        + _mood_datalist_html(mood_labels)
         + f"{feedback}"
         + "<p class='hint afm-filters-workflow-hint'><strong>Filters fine-tune your last preview</strong> — "
         "they trim tracks already in Preview Results; they do not fetch new ones.</p>"
@@ -3846,7 +3924,7 @@ def _bootstrap_playlist_results_html(results: list[dict[str, Any]], *, query: st
     )
 
 
-def _bootstrap_fields_html(values: dict[str, Any], *, flash_html: str = "") -> str:
+def _bootstrap_fields_html(values: dict[str, Any], *, flash_html: str = "", verify_url: str = "") -> str:
     bootstrap_enabled = values.get("bootstrap_enabled", False)
     playlist_results = values.get("bootstrap_playlist_results") or []
     search_query = str(values.get("bootstrap_playlist_search", ""))
@@ -3868,30 +3946,29 @@ def _bootstrap_fields_html(values: dict[str, Any], *, flash_html: str = "") -> s
         + f"{' checked' if bootstrap_enabled else ''}> Use Navidrome Playlist Opener</label>"
         + "</div>"
         + f"<div class='afm-field afm-bootstrap-search-field' id='afm-bootstrap-playlist-picker' "
-        + f"data-playlist-search-url='{playlist_search_url}'>"
+        + f"data-playlist-search-url='{playlist_search_url}' "
+        + f"data-verify-url='{html.escape(verify_url)}'>"
         + _field_label("Search Navidrome Playlists")
         + f"<input name='bootstrap_playlist_search' id='bootstrap_playlist_search' "
         + "class='afm-text-input' "
         + f"placeholder='Playlist name…' value='{html.escape(search_query)}' autocomplete='off' "
         + "aria-expanded='false' aria-controls='afm-bootstrap-playlist-results'>"
         + f"<div id='afm-bootstrap-playlist-results' aria-live='polite'>{results_html}</div>"
-        + "<p class='hint'>Playlists from Navidrome appear as you type. Click one to fill Playlist ID below.</p>"
+        + "<p class='hint'>Playlists from Navidrome appear as you type. Pick one to fill Playlist ID and verify automatically.</p>"
         + "</div>"
         + "<div class='afm-field'>"
         + _field_label("Playlist ID")
-        + "<div class='afm-seed-search-row'>"
         + f"<input name='bootstrap_playlist_id' id='bootstrap_playlist_id' class='afm-text-input' "
         + f"placeholder='From search or Navidrome' "
         + f"value='{html.escape(str(values.get('bootstrap_playlist_id', '')))}'>"
-        + "<button type='submit' name='action' value='verify_bootstrap_playlist' formnovalidate "
-        + "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Verify</button>"
-        + "</div></div>"
+        + "<p class='hint'>Paste an id manually — verification runs automatically when the id changes.</p>"
+        + "</div>"
         + "<div class='afm-field'>"
         + _field_label("Opener Track Limit")
-        + f"<input type='number' name='bootstrap_track_limit' min='5' max='80' "
+        + f"<input type='number' name='bootstrap_track_limit' id='bootstrap_track_limit' min='5' max='80' "
         + f"value='{html.escape(str(values.get('bootstrap_track_limit', BOOTSTRAP_TRACK_LIMIT_DEFAULT)))}'>"
         + "</div>"
-        + f"{feedback}"
+        + f"<div id='afm-bootstrap-live-feedback'>{feedback}</div>"
         + "</section>"
     )
 
@@ -3945,15 +4022,16 @@ def _discover_channels_html(*, flash_html: str = "") -> str:
         task_note = f"<p class='hint'>Last Clustering Task: {html.escape(str(status))}</p>"
     playlists = _clustering_playlists()
     rows: list[str] = []
-    for pl in playlists[:24]:
+    for pl in playlists:
         pl_id = str(pl.get("id") or pl.get("playlist_id") or "")
         name = str(pl.get("name") or pl_id or "Cluster playlist")
         mood = str(pl.get("mood") or pl.get("description") or "")
         if not mood and pl.get("track_count"):
             mood = f"{int(pl['track_count'])} Tracks"
         deploy_query = name
+        search_blob = html.escape(f"{name} {mood}".lower())
         rows.append(
-            "<tr>"
+            f"<tr data-discover-search='{search_blob}'>"
             f"<td>{html.escape(name)}</td>"
             f"<td>{html.escape(mood[:80])}</td>"
             f'<td><button type="submit" name="discover_deploy" value="{html.escape(pl_id)}" '
@@ -3967,7 +4045,12 @@ def _discover_channels_html(*, flash_html: str = "") -> str:
         "<p class='hint'>No clustering playlists found. Run clustering in AudioMuse first.</p>"
         if not rows
         else (
-            '<div class="afm-table-wrap"><table class="afm-table">'
+            '<div class="afm-field" id="afm-discover-filter-wrap">'
+            + '<label for="discover_filter">Filter Playlists</label>'
+            + '<input type="text" id="discover_filter" class="afm-text-input" '
+            + 'placeholder="Playlist name or mood…" autocomplete="off">'
+            + '<p class="hint">Clustering playlists filter as you type.</p></div>'
+            + '<div class="afm-table-wrap"><table class="afm-table" id="afm-discover-table">'
             "<thead><tr><th>Playlist</th><th>Mood / Notes</th><th>Action</th><th></th></tr></thead>"
             "<tbody>"
             + "".join(rows)
@@ -4386,8 +4469,9 @@ def _stations_section_html(editing_slug: str | None = None, *, flash_html: str =
             edit_label = "Continue Editing" if is_editing else "Edit"
             edit_btn_class = "afm-btn afm-btn-primary" if is_editing else "afm-btn afm-btn-secondary"
             confirm_msg = f"Delete station {name} ({slug})? This removes it from Alchemy FM permanently."
+            search_blob = html.escape(f"{name} {slug} {type_label}".lower())
             rows.append(
-                f"<tr{row_class}>"
+                f"<tr{row_class} data-station-search='{search_blob}'>"
                 f"<td><div class='afm-station-primary'>{html.escape(name)}</div>"
                 f"<div class='afm-station-meta'>{html.escape(slug)}</div></td>"
                 f"<td><span class='afm-programming-type'>{html.escape(type_label)}</span></td>"
@@ -4405,7 +4489,12 @@ def _stations_section_html(editing_slug: str | None = None, *, flash_html: str =
                 "</tr>"
             )
         table_html = (
-            '<div class="afm-table-wrap"><table class="afm-table">'
+            '<div class="afm-field" id="afm-stations-filter-wrap">'
+            + '<label for="afm-stations-filter">Filter Stations</label>'
+            + '<input type="text" id="afm-stations-filter" class="afm-text-input" '
+            + 'placeholder="Name, slug, or programming type…" autocomplete="off">'
+            + '<p class="hint">Your stations filter as you type.</p></div>'
+            + '<div class="afm-table-wrap"><table class="afm-table" id="afm-stations-table">'
             "<thead><tr>"
             "<th>Station</th><th>Programming</th><th>Status</th><th class='afm-actions-col'>Actions</th>"
             "</tr></thead><tbody>"
@@ -5102,7 +5191,10 @@ def _page_script(
     if (!picker || !input || !results) return;
 
     const apiUrl = picker.getAttribute('data-playlist-search-url') || '';
+    const verifyUrl = picker.getAttribute('data-verify-url') || '';
+    const limitField = document.getElementById('bootstrap_track_limit');
     let debounceTimer = null;
+    let verifyTimer = null;
     let activeIndex = -1;
     let currentPlaylists = [];
 
@@ -5112,6 +5204,55 @@ def _page_script(
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+    }}
+
+    function renderBootstrapFeedback(check) {{
+      const box = document.getElementById('afm-bootstrap-live-feedback');
+      if (!box) return;
+      if (!check || !check.playlist_id) {{
+        box.innerHTML = '';
+        return;
+      }}
+      const pid = escapeHtml(check.playlist_id);
+      if (check.ok) {{
+        const count = check.resolved_count || 0;
+        const limit = check.limit || 0;
+        box.innerHTML = (
+          '<section class="afm-filter-feedback afm-bootstrap-feedback">'
+          + '<h4 class="afm-filter-feedback-title">Bootstrap Check</h4>'
+          + '<p class="afm-filter-term-ok">✓ Playlist <strong>' + pid + '</strong> resolves to '
+          + '<strong>' + count + '</strong> opener track(s) (limit ' + limit + ').</p></section>'
+        );
+      }} else {{
+        const err = escapeHtml(check.error || 'Verification failed.');
+        box.innerHTML = (
+          '<section class="afm-filter-feedback afm-bootstrap-feedback">'
+          + '<h4 class="afm-filter-feedback-title">Bootstrap Check</h4>'
+          + '<p class="afm-filter-term-warn">✗ ' + err + '</p></section>'
+        );
+      }}
+    }}
+
+    async function verifyBootstrapPlaylist(playlistId) {{
+      if (!verifyUrl || !(playlistId || '').trim()) {{
+        renderBootstrapFeedback(null);
+        return;
+      }}
+      const limit = limitField ? limitField.value : '';
+      const url = verifyUrl
+        + '?playlist_id=' + encodeURIComponent(playlistId.trim())
+        + '&limit=' + encodeURIComponent(limit || '30');
+      try {{
+        const resp = await fetch(url, {{ headers: {{ Accept: 'application/json' }} }});
+        const data = await resp.json();
+        renderBootstrapFeedback(data);
+      }} catch (err) {{
+        renderBootstrapFeedback({{
+          ok: false,
+          playlist_id: playlistId,
+          error: 'Could not verify playlist.',
+        }});
+      }}
     }}
 
     function clearResults() {{
@@ -5126,7 +5267,8 @@ def _page_script(
       if (playlistIdField) playlistIdField.value = playlist.id;
       if (bootstrapEnabled) bootstrapEnabled.checked = true;
       clearResults();
-      if (playlistIdField) playlistIdField.focus();
+      verifyBootstrapPlaylist(playlist.id);
+      if (playlistIdField) playlistIdField.focus({{ preventScroll: true }});
     }}
 
     function setActive(index) {{
@@ -5238,6 +5380,23 @@ def _page_script(
 
     if ((input.value || '').trim().length >= 2) {{
       runSearch(input.value);
+    }}
+
+    if (playlistIdField) {{
+      playlistIdField.addEventListener('input', () => {{
+        clearTimeout(verifyTimer);
+        verifyTimer = setTimeout(() => verifyBootstrapPlaylist(playlistIdField.value), 400);
+      }});
+      if ((playlistIdField.value || '').trim()) {{
+        verifyBootstrapPlaylist(playlistIdField.value);
+      }}
+    }}
+    if (limitField) {{
+      limitField.addEventListener('change', () => {{
+        if (playlistIdField && (playlistIdField.value || '').trim()) {{
+          verifyBootstrapPlaylist(playlistIdField.value);
+        }}
+      }});
     }}
   }})();
 
@@ -5394,6 +5553,309 @@ def _page_script(
     }}
   }})();
 
+  (function initAnchorTypeahead() {{
+    const picker = document.getElementById('afm-anchor-picker');
+    const input = document.getElementById('anchor_search');
+    const results = document.getElementById('afm-anchor-results');
+    const anchorIdField = document.getElementById('anchor_id');
+    const typeSelect = document.getElementById('programming_type');
+    if (!picker || !input || !results || !anchorIdField) return;
+
+    const apiUrl = picker.getAttribute('data-anchor-search-url') || '';
+    let debounceTimer = null;
+    let activeIndex = -1;
+    let currentAnchors = [];
+
+    function escapeHtml(text) {{
+      return String(text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }}
+
+    function clearResults() {{
+      results.innerHTML = '';
+      input.setAttribute('aria-expanded', 'false');
+      activeIndex = -1;
+      currentAnchors = [];
+    }}
+
+    function pickAnchor(anchor) {{
+      if (!anchor || !anchor.id) return;
+      anchorIdField.value = String(anchor.id);
+      input.value = anchor.name || String(anchor.id);
+      if (typeSelect) {{
+        typeSelect.value = 'alchemy_anchor';
+        typeSelect.dispatchEvent(new Event('change', {{ bubbles: true }}));
+      }}
+      clearResults();
+    }}
+
+    function setActive(index) {{
+      const buttons = results.querySelectorAll('.afm-seed-track-pick');
+      buttons.forEach((btn, idx) => {{
+        btn.classList.toggle('is-active', idx === index);
+      }});
+      activeIndex = index;
+      const active = buttons[index];
+      if (active) active.scrollIntoView({{ block: 'nearest' }});
+    }}
+
+    function renderResults(anchors, query) {{
+      currentAnchors = anchors;
+      if (!anchors.length) {{
+        if (query.length >= 1) {{
+          results.innerHTML = (
+            '<p class="afm-seed-track-results-empty">No anchors matching '
+            + '<strong>' + escapeHtml(query) + '</strong>.</p>'
+          );
+          input.setAttribute('aria-expanded', 'true');
+        }} else {{
+          clearResults();
+        }}
+        return;
+      }}
+      const items = anchors.map((anchor, idx) => (
+        '<li role="presentation">'
+        + '<button type="button" class="afm-seed-track-pick" role="option" data-index="' + idx + '">'
+        + escapeHtml(anchor.name || anchor.id)
+        + '</button></li>'
+      )).join('');
+      results.innerHTML = (
+        '<div class="afm-seed-track-results-panel">'
+        + '<ul class="afm-seed-track-menu" role="listbox">' + items + '</ul></div>'
+      );
+      input.setAttribute('aria-expanded', 'true');
+      results.querySelectorAll('.afm-seed-track-pick').forEach((btn) => {{
+        btn.addEventListener('mousedown', (event) => {{
+          event.preventDefault();
+          const idx = parseInt(btn.getAttribute('data-index') || '-1', 10);
+          if (idx >= 0 && currentAnchors[idx]) pickAnchor(currentAnchors[idx]);
+        }});
+        btn.addEventListener('mouseenter', () => {{
+          setActive(parseInt(btn.getAttribute('data-index') || '-1', 10));
+        }});
+      }});
+      setActive(0);
+    }}
+
+    async function runSearch(query) {{
+      if (!apiUrl) return;
+      try {{
+        const resp = await fetch(apiUrl + '?q=' + encodeURIComponent(query), {{
+          headers: {{ Accept: 'application/json' }},
+        }});
+        if (!resp.ok) return clearResults();
+        const data = await resp.json();
+        renderResults(Array.isArray(data.anchors) ? data.anchors : [], query.trim());
+      }} catch (err) {{
+        clearResults();
+      }}
+    }}
+
+    input.addEventListener('input', () => {{
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => runSearch(input.value), 280);
+    }});
+
+    input.addEventListener('keydown', (event) => {{
+      const buttons = results.querySelectorAll('.afm-seed-track-pick');
+      if (!buttons.length) return;
+      if (event.key === 'ArrowDown') {{
+        event.preventDefault();
+        setActive(Math.min(activeIndex + 1, buttons.length - 1));
+      }} else if (event.key === 'ArrowUp') {{
+        event.preventDefault();
+        setActive(Math.max(activeIndex - 1, 0));
+      }} else if (event.key === 'Enter' && activeIndex >= 0 && currentAnchors[activeIndex]) {{
+        event.preventDefault();
+        pickAnchor(currentAnchors[activeIndex]);
+      }} else if (event.key === 'Escape') {{
+        clearResults();
+      }}
+    }});
+
+    document.addEventListener('click', (event) => {{
+      if (!picker.contains(event.target)) clearResults();
+    }});
+
+    if ((input.value || '').trim()) runSearch(input.value);
+  }})();
+
+  (function initCsvTermPickers() {{
+    function setupPicker({{ picker, input, menu, targetField, apiUrl, dataKey, minChars }}) {{
+      if (!picker || !input || !menu || !targetField || !apiUrl) return;
+      let debounceTimer = null;
+      let activeIndex = -1;
+      let currentTerms = [];
+
+      function closeMenu() {{
+        menu.innerHTML = '';
+        menu.hidden = true;
+        input.setAttribute('aria-expanded', 'false');
+        activeIndex = -1;
+        currentTerms = [];
+      }}
+
+      function appendTerm(term) {{
+        const value = String(term || '').trim();
+        if (!value) return;
+        const parts = (targetField.value || '')
+          .split(',')
+          .map((part) => part.trim())
+          .filter(Boolean);
+        if (!parts.some((part) => part.toLowerCase() === value.toLowerCase())) {{
+          parts.push(value);
+        }}
+        targetField.value = parts.join(', ');
+        input.value = '';
+        closeMenu();
+        input.focus();
+        if (targetField.id === 'filter_mood_include') {{
+          targetField.dispatchEvent(new Event('input', {{ bubbles: true }}));
+        }}
+      }}
+
+      function setActive(index) {{
+        const buttons = menu.querySelectorAll('.afm-artist-suggestion');
+        buttons.forEach((btn, idx) => {{
+          btn.classList.toggle('is-active', idx === index);
+        }});
+        activeIndex = index;
+        const active = buttons[index];
+        if (active) active.scrollIntoView({{ block: 'nearest' }});
+      }}
+
+      function renderMenu(terms) {{
+        menu.innerHTML = '';
+        currentTerms = terms;
+        if (!terms.length) {{
+          closeMenu();
+          return;
+        }}
+        terms.forEach((term, idx) => {{
+          const item = document.createElement('li');
+          item.setAttribute('role', 'presentation');
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'afm-artist-suggestion';
+          btn.setAttribute('role', 'option');
+          btn.textContent = term;
+          btn.addEventListener('mousedown', (event) => {{
+            event.preventDefault();
+            appendTerm(term);
+          }});
+          btn.addEventListener('mouseenter', () => setActive(idx));
+          item.appendChild(btn);
+          menu.appendChild(item);
+        }});
+        menu.hidden = false;
+        input.setAttribute('aria-expanded', 'true');
+        setActive(0);
+      }}
+
+      async function fetchTerms(query) {{
+        const resp = await fetch(apiUrl + '?q=' + encodeURIComponent(query), {{
+          headers: {{ Accept: 'application/json' }},
+        }});
+        if (!resp.ok) return [];
+        const data = await resp.json();
+        return Array.isArray(data[dataKey]) ? data[dataKey] : [];
+      }}
+
+      input.addEventListener('input', () => {{
+        clearTimeout(debounceTimer);
+        const query = input.value.trim();
+        if (query.length < minChars) {{
+          closeMenu();
+          return;
+        }}
+        debounceTimer = setTimeout(async () => {{
+          try {{
+            renderMenu(await fetchTerms(query));
+          }} catch (err) {{
+            closeMenu();
+          }}
+        }}, 280);
+      }});
+
+      input.addEventListener('keydown', (event) => {{
+        const buttons = menu.querySelectorAll('.afm-artist-suggestion');
+        if (!buttons.length) return;
+        if (event.key === 'ArrowDown') {{
+          event.preventDefault();
+          setActive(Math.min(activeIndex + 1, buttons.length - 1));
+        }} else if (event.key === 'ArrowUp') {{
+          event.preventDefault();
+          setActive(Math.max(activeIndex - 1, 0));
+        }} else if (event.key === 'Enter' && activeIndex >= 0 && currentTerms[activeIndex]) {{
+          event.preventDefault();
+          appendTerm(currentTerms[activeIndex]);
+        }} else if (event.key === 'Escape') {{
+          closeMenu();
+        }}
+      }});
+
+      document.addEventListener('click', (event) => {{
+        if (!picker.contains(event.target)) closeMenu();
+      }});
+    }}
+
+    setupPicker({{
+      picker: document.getElementById('afm-genre-include-picker'),
+      input: document.getElementById('genre_include_typeahead'),
+      menu: document.getElementById('afm-genre-include-suggestions'),
+      targetField: document.getElementById('filter_genre_include'),
+      apiUrl: document.getElementById('afm-genre-include-picker')?.getAttribute('data-genre-search-url') || '',
+      dataKey: 'genres',
+      minChars: 1,
+    }});
+    setupPicker({{
+      picker: document.getElementById('afm-genre-exclude-picker'),
+      input: document.getElementById('genre_exclude_typeahead'),
+      menu: document.getElementById('afm-genre-exclude-suggestions'),
+      targetField: document.getElementById('filter_genre_exclude'),
+      apiUrl: document.getElementById('afm-genre-exclude-picker')?.getAttribute('data-genre-search-url') || '',
+      dataKey: 'genres',
+      minChars: 1,
+    }});
+    setupPicker({{
+      picker: document.getElementById('afm-mood-include-picker'),
+      input: document.getElementById('mood_include_typeahead'),
+      menu: document.getElementById('afm-mood-include-suggestions'),
+      targetField: document.getElementById('filter_mood_include'),
+      apiUrl: document.getElementById('afm-mood-include-picker')?.getAttribute('data-mood-search-url') || '',
+      dataKey: 'moods',
+      minChars: 1,
+    }});
+  }})();
+
+  (function initTableFilters() {{
+    function filterRows(inputId, rowSelector, attrName) {{
+      const input = document.getElementById(inputId);
+      if (!input) return;
+      const rows = Array.from(document.querySelectorAll(rowSelector));
+      if (!rows.length) return;
+      const run = () => {{
+        const q = (input.value || '').trim().toLowerCase();
+        let visible = 0;
+        rows.forEach((row) => {{
+          const blob = (row.getAttribute(attrName) || '').toLowerCase();
+          const show = !q || blob.includes(q);
+          row.hidden = !show;
+          if (show) visible += 1;
+        }});
+        input.setAttribute('aria-expanded', q ? 'true' : 'false');
+        input.dataset.visibleCount = String(visible);
+      }};
+      input.addEventListener('input', run);
+      run();
+    }}
+    filterRows('discover_filter', '#afm-discover-table tbody tr', 'data-discover-search');
+    filterRows('afm-stations-filter', '#afm-stations-table tbody tr', 'data-station-search');
+  }})();
+
   (function initPreviewTableSort() {{
     const table = document.querySelector('#preview-results .afm-sortable-table');
     if (!table) return;
@@ -5478,6 +5940,44 @@ def search_tracks_api():
             }
         )
     return jsonify({"tracks": tracks})
+
+
+@bp.route("/api/search-anchors")
+def search_anchors_api():
+    query = (request.args.get("q") or request.args.get("query") or "").strip()
+    anchors = [
+        {
+            "id": str(anchor.get("id") or ""),
+            "name": str(anchor.get("name") or anchor.get("id") or "Anchor"),
+        }
+        for anchor in _search_anchors(query)
+    ]
+    return jsonify({"anchors": anchors})
+
+
+@bp.route("/api/search-genres")
+def search_genres_api():
+    query = (request.args.get("q") or request.args.get("query") or "").strip()
+    return jsonify({"genres": _search_genres(query)})
+
+
+@bp.route("/api/search-moods")
+def search_moods_api():
+    query = (request.args.get("q") or request.args.get("query") or "").strip()
+    return jsonify({"moods": _search_moods(query)})
+
+
+@bp.route("/api/verify-bootstrap")
+def verify_bootstrap_api():
+    playlist_id = (request.args.get("playlist_id") or "").strip()
+    try:
+        limit = max(
+            5,
+            min(80, int(request.args.get("limit") or BOOTSTRAP_TRACK_LIMIT_DEFAULT)),
+        )
+    except ValueError:
+        limit = BOOTSTRAP_TRACK_LIMIT_DEFAULT
+    return jsonify(_verify_bootstrap_playlist(playlist_id, limit=limit))
 
 
 @bp.route("/api/chat-preview", methods=["POST"])
@@ -5943,6 +6443,10 @@ def home():
     )
     chat_preview_url = html.escape(url_for("alchemy_fm_bridge.chat_preview_api"))
     track_search_url = html.escape(url_for("alchemy_fm_bridge.search_tracks_api"))
+    anchor_search_url = html.escape(url_for("alchemy_fm_bridge.search_anchors_api"))
+    genre_search_url = html.escape(url_for("alchemy_fm_bridge.search_genres_api"))
+    mood_search_url = html.escape(url_for("alchemy_fm_bridge.search_moods_api"))
+    bootstrap_verify_url = html.escape(url_for("alchemy_fm_bridge.verify_bootstrap_api"))
     designer_form = (
         f"{designer_section_open}"
         f"<form method='post' id='afm-designer-form' class='afm-designer-form' "
@@ -5951,10 +6455,10 @@ def home():
         f"{_chat_designer_fields_html(values, flash_html=flashes.html_for('chat-designer'))}"
         f"{_discover_channels_html(flash_html=flashes.html_for('discover'))}"
         f"{_station_identity_fields_html(values)}"
-        f"{_programming_fields_html(values, track_search_url=track_search_url)}"
+        f"{_programming_fields_html(values, track_search_url=track_search_url, anchor_search_url=anchor_search_url)}"
         f"{_preview_step_html(show_results_jump=has_preview_tracks, flash_html=flashes.html_for('step-preview'))}"
-        f"{_filters_fields_html(values, show_results_jump=has_preview_tracks, flash_html=flashes.html_for('step-filters'))}"
-        f"{_bootstrap_fields_html(values, flash_html=flashes.html_for('bootstrap-opener'))}"
+        f"{_filters_fields_html(values, show_results_jump=has_preview_tracks, flash_html=flashes.html_for('step-filters'), genre_search_url=genre_search_url, mood_search_url=mood_search_url)}"
+        f"{_bootstrap_fields_html(values, flash_html=flashes.html_for('bootstrap-opener'), verify_url=bootstrap_verify_url)}"
         f"{_living_fields_html(values)}"
         f"{_playback_rules_fields_html(values)}"
         f"{_deploy_actions_fields_html(values, flash_html=flashes.html_for('step-deploy'))}"
