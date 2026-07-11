@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.7"
+PLUGIN_VERSION = "3.2.8"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -3035,7 +3035,8 @@ html:not(.dark-mode) .afm-shell .afm-bootstrap-menu {
   cursor: pointer;
 }
 .afm-bootstrap-pick:hover,
-.afm-bootstrap-pick:focus-visible {
+.afm-bootstrap-pick:focus-visible,
+.afm-bootstrap-pick.is-active {
   background: color-mix(in srgb, var(--accent, #6366f1) 16%, transparent);
   outline: none;
 }
@@ -3407,7 +3408,7 @@ def _bootstrap_explainer_html() -> str:
         "<p><strong>What this controls:</strong> A one-time <strong>cold-start opener</strong> — a Navidrome "
         "playlist that plays first when you deploy. After the opener, <strong>Step 2 programming</strong> "
         "takes over for all ongoing playback.</p>"
-        "<p><strong>Search:</strong> Matches <strong>playlist title only</strong> (not tracks inside). "
+        "<p><strong>Search:</strong> Type a playlist name — results appear as you type (title match only). "
         "Pick a result or paste a playlist id from Navidrome.</p>"
         "<p><strong>Verify:</strong> Confirms AudioMuse can resolve the playlist. Deploy blocks if verification fails.</p>"
         "<p><strong>Opener Track Limit:</strong> Max tracks to import from the opener (rest of queue comes from programming).</p>"
@@ -3597,6 +3598,7 @@ def _bootstrap_fields_html(values: dict[str, Any], *, flash_html: str = "") -> s
     search_query = str(values.get("bootstrap_playlist_search", ""))
     results_html = _bootstrap_playlist_results_html(playlist_results, query=search_query)
     feedback = _bootstrap_feedback_html(values.get("bootstrap_check"))
+    playlist_search_url = html.escape(url_for("alchemy_fm_bridge.search_playlists_api"))
     return (
         "<section class='afm-panel afm-bootstrap-panel afm-step-panel' id='bootstrap-opener'>"
         + _step_panel_heading(
@@ -3608,19 +3610,19 @@ def _bootstrap_fields_html(values: dict[str, Any], *, flash_html: str = "") -> s
         + _bootstrap_explainer_html()
         + flash_html
         + "<div class='afm-check-group'>"
-        + "<label class='afm-check-label'><input type='checkbox' name='bootstrap_enabled'"
+        + "<label class='afm-check-label'><input type='checkbox' name='bootstrap_enabled' id='bootstrap_enabled'"
         + f"{' checked' if bootstrap_enabled else ''}> Use Navidrome Playlist Opener</label>"
         + "</div>"
-        + "<div class='afm-field afm-bootstrap-search-field'>"
+        + f"<div class='afm-field afm-bootstrap-search-field' id='afm-bootstrap-playlist-picker' "
+        + f"data-playlist-search-url='{playlist_search_url}'>"
         + _field_label("Search Navidrome Playlists")
-        + "<div class='afm-seed-search-row'>"
         + f"<input name='bootstrap_playlist_search' id='bootstrap_playlist_search' "
-        + "class='afm-text-input afm-seed-search-input' "
-        + f"placeholder='Playlist name…' value='{html.escape(search_query)}' autocomplete='off'>"
-        + "<button type='submit' name='action' value='search_bootstrap_playlist' formnovalidate "
-        + "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Search</button>"
+        + "class='afm-text-input' "
+        + f"placeholder='Playlist name…' value='{html.escape(search_query)}' autocomplete='off' "
+        + "aria-expanded='false' aria-controls='afm-bootstrap-playlist-results'>"
+        + f"<div id='afm-bootstrap-playlist-results' aria-live='polite'>{results_html}</div>"
+        + "<p class='hint'>Playlists from Navidrome appear as you type. Click one to fill Playlist ID below.</p>"
         + "</div>"
-        + f"{results_html}</div>"
         + "<div class='afm-field'>"
         + _field_label("Playlist ID")
         + "<div class='afm-seed-search-row'>"
@@ -4801,6 +4803,154 @@ def _page_script(
       if (!picker.contains(event.target)) closeMenu();
     }});
   }})();
+
+  (function initBootstrapPlaylistTypeahead() {{
+    const picker = document.getElementById('afm-bootstrap-playlist-picker');
+    const input = document.getElementById('bootstrap_playlist_search');
+    const results = document.getElementById('afm-bootstrap-playlist-results');
+    const playlistIdField = document.getElementById('bootstrap_playlist_id');
+    const bootstrapEnabled = document.getElementById('bootstrap_enabled');
+    if (!picker || !input || !results) return;
+
+    const apiUrl = picker.getAttribute('data-playlist-search-url') || '';
+    let debounceTimer = null;
+    let activeIndex = -1;
+    let currentPlaylists = [];
+
+    function escapeHtml(text) {{
+      return String(text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }}
+
+    function clearResults() {{
+      results.innerHTML = '';
+      input.setAttribute('aria-expanded', 'false');
+      activeIndex = -1;
+      currentPlaylists = [];
+    }}
+
+    function pickPlaylist(playlist) {{
+      if (!playlist || !playlist.id) return;
+      if (playlistIdField) playlistIdField.value = playlist.id;
+      if (bootstrapEnabled) bootstrapEnabled.checked = true;
+      clearResults();
+      if (playlistIdField) playlistIdField.focus();
+    }}
+
+    function setActive(index) {{
+      const buttons = results.querySelectorAll('.afm-bootstrap-pick');
+      buttons.forEach((btn, idx) => {{
+        btn.classList.toggle('is-active', idx === index);
+      }});
+      activeIndex = index;
+      const active = buttons[index];
+      if (active) active.scrollIntoView({{ block: 'nearest' }});
+    }}
+
+    function renderResults(playlists, query) {{
+      currentPlaylists = playlists;
+      if (!playlists.length) {{
+        if (query.length >= 2) {{
+          results.innerHTML = (
+            '<p class="afm-bootstrap-results-empty">No Navidrome playlists with '
+            + '<strong>' + escapeHtml(query) + '</strong> in the title. '
+            + 'Try a shorter name or paste a playlist id below.</p>'
+          );
+          input.setAttribute('aria-expanded', 'true');
+        }} else {{
+          clearResults();
+        }}
+        return;
+      }}
+      const countLabel = playlists.length + ' playlist' + (playlists.length === 1 ? '' : 's');
+      const items = playlists.map((pl, idx) => {{
+        const name = pl.name || pl.id || 'Playlist';
+        const count = pl.count != null ? ' · ' + pl.count + ' tracks' : '';
+        return (
+          '<li role="presentation">'
+          + '<button type="button" class="afm-bootstrap-pick" role="option" data-index="' + idx + '">'
+          + escapeHtml(name) + escapeHtml(count)
+          + '</button></li>'
+        );
+      }}).join('');
+      results.innerHTML = (
+        '<div class="afm-bootstrap-results">'
+        + '<p class="afm-bootstrap-results-label">' + escapeHtml(countLabel) + ' — pick one</p>'
+        + '<ul class="afm-bootstrap-menu" role="listbox">' + items + '</ul></div>'
+      );
+      input.setAttribute('aria-expanded', 'true');
+      results.querySelectorAll('.afm-bootstrap-pick').forEach((btn) => {{
+        btn.addEventListener('mousedown', (event) => {{
+          event.preventDefault();
+          const idx = parseInt(btn.getAttribute('data-index') || '-1', 10);
+          if (idx >= 0 && currentPlaylists[idx]) pickPlaylist(currentPlaylists[idx]);
+        }});
+        btn.addEventListener('mouseenter', () => {{
+          setActive(parseInt(btn.getAttribute('data-index') || '-1', 10));
+        }});
+      }});
+      setActive(0);
+    }}
+
+    async function fetchPlaylists(query) {{
+      if (!apiUrl) return [];
+      const resp = await fetch(apiUrl + '?q=' + encodeURIComponent(query), {{
+        headers: {{ Accept: 'application/json' }},
+      }});
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      return Array.isArray(data.playlists) ? data.playlists : [];
+    }}
+
+    async function runSearch(query) {{
+      const trimmed = query.trim();
+      if (trimmed.length < 2) {{
+        clearResults();
+        return;
+      }}
+      try {{
+        const playlists = await fetchPlaylists(trimmed);
+        renderResults(playlists, trimmed);
+      }} catch (err) {{
+        clearResults();
+      }}
+    }}
+
+    input.addEventListener('input', () => {{
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => runSearch(input.value), 280);
+    }});
+
+    input.addEventListener('keydown', (event) => {{
+      const buttons = results.querySelectorAll('.afm-bootstrap-pick');
+      if (!buttons.length) return;
+      if (event.key === 'ArrowDown') {{
+        event.preventDefault();
+        setActive(Math.min(activeIndex + 1, buttons.length - 1));
+      }} else if (event.key === 'ArrowUp') {{
+        event.preventDefault();
+        setActive(Math.max(activeIndex - 1, 0));
+      }} else if (event.key === 'Enter') {{
+        if (activeIndex >= 0 && currentPlaylists[activeIndex]) {{
+          event.preventDefault();
+          pickPlaylist(currentPlaylists[activeIndex]);
+        }}
+      }} else if (event.key === 'Escape') {{
+        clearResults();
+      }}
+    }});
+
+    document.addEventListener('click', (event) => {{
+      if (!picker.contains(event.target)) clearResults();
+    }});
+
+    if ((input.value || '').trim().length >= 2) {{
+      runSearch(input.value);
+    }}
+  }})();
 }})();
 </script>
 """
@@ -4813,6 +4963,12 @@ _FILTER_REAPPLY_ACTIONS = frozenset({"apply_filters"})
 def search_artists_api():
     query = (request.args.get("q") or request.args.get("query") or "").strip()
     return jsonify({"artists": _search_artists(query)})
+
+
+@bp.route("/api/search-playlists")
+def search_playlists_api():
+    query = (request.args.get("q") or request.args.get("query") or "").strip()
+    return jsonify({"playlists": _search_playlists(query)})
 
 
 @bp.route("/api/chat-preview", methods=["POST"])

@@ -5,6 +5,14 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy — preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "3.2.8",
+      "min_core_version": "2.5.0",
+      "changelog": "Bootstrap opener: Navidrome playlist search as you type (no Search button). Results update live; click to fill Playlist ID.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "813474451eab15f5cabfe6c328f72bbf"
+    },
+    {
       "version": "3.2.7",
       "min_core_version": "2.5.0",
       "changelog": "Fix Chat Designer AJAX on mobile Safari: dedicated /api/chat-preview JSON endpoint, form-field AJAX detection, and clearer errors when the server returns HTML instead of JSON.",
