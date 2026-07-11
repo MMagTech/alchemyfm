@@ -60,7 +60,7 @@ class TestProfileFromForm:
             )
 
     def test_anchor_without_pick_raises(self):
-        with pytest.raises(bridge.ChannelDesignerError, match="search results"):
+        with pytest.raises(bridge.ChannelDesignerError, match="Choose a Song Alchemy anchor"):
             bridge.profile_from_form(
                 {
                     "programming_type": "alchemy_anchor",
@@ -68,6 +68,21 @@ class TestProfileFromForm:
                     "refresh_mode": "similar_to_last",
                 }
             )
+
+    def test_anchor_resolves_from_search_name(self, monkeypatch):
+        monkeypatch.setattr(
+            bridge,
+            "_anchors",
+            lambda: [{"id": 42, "name": "Pop Punk"}],
+        )
+        profile = bridge.profile_from_form(
+            {
+                "programming_type": "alchemy_anchor",
+                "anchor_search": "Pop Punk",
+                "refresh_mode": "similar_to_last",
+            }
+        )
+        assert profile["programming"]["anchor_id"] == "42"
 
 
 class TestFlashQueue:

@@ -115,6 +115,44 @@ class TestPreviewRoute:
         assert "afm-flash-error" in body
         assert "mood and cluster" in body.lower() or "choose a mood" in body.lower()
 
+    def test_preview_alchemy_anchor_from_search_name(self, client, audiomuse_mocks, pg_db):
+        resp = client.post(
+            "/",
+            data={
+                "action": "preview",
+                "name": "Pop Punk",
+                "slug": "pop-punk",
+                "programming_type": "alchemy_anchor",
+                "anchor_search": "Test Anchor",
+                "refresh_mode": "similar_to_last",
+                "preview_limit": "30",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        assert "preview_ok=1" in resp.headers.get("Location", "")
+
+        loaded = bridge._load_saved_channel("pop-punk")
+        assert loaded is not None
+        profile, preview_ids = loaded
+        assert profile["programming"]["anchor_id"] == "42"
+        assert len(preview_ids) == 2
+
+    def test_preview_anchor_error_scrolls_step2(self, client, audiomuse_mocks, pg_db):
+        resp = client.post(
+            "/",
+            data={
+                "action": "preview",
+                "programming_type": "alchemy_anchor",
+                "anchor_search": "No Such Anchor",
+                "refresh_mode": "similar_to_last",
+            },
+        )
+        body = resp.get_data(as_text=True)
+        assert "afm-flash-error" in body
+        assert "step-programming" in body
+        assert '"step-programming"' in body or "'step-programming'" in body
+
     def test_failed_preview_does_not_restore_stale_results(self, client, audiomuse_mocks, pg_db):
         # Seed a channel with old preview ids.
         profile = bridge.profile_from_form(

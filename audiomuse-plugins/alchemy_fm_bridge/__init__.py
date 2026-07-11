@@ -26,7 +26,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.25"
+PLUGIN_VERSION = "3.2.26"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1018,6 +1018,56 @@ def _search_anchors(query: str) -> list[dict[str, Any]]:
     return matched[:15]
 
 
+def _resolve_anchor_id_from_form(form) -> str:
+    anchor_id = (form.get("anchor_id") or "").strip()
+    if anchor_id:
+        return anchor_id
+    hint = (form.get("anchor_search") or "").strip()
+    if not hint:
+        return ""
+    exact = [
+        anchor
+        for anchor in _anchors()
+        if str(anchor.get("name") or "").strip().lower() == hint.lower()
+    ]
+    if len(exact) == 1:
+        return str(exact[0]["id"])
+    fuzzy = _search_anchors(hint)
+    if len(fuzzy) == 1:
+        return str(fuzzy[0]["id"])
+    hint_l = hint.lower()
+    prefix = [
+        anchor
+        for anchor in fuzzy
+        if str(anchor.get("name") or "").strip().lower().startswith(hint_l)
+    ]
+    if len(prefix) == 1:
+        return str(prefix[0]["id"])
+    return ""
+
+
+def _resolve_seed_id_from_form(form) -> str:
+    seed_id = (form.get("seed_id") or form.get("pick_seed") or "").strip()
+    if seed_id:
+        return seed_id
+    hint = (form.get("seed_search") or "").strip()
+    if len(hint) < 2:
+        return ""
+    tracks = _search_tracks(hint)
+    if len(tracks) == 1:
+        return str(tracks[0]["item_id"])
+    title_part = hint.split("—")[0].split("-")[0].strip().lower()
+    if title_part:
+        title_matches = [
+            t
+            for t in tracks
+            if str(t.get("title") or "").strip().lower() == title_part
+        ]
+        if len(title_matches) == 1:
+            return str(title_matches[0]["item_id"])
+    return ""
+
+
 def _search_genres(query: str) -> list[str]:
     q = query.strip().lower()
     genres: set[str] = set(STRATIFIED_GENRES)
@@ -1522,15 +1572,20 @@ def profile_from_form(form, *, for_deploy: bool = False) -> dict[str, Any]:
             raise ChannelDesignerError("Choose a mood and cluster.")
         programming["centroid_index"] = centroid_index
     elif ptype == "alchemy_anchor":
-        programming["anchor_id"] = (form.get("anchor_id") or "").strip()
+        programming["anchor_id"] = _resolve_anchor_id_from_form(form)
         if not programming["anchor_id"]:
+            hint = (form.get("anchor_search") or "").strip()
+            if hint:
+                raise ChannelDesignerError(
+                    f"No unique Song Alchemy anchor for “{hint}”. "
+                    "Click the matching row under the search box, or type the exact anchor name."
+                )
             raise ChannelDesignerError(
-                "Choose a Song Alchemy anchor from the search results (typing alone is not enough)."
+                "Choose a Song Alchemy anchor — search by name and click a result, "
+                "or type the exact anchor name if there is only one match."
             )
     elif ptype == "similar_seed":
-        programming["seed_id"] = (
-            (form.get("seed_id") or form.get("pick_seed") or "").strip()
-        )
+        programming["seed_id"] = _resolve_seed_id_from_form(form)
         if not programming["seed_id"]:
             raise ChannelDesignerError(
                 "Pick a seed track from search results or paste a track item id."
@@ -2515,6 +2570,19 @@ html:not(.dark-mode) .afm-shell .afm-filter-feedback {
   background: color-mix(in srgb, #ef4444 14%, transparent);
   border: 1px solid color-mix(in srgb, #ef4444 45%, transparent);
   color: var(--text, #fef2f2);
+}
+.afm-picker-selected {
+  margin: 0.5rem 0 0;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, #22c55e 12%, transparent);
+  border: 1px solid color-mix(in srgb, #22c55e 40%, transparent);
+}
+.afm-picker-selected[hidden] { display: none !important; }
+.afm-picker-clear {
+  margin-left: 0.5rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.8rem;
 }
 .afm-step2-status {
   margin: 0 0 1rem;
@@ -3748,9 +3816,11 @@ def _profile_from_values(values: dict[str, Any]) -> dict[str, Any]:
         programming["mood"] = (values.get("mood_name") or "").strip().lower()
         programming["centroid_index"] = _parse_centroid_index(values.get("centroid_index"))
     elif ptype == "alchemy_anchor":
-        programming["anchor_id"] = (values.get("anchor_id") or "").strip()
+        programming["anchor_id"] = _resolve_anchor_id_from_form(values)
     elif ptype == "similar_seed":
         programming["seed_id"] = (values.get("seed_id") or "").strip()
+        if not programming["seed_id"]:
+            programming["seed_id"] = _resolve_seed_id_from_form(values)
     slug = (
         (values.get("editing_slug") or values.get("slug") or values.get("draft_slug") or "").strip()
         or _slugify(values.get("name") or "")
@@ -4130,7 +4200,17 @@ def _programming_detail_from_values(values: dict[str, Any]) -> str:
         return f"{label}: {mood.title()} / cluster {cluster}"
     if ptype == "alchemy_anchor":
         anchor = (values.get("anchor_id") or "").strip()
-        return f"{label}: {anchor or 'pick an anchor from search'}"
+        if anchor:
+            name = anchor
+            for item in _anchors():
+                if str(item.get("id")) == anchor:
+                    name = str(item.get("name") or anchor)
+                    break
+            return f"{label}: {name} (id {anchor})"
+        search = (values.get("anchor_search") or "").strip()
+        if search:
+            return f"{label} — click a search result for “{search[:40]}” (not selected yet)"
+        return f"{label}: pick an anchor from search"
     if ptype == "similar_seed":
         seed = (values.get("seed_id") or "").strip()
         return f"{label}: {seed or 'pick a seed track from search'}"
@@ -4207,6 +4287,9 @@ def _programming_fields_html(
         if not anchor_display:
             anchor_display = selected_anchor_id
 
+    anchor_sel_class = "afm-picker-selected is-set" if selected_anchor_id else "afm-picker-selected"
+    anchor_sel_hidden = "" if selected_anchor_id else " hidden"
+
     return (
         "<section class='afm-panel afm-programming-panel afm-step-panel' id='step-programming'>"
         + _step_panel_heading(
@@ -4251,11 +4334,17 @@ def _programming_fields_html(
         + _field_label("Song Alchemy Anchor", mandatory=True)
         + f"<div class='afm-seed-search-field' id='afm-anchor-picker' "
         + f"data-anchor-search-url='{html.escape(anchor_search_url)}'>"
-        + f"<input id='anchor_search' class='afm-text-input' autocomplete='off' role='combobox' "
+        + f"<input name='anchor_search' id='anchor_search' class='afm-text-input' autocomplete='off' role='combobox' "
         + "aria-expanded='false' aria-controls='afm-anchor-results' "
         + f"placeholder='Anchor name…' value='{html.escape(anchor_display)}'>"
         + f"<input type='hidden' name='anchor_id' id='anchor_id' "
         + f"value='{html.escape(selected_anchor_id)}'>"
+        + f"<p id='afm-anchor-selected' class='{anchor_sel_class}'{anchor_sel_hidden}>"
+        + "<strong>Selected anchor:</strong> "
+        + f"<span id='afm-anchor-selected-name'>{html.escape(anchor_display or selected_anchor_id)}</span> "
+        + f"<span class='hint'>(id {html.escape(selected_anchor_id)})</span> "
+        + "<button type='button' class='afm-btn afm-btn-secondary afm-picker-clear' "
+        + "id='afm-anchor-clear'>Change</button></p>"
         + "<div id='afm-anchor-results' class='afm-seed-track-results'></div>"
         + "</div>"
         + "<p class='hint'>Song Alchemy anchors appear as you type. Pick one to set the station vibe source.</p></div>"
@@ -5248,7 +5337,13 @@ def _form_values_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
         values["mood_name"] = programming.get("mood", "")
         values["centroid_index"] = programming.get("centroid_index", "")
     elif ptype == "alchemy_anchor":
-        values["anchor_id"] = programming.get("anchor_id", "")
+        anchor_id = str(programming.get("anchor_id", "")).strip()
+        values["anchor_id"] = anchor_id
+        if anchor_id:
+            for anchor in _anchors():
+                if str(anchor.get("id")) == anchor_id:
+                    values["anchor_search"] = str(anchor.get("name") or anchor_id)
+                    break
     elif ptype == "similar_seed":
         values["seed_id"] = programming.get("seed_id", "")
     return values
@@ -5554,7 +5649,7 @@ def _page_script(
     const el = document.getElementById(targetId);
     if (!el) return;
     if (el.tagName === 'DETAILS') el.open = true;
-    const instantTargets = ['preview-results', 'step-deploy', 'afm-deploy-error-pinned', 'afm-deploy-status'];
+    const instantTargets = ['preview-results', 'step-deploy', 'step-programming', 'afm-deploy-error-pinned', 'afm-deploy-status'];
     const behavior = ({instant_scroll_flag} && instantTargets.includes(targetId)) ? 'instant' : 'smooth';
     const block = 'start';
     const run = () => {{
@@ -6293,6 +6388,9 @@ def _page_script(
     const input = document.getElementById('anchor_search');
     const results = document.getElementById('afm-anchor-results');
     const anchorIdField = document.getElementById('anchor_id');
+    const selectedPanel = document.getElementById('afm-anchor-selected');
+    const selectedNameEl = document.getElementById('afm-anchor-selected-name');
+    const clearBtn = document.getElementById('afm-anchor-clear');
     const typeSelect = document.getElementById('programming_type');
     if (!picker || !input || !results || !anchorIdField) return;
 
@@ -6300,6 +6398,7 @@ def _page_script(
     let debounceTimer = null;
     let activeIndex = -1;
     let currentAnchors = [];
+    let selectedAnchorName = (input.value || '').trim();
 
     function escapeHtml(text) {{
       return String(text || '')
@@ -6316,15 +6415,59 @@ def _page_script(
       currentAnchors = [];
     }}
 
+    function showSelected(anchor) {{
+      if (!selectedPanel) return;
+      const label = anchor.name || String(anchor.id);
+      if (selectedNameEl) selectedNameEl.textContent = label;
+      selectedPanel.classList.add('is-set');
+      selectedPanel.hidden = false;
+    }}
+
+    function clearSelected() {{
+      anchorIdField.value = '';
+      selectedAnchorName = '';
+      if (selectedPanel) {{
+        selectedPanel.classList.remove('is-set');
+        selectedPanel.hidden = true;
+      }}
+    }}
+
     function pickAnchor(anchor) {{
       if (!anchor || !anchor.id) return;
       anchorIdField.value = String(anchor.id);
-      input.value = anchor.name || String(anchor.id);
+      selectedAnchorName = anchor.name || String(anchor.id);
+      input.value = selectedAnchorName;
+      showSelected(anchor);
       if (typeSelect) {{
         typeSelect.value = 'alchemy_anchor';
         typeSelect.dispatchEvent(new Event('change', {{ bubbles: true }}));
       }}
       clearResults();
+    }}
+
+    function tryAutoPick(anchors, query) {{
+      if (!anchors.length) return false;
+      if (anchors.length === 1) {{
+        pickAnchor(anchors[0]);
+        return true;
+      }}
+      const q = (query || '').trim().toLowerCase();
+      if (!q) return false;
+      const exact = anchors.filter(
+        (anchor) => String(anchor.name || '').trim().toLowerCase() === q
+      );
+      if (exact.length === 1) {{
+        pickAnchor(exact[0]);
+        return true;
+      }}
+      const prefix = anchors.filter(
+        (anchor) => String(anchor.name || '').trim().toLowerCase().startsWith(q)
+      );
+      if (prefix.length === 1) {{
+        pickAnchor(prefix[0]);
+        return true;
+      }}
+      return false;
     }}
 
     function setActive(index) {{
@@ -6351,6 +6494,7 @@ def _page_script(
         }}
         return;
       }}
+      if (tryAutoPick(anchors, query)) return;
       const items = anchors.map((anchor, idx) => (
         '<li role="presentation">'
         + '<button type="button" class="afm-seed-track-pick" role="option" data-index="' + idx + '">'
@@ -6390,6 +6534,14 @@ def _page_script(
     }}
 
     input.addEventListener('input', () => {{
+      const typed = (input.value || '').trim();
+      if (
+        anchorIdField.value
+        && selectedAnchorName
+        && typed.toLowerCase() !== selectedAnchorName.toLowerCase()
+      ) {{
+        clearSelected();
+      }}
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => runSearch(input.value), 280);
     }});
@@ -6411,11 +6563,25 @@ def _page_script(
       }}
     }});
 
+    if (clearBtn) {{
+      clearBtn.addEventListener('click', () => {{
+        clearSelected();
+        input.value = '';
+        clearResults();
+        input.focus({{ preventScroll: true }});
+      }});
+    }}
+
     document.addEventListener('click', (event) => {{
       if (!picker.contains(event.target)) clearResults();
     }});
 
-    if ((input.value || '').trim()) runSearch(input.value);
+    if (anchorIdField.value && selectedAnchorName) {{
+      showSelected({{ id: anchorIdField.value, name: selectedAnchorName }});
+    }}
+    if ((input.value || '').trim() && !anchorIdField.value) {{
+      runSearch(input.value);
+    }}
   }})();
 
   (function initCsvTermPickers() {{
@@ -7106,7 +7272,7 @@ def home():
                         return jsonify({"ok": False, "error": str(exc)}), 400
                     error_anchor = {
                         "chat_preview": "chat-designer",
-                        "preview": "step-preview",
+                        "preview": "step-programming",
                         "push": "step-deploy",
                     }.get(action, "step-preview")
                     if action == "chat_preview":
@@ -7115,8 +7281,6 @@ def home():
                     flashes.add(str(exc), "error", anchor=error_anchor)
                     if action == "push":
                         flashes.add(str(exc), "error", anchor="global")
-                    if action == "preview":
-                        flashes.add(str(exc), "error", anchor="step-programming")
                     scroll_anchor = error_anchor
                 except Exception as exc:
                     if action == "chat_preview" and _is_chat_preview_ajax():
@@ -7150,9 +7314,8 @@ def home():
                         logger.exception("alchemy_fm_bridge preview failed slug=%s", slug)
                         _record_channel_error(slug, message)
                         values["preview_last_error"] = message
-                        flashes.add(message, "error", anchor="step-preview")
                         flashes.add(message, "error", anchor="step-programming")
-                        scroll_anchor = "step-preview"
+                        scroll_anchor = "step-programming"
                     else:
                         raise
 
@@ -7219,7 +7382,7 @@ def home():
         scroll_anchor = "preview-results"
     if scroll_to_bootstrap and not scroll_anchor:
         scroll_anchor = "bootstrap-opener"
-    if scroll_anchor in ("step-deploy", "preview-results"):
+    if scroll_anchor in ("step-deploy", "preview-results", "step-programming"):
         instant_scroll = True
     has_preview_tracks = len(preview_tracks) > 0
     preview_block = _preview_results_html(
