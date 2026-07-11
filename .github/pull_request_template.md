@@ -13,6 +13,7 @@
 
 <!-- How did you verify this? e.g. docker compose up, admin flow, station listen -->
 
+- [ ] `pytest` passes (see [docs/TESTING.md](docs/TESTING.md))
 - [ ] Tested locally (describe below)
 
 **Test notes:**
@@ -21,6 +22,7 @@
 
 - [ ] No secrets, `.env`, or personal paths in the diff
 - [ ] README or `docs/` updated if behavior or config changed
+- [ ] Tests added or updated for behavior changes
 - [ ] Static asset cache versions bumped (`?v=`) if `web/static/` changed
 - [ ] Focused diff — unrelated changes split out when possible
 

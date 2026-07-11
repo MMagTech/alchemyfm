@@ -1,0 +1,63 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  plugin-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install plugin test dependencies
+        run: pip install -r audiomuse-plugins/alchemy_fm_bridge/tests/requirements.txt
+
+      - name: Syntax check plugin
+        run: python3 -m py_compile audiomuse-plugins/alchemy_fm_bridge/__init__.py
+
+      - name: Run plugin tests
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:test@localhost:5432/postgres
+        run: pytest audiomuse-plugins/alchemy_fm_bridge/tests -v --tb=short
+
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: |
+          pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+
+      - name: Run backend tests
+        env:
+          DATABASE_URL: "sqlite:///:memory:"
+          DATA_DIR: /tmp/alchemyfm-test
+          ADMIN_PASSWORD: test-admin
+          KNOWLEDGE_FEATURE: "false"
+          ICECAST_DOCKER_RESTART: "false"
+        run: pytest backend/tests -v --tb=short
