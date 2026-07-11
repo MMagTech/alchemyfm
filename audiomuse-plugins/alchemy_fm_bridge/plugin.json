@@ -10,7 +10,7 @@
       "changelog": "Exclude Artists typeahead: library artists appear as you type; click to add comma-separated entries. Removes separate Search button and form round-trip.",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": "09c9d72cdd30eacd60aa8931590d82ce"
+      "checksum": "9c4d5375dd56534ed505938824a9040e"
     },
     {
       "version": "3.2.3",
@@ -27,6 +27,22 @@
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
       "checksum": "12e631dda930a2c0ff50f1f93f7cc52a"
+    },
+    {
+      "version": "3.2.1",
+      "min_core_version": "2.5.0",
+      "changelog": "In-app loading feedback for slow actions (Chat Designer, Preview, Deploy): spinner, status banner, and panel highlight instead of relying on the browser status bar.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "58f92a9d14a61b729b2bce92743014fd"
+    },
+    {
+      "version": "3.2.0",
+      "min_core_version": "2.5.0",
+      "changelog": "Contextual status messages: flashes appear next to the step or control that triggered them (preview, deploy, bootstrap, etc.) instead of only at the top of the page.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "4e55c2f8c8306fd56b5e9623913cb012"
     },
     {
       "version": "3.1.9",
