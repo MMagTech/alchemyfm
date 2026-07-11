@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.4"
+PLUGIN_VERSION = "3.2.5"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -3630,8 +3630,12 @@ def _bootstrap_fields_html(values: dict[str, Any], *, flash_html: str = "") -> s
 
 
 def _chat_designer_fields_html(values: dict[str, Any], *, flash_html: str = "") -> str:
+    keep_open = bool((values.get("chat_prompt") or "").strip()) or bool(
+        values.get("chat_designer_open")
+    )
+    open_attr = " open" if keep_open else ""
     return (
-        '<details class="afm-panel afm-collapsible-helper" id="chat-designer">'
+        f'<details class="afm-panel afm-collapsible-helper" id="chat-designer"{open_attr}>'
         "<summary>"
         '<span class="afm-helper-badge">Helper</span>'
         '<span><span class="afm-collapsible-title">Chat Designer</span>'
@@ -3656,7 +3660,8 @@ def _chat_designer_fields_html(values: dict[str, Any], *, flash_html: str = "") 
         + '<div class="afm-form-actions afm-form-actions-inline">'
         + "<button type='submit' name='action' value='chat_preview' formnovalidate "
         + 'class="afm-btn afm-btn-secondary" data-afm-loading="afm-chat-loading" '
-        + 'data-afm-loading-panel="chat-designer" data-loading-label="Generating…">'
+        + 'data-afm-loading-panel="chat-designer" data-afm-loading-no-scroll="true" '
+        + 'data-loading-label="Generating…">'
         "Generate Playlist Preview</button>"
         + "</div>"
         + f"<input type='hidden' name='design_notes' value='{html.escape(str(values.get('design_notes', '')))}'>"
@@ -4393,11 +4398,6 @@ def _page_script(
     if (!event.target.closest('.afm-select-wrap')) closeAllSelectMenus(null);
   }});
 
-  if (location.hash === '#designer') {{
-    const target = document.getElementById('designer');
-    if (target) target.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
-  }}
-
   const moodInput = document.getElementById('filter_mood_include');
   const moodHint = document.getElementById('afm-mood-inline-hint');
   function checkMoodTerms() {{
@@ -4473,9 +4473,12 @@ def _page_script(
       if (panel) {{
         if (panel.tagName === 'DETAILS') panel.open = true;
         panel.classList.add('is-working');
-        window.requestAnimationFrame(() => {{
-          panel.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
-        }});
+        const skipScroll = submitter.getAttribute('data-afm-loading-no-scroll') === 'true';
+        if (!skipScroll) {{
+          window.requestAnimationFrame(() => {{
+            panel.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+          }});
+        }}
       }}
       if (loading) loading.hidden = false;
 
@@ -4843,6 +4846,8 @@ def home():
 
                     if action == "chat_preview":
                         prompt = (request.form.get("chat_prompt") or "").strip()
+                        values["chat_designer_open"] = True
+                        values["chat_prompt"] = prompt
                         raw = _chat_playlist_tracks(prompt)
                         if not raw:
                             raise ChannelDesignerError("Chat designer returned no tracks.")
@@ -4872,7 +4877,7 @@ def home():
                             unfiltered_preview_ids=[t["item_id"] for t in unfiltered],
                         )
                         values["scroll_to_preview"] = True
-                        values["editing_slug"] = slug
+                        values["chat_designer_open"] = True
                         scroll_anchor = "preview-results"
                         flashes.add(
                             f"Chat preview — {len(preview_tracks)} tracks. Tweak programming/filters, then deploy.",
@@ -4973,6 +4978,9 @@ def home():
                         "preview": "step-preview",
                         "push": "step-deploy",
                     }.get(action, "step-preview")
+                    if action == "chat_preview":
+                        values["chat_designer_open"] = True
+                        values["chat_prompt"] = (request.form.get("chat_prompt") or "").strip()
                     flashes.add(str(exc), "error", anchor=error_anchor)
                     scroll_anchor = error_anchor
 
