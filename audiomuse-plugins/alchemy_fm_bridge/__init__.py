@@ -26,7 +26,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.24"
+PLUGIN_VERSION = "3.2.25"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -2516,6 +2516,16 @@ html:not(.dark-mode) .afm-shell .afm-filter-feedback {
   border: 1px solid color-mix(in srgb, #ef4444 45%, transparent);
   color: var(--text, #fef2f2);
 }
+.afm-step2-status {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--border, rgba(255,255,255,0.2)) 80%, transparent);
+  background: color-mix(in srgb, var(--accent, #6366f1) 8%, transparent);
+}
+.afm-step2-status .afm-step2-current { margin: 0 0 0.35rem; }
+.afm-step2-status .hint { margin: 0.25rem 0 0; }
+.afm-step2-status .afm-step2-warn { margin: 0.5rem 0 0; }
 .afm-deploy-readiness {
   margin: 0 0 1rem;
   padding: 0.85rem 1rem;
@@ -4104,6 +4114,69 @@ def _preview_results_html(
     )
 
 
+def _programming_detail_from_values(values: dict[str, Any]) -> str:
+    ptype = (values.get("programming_type") or "clap_query").strip()
+    label = PROGRAMMING_TYPE_LABELS.get(ptype, ptype.replace("_", " ").title())
+    if ptype in ("clap_query", "lyrics_query"):
+        query = (values.get("clap_query") if ptype == "clap_query" else values.get("lyrics_query") or "").strip()
+        if len(query) < 3:
+            return f"{label} — not set (need at least 3 characters)"
+        return f"{label}: {query[:80]}"
+    if ptype == "mood_centroid":
+        mood = (values.get("mood_name") or "").strip()
+        cluster = values.get("centroid_index")
+        if not mood or _parse_centroid_index(cluster) is None:
+            return f"{label} — choose mood and cluster"
+        return f"{label}: {mood.title()} / cluster {cluster}"
+    if ptype == "alchemy_anchor":
+        anchor = (values.get("anchor_id") or "").strip()
+        return f"{label}: {anchor or 'pick an anchor from search'}"
+    if ptype == "similar_seed":
+        seed = (values.get("seed_id") or "").strip()
+        return f"{label}: {seed or 'pick a seed track from search'}"
+    return label
+
+
+def _step2_programming_status_html(values: dict[str, Any]) -> str:
+    slug = _channel_slug_from_values(values)
+    detail = _programming_detail_from_values(values)
+    incomplete = _programming_incomplete(_profile_from_values(values).get("programming") or {})
+    parts = [f"<p class='afm-step2-current'><strong>Current:</strong> {html.escape(detail)}</p>"]
+    loaded = _load_saved_channel(slug) if slug else None
+    if loaded:
+        saved_profile, preview_ids = loaded
+        saved_prog = saved_profile.get("programming") or {}
+        saved_detail = _programming_detail_from_values(_form_values_from_profile(saved_profile))
+        count = len(saved_profile.get("last_unfiltered_preview_ids") or preview_ids or [])
+        if count:
+            parts.append(
+                f"<p class='hint afm-step2-saved'>Last preview ({count} tracks): "
+                f"{html.escape(saved_detail)}</p>"
+            )
+        if incomplete and count:
+            parts.append(
+                "<p class='afm-flash afm-flash-warn afm-step2-warn'>Step 2 fields look empty in the form — "
+                "deploy will use your last preview programming.</p>"
+            )
+        elif not incomplete and loaded and _programming_changed(
+            _profile_from_values(values), saved_profile
+        ):
+            parts.append(
+                "<p class='afm-flash afm-flash-warn afm-step2-warn'>Step 2 changed since last preview — "
+                "run Step 3 Preview again before deploy.</p>"
+            )
+    elif incomplete:
+        parts.append(
+            "<p class='afm-flash afm-flash-error afm-step2-warn'>Step 2 is incomplete. "
+            "Fill in the active programming type, then run Step 3 Preview.</p>"
+        )
+    return (
+        '<div id="afm-step2-status" class="afm-step2-status" role="status">'
+        + "".join(parts)
+        + "</div>"
+    )
+
+
 def _programming_fields_html(
     values: dict[str, Any],
     *,
@@ -4144,6 +4217,7 @@ def _programming_fields_html(
         + _programming_explainer_html()
         + flash_html
         + step2_warning_html
+        + _step2_programming_status_html(values)
         + "<div class='afm-field'>"
         + _field_label("Programming Type", mandatory=True)
         + f"<select name='programming_type' id='programming_type' class='afm-select'>"
@@ -4167,7 +4241,8 @@ def _programming_fields_html(
         + "</select></div>"
         + "<div>"
         + _field_label("Cluster", mandatory=True)
-        + "<select name='centroid_index' id='centroid_index' class='afm-select'>"
+        + "<select name='centroid_index' id='centroid_index' class='afm-select'"
+        + f" data-initial-value='{html.escape(str(values.get('centroid_index', '')))}'>"
         + centroid_opts
         + "</select></div>"
         + "<p class='hint' style='grid-column:1/-1;'>Each mood has sub-clusters from your library analysis — pick one that matches "
@@ -5295,9 +5370,9 @@ def _page_script(
       const show = key === t;
       el.hidden = !show;
       el.style.display = show ? '' : 'none';
-      el.querySelectorAll('input, select, textarea').forEach((input) => {{
-        input.disabled = !show;
-      }});
+      /* Do NOT disable hidden fields — disabled inputs are omitted from POST and
+         Step 2 programming was lost on deploy. Hidden inactive fields are ignored
+         server-side via programming_type. */
     }});
   }}
   function clusterLabel(meta, idx) {{
@@ -5317,9 +5392,10 @@ def _page_script(
     const clusterSelect = document.getElementById('centroid_index');
     if (!moodSelect || !clusterSelect) return;
     const mood = moodSelect.value;
-    const prev = clusterSelect.value;
+    const prev = clusterSelect.value || clusterSelect.getAttribute('data-initial-value') || '';
     const list = moodData[mood];
     if (!Array.isArray(list)) {{
+      if (clusterSelect.options.length > 1 && prev) return;
       if (clusterSelect.options.length > 1) return;
       clusterSelect.innerHTML = '<option value="">Choose cluster…</option>';
       return;
@@ -5334,6 +5410,13 @@ def _page_script(
       if (clusterIdx === prev) opt.selected = true;
       clusterSelect.appendChild(opt);
     }});
+    if (prev && clusterSelect.value !== prev) {{
+      const fallback = document.createElement('option');
+      fallback.value = prev;
+      fallback.textContent = 'Cluster ' + prev + ' (saved)';
+      fallback.selected = true;
+      clusterSelect.appendChild(fallback);
+    }}
   }}
   if (typeSelect) {{
     typeSelect.addEventListener('change', syncType);
@@ -6898,6 +6981,12 @@ def home():
                     slug = profile["station"]["slug"]
                     if for_deploy:
                         profile = _merge_saved_programming_if_needed(profile, slug)
+                        # Step 2: if form still incomplete after merge, fail with clear message
+                        if _programming_incomplete(profile.get("programming") or {}):
+                            raise ChannelDesignerError(
+                                "Step 2 programming is incomplete. Fill in the active programming type "
+                                "(sonic vibe, mood cluster, seed track, etc.) or run Step 3 Preview first."
+                            )
                     values = _form_values_from_profile(profile)
                     if (request.form.get("editing_slug") or "").strip():
                         values["editing_slug"] = request.form.get("editing_slug").strip()
