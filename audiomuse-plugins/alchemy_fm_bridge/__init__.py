@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.5"
+PLUGIN_VERSION = "3.2.6"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -2208,6 +2208,17 @@ html:not(.dark-mode) .afm-shell .afm-filter-feedback {
   border-color: color-mix(in srgb, var(--accent, #6366f1) 55%, transparent);
   animation: afm-panel-pulse 1.6s ease-in-out infinite;
 }
+.afm-shell.is-busy {
+  cursor: progress;
+}
+.afm-shell.is-busy .afm-designer-form input,
+.afm-shell.is-busy .afm-designer-form textarea,
+.afm-shell.is-busy .afm-designer-form select,
+.afm-shell.is-busy .afm-designer-form button:not([data-afm-ajax-preview]) {
+  pointer-events: none;
+  opacity: 0.72;
+}
+#afm-chat-error[hidden] { display: none !important; }
 @keyframes afm-panel-pulse {
   0%, 100% {
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #6366f1) 22%, transparent);
@@ -3657,11 +3668,12 @@ def _chat_designer_fields_html(values: dict[str, Any], *, flash_html: str = "") 
             title="Generating playlist preview…",
             detail="AudioMuse chat is running — often 30–90 seconds. Stay on this page.",
         )
+        + '<p id="afm-chat-error" class="afm-flash afm-flash-error" hidden role="alert"></p>'
         + '<div class="afm-form-actions afm-form-actions-inline">'
         + "<button type='submit' name='action' value='chat_preview' formnovalidate "
         + 'class="afm-btn afm-btn-secondary" data-afm-loading="afm-chat-loading" '
         + 'data-afm-loading-panel="chat-designer" data-afm-loading-no-scroll="true" '
-        + 'data-loading-label="Generating…">'
+        + 'data-afm-ajax-preview="true" data-loading-label="Generating…">'
         "Generate Playlist Preview</button>"
         + "</div>"
         + f"<input type='hidden' name='design_notes' value='{html.escape(str(values.get('design_notes', '')))}'>"
@@ -4216,6 +4228,25 @@ def _form_values_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
     return values
 
 
+def _is_chat_preview_ajax() -> bool:
+    return request.headers.get("X-AFM-Chat-Preview") == "1"
+
+
+def _apply_draft_channel(
+    draft_slug: str,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    loaded = _load_saved_channel(draft_slug)
+    if not loaded:
+        raise ChannelDesignerError(f"No saved draft found for '{draft_slug}'.")
+    profile, preview_ids = loaded
+    values = _form_values_from_profile(profile)
+    values["chat_prompt"] = profile.get("design_notes") or values.get("chat_prompt", "")
+    values["chat_designer_open"] = True
+    values["slug"] = draft_slug
+    preview_tracks = _preview_tracks_from_ids(preview_ids)
+    return values, preview_tracks
+
+
 def _page_script(
     mood_centroids: dict[str, Any] | None = None,
     mood_labels: list[str] | None = None,
@@ -4223,6 +4254,7 @@ def _page_script(
     scroll_anchor: str = "",
     scroll_to_preview: bool = False,
     scroll_to_bootstrap: bool = False,
+    instant_scroll: bool = False,
 ) -> str:
     mood_json = json.dumps(mood_centroids or {})
     mood_labels_json = json.dumps(mood_labels or [])
@@ -4231,6 +4263,7 @@ def _page_script(
     if scroll_to_bootstrap and not scroll_anchor:
         scroll_anchor = "bootstrap-opener"
     scroll_anchor_json = json.dumps(scroll_anchor or "")
+    instant_scroll_flag = "true" if instant_scroll else "false"
     return f"""
 <script type="application/json" id="mood-centroids-data">{mood_json}</script>
 <script type="application/json" id="mood-labels-data">{mood_labels_json}</script>
@@ -4421,8 +4454,9 @@ def _page_script(
     const el = document.getElementById(targetId);
     if (!el) return;
     if (el.tagName === 'DETAILS') el.open = true;
+    const behavior = ({instant_scroll_flag} && targetId === 'preview-results') ? 'instant' : 'smooth';
     window.requestAnimationFrame(() => {{
-      el.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+      el.scrollIntoView({{ behavior: behavior, block: 'start' }});
     }});
   }}
 
@@ -4459,39 +4493,120 @@ def _page_script(
   }}
 
   const designerForm = document.getElementById('afm-designer-form');
-  if (designerForm) {{
-    designerForm.addEventListener('submit', (event) => {{
-      const submitter = event.submitter;
-      if (!submitter || submitter.disabled) return;
-      const loadingId = submitter.getAttribute('data-afm-loading');
-      if (!loadingId) return;
+  const afmShell = document.querySelector('.afm-shell');
 
-      const loading = document.getElementById(loadingId);
-      const panelId = submitter.getAttribute('data-afm-loading-panel');
-      const panel = panelId ? document.getElementById(panelId) : null;
+  function showAfmActionLoading(submitter) {{
+    const loadingId = submitter.getAttribute('data-afm-loading');
+    const loading = loadingId ? document.getElementById(loadingId) : null;
+    const panelId = submitter.getAttribute('data-afm-loading-panel');
+    const panel = panelId ? document.getElementById(panelId) : null;
 
-      if (panel) {{
-        if (panel.tagName === 'DETAILS') panel.open = true;
-        panel.classList.add('is-working');
-        const skipScroll = submitter.getAttribute('data-afm-loading-no-scroll') === 'true';
-        if (!skipScroll) {{
-          window.requestAnimationFrame(() => {{
-            panel.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
-          }});
-        }}
+    if (panel) {{
+      if (panel.tagName === 'DETAILS') panel.open = true;
+      panel.classList.add('is-working');
+      const skipScroll = submitter.getAttribute('data-afm-loading-no-scroll') === 'true';
+      if (!skipScroll) {{
+        window.requestAnimationFrame(() => {{
+          panel.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+        }});
       }}
-      if (loading) loading.hidden = false;
+    }}
+    if (loading) loading.hidden = false;
 
-      const loadingLabel = submitter.getAttribute('data-loading-label') || 'Working…';
-      submitter.dataset.originalLabel = (submitter.textContent || '').trim();
-      submitter.textContent = loadingLabel;
-      submitter.classList.add('is-loading');
-      submitter.disabled = true;
+    const loadingLabel = submitter.getAttribute('data-loading-label') || 'Working…';
+    submitter.dataset.originalLabel = (submitter.textContent || '').trim();
+    submitter.textContent = loadingLabel;
+    submitter.classList.add('is-loading');
+    submitter.disabled = true;
 
+    if (designerForm) {{
       designerForm.querySelectorAll('button[type="submit"]').forEach((btn) => {{
         if (btn !== submitter) btn.disabled = true;
       }});
       designerForm.setAttribute('aria-busy', 'true');
+    }}
+    if (afmShell) afmShell.classList.add('is-busy');
+  }}
+
+  function resetAfmActionLoading(submitter) {{
+    const loadingId = submitter.getAttribute('data-afm-loading');
+    const loading = loadingId ? document.getElementById(loadingId) : null;
+    const panelId = submitter.getAttribute('data-afm-loading-panel');
+    const panel = panelId ? document.getElementById(panelId) : null;
+    if (loading) loading.hidden = true;
+    if (panel) panel.classList.remove('is-working');
+    if (submitter.dataset.originalLabel) {{
+      submitter.textContent = submitter.dataset.originalLabel;
+    }}
+    submitter.classList.remove('is-loading');
+    submitter.disabled = false;
+    if (designerForm) {{
+      designerForm.querySelectorAll('button[type="submit"]').forEach((btn) => {{
+        btn.disabled = false;
+      }});
+      designerForm.removeAttribute('aria-busy');
+    }}
+    if (afmShell) afmShell.classList.remove('is-busy');
+  }}
+
+  async function runChatPreviewAjax(submitter) {{
+    const chatError = document.getElementById('afm-chat-error');
+    if (chatError) {{
+      chatError.hidden = true;
+      chatError.textContent = '';
+    }}
+    showAfmActionLoading(submitter);
+    const formData = new FormData(designerForm);
+    formData.set('action', 'chat_preview');
+    try {{
+      const resp = await fetch(designerForm.action || window.location.href, {{
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin',
+        headers: {{
+          'X-AFM-Chat-Preview': '1',
+          'Accept': 'application/json',
+        }},
+      }});
+      let data = null;
+      try {{
+        data = await resp.json();
+      }} catch (parseErr) {{
+        throw new Error('Chat preview returned an unexpected response.');
+      }}
+      if (!resp.ok || !data || !data.ok) {{
+        throw new Error((data && data.error) || 'Chat preview failed.');
+      }}
+      if (data.redirect) {{
+        window.location.assign(data.redirect);
+        return;
+      }}
+      throw new Error('Chat preview succeeded but no redirect was provided.');
+    }} catch (err) {{
+      resetAfmActionLoading(submitter);
+      if (chatError) {{
+        chatError.textContent = err && err.message ? err.message : 'Chat preview failed.';
+        chatError.hidden = false;
+      }}
+    }}
+  }}
+
+  if (designerForm) {{
+    designerForm.addEventListener('submit', (event) => {{
+      const submitter = event.submitter;
+      if (!submitter || submitter.disabled) return;
+      if (
+        submitter.getAttribute('data-afm-ajax-preview') === 'true'
+        && submitter.name === 'action'
+        && submitter.value === 'chat_preview'
+      ) {{
+        event.preventDefault();
+        runChatPreviewAjax(submitter);
+        return;
+      }}
+      const loadingId = submitter.getAttribute('data-afm-loading');
+      if (!loadingId) return;
+      showAfmActionLoading(submitter);
     }});
   }}
 
@@ -4649,13 +4764,33 @@ def home():
         "bootstrap_queue": True,
     }
 
+    instant_scroll = False
+
     if request.method == "GET":
         edit_slug = (request.args.get("edit") or "").strip()
+        draft_slug = (request.args.get("draft") or "").strip()
         if edit_slug:
             try:
                 values, preview_tracks, channel_name = _apply_loaded_channel(edit_slug)
             except ChannelDesignerError as exc:
                 flashes.add(str(exc), "error")
+        elif draft_slug:
+            try:
+                values, preview_tracks = _apply_draft_channel(draft_slug)
+                scroll_anchor = "preview-results"
+                values["scroll_to_preview"] = True
+                instant_scroll = bool(request.args.get("chat_preview_ok"))
+                if request.args.get("chat_preview_ok"):
+                    flashes.add(
+                        f"Chat preview — {len(preview_tracks)} tracks. "
+                        "Tweak programming/filters, then deploy.",
+                        "ok",
+                        anchor="preview-results",
+                    )
+            except ChannelDesignerError as exc:
+                flashes.add(str(exc), "error", anchor="chat-designer")
+                scroll_anchor = "chat-designer"
+                values["chat_designer_open"] = True
         elif request.args.get("new"):
             flashes.add(
                 "New Channel — Design Programming, Preview Tracks, Then Deploy.",
@@ -4866,6 +5001,7 @@ def home():
                                 )
                         values = _form_values_from_profile(profile)
                         values["chat_prompt"] = prompt
+                        slug = profile["station"]["slug"]
                         unfiltered = enrich_preview(raw)
                         preview_tracks = apply_track_filters(unfiltered, profile)
                         _apply_filter_feedback(values, profile, unfiltered, preview_tracks)
@@ -4876,6 +5012,21 @@ def home():
                             preview_ids=item_ids,
                             unfiltered_preview_ids=[t["item_id"] for t in unfiltered],
                         )
+                        if _is_chat_preview_ajax():
+                            return jsonify(
+                                {
+                                    "ok": True,
+                                    "track_count": len(preview_tracks),
+                                    "redirect": (
+                                        url_for(
+                                            "alchemy_fm_bridge.home",
+                                            draft=slug,
+                                            chat_preview_ok=1,
+                                        )
+                                        + "#preview-results"
+                                    ),
+                                }
+                            )
                         values["scroll_to_preview"] = True
                         values["chat_designer_open"] = True
                         scroll_anchor = "preview-results"
@@ -4973,6 +5124,8 @@ def home():
                         or _slugify(request.form.get("name") or "channel")
                     ).strip()
                     _record_channel_error(slug, str(exc))
+                    if action == "chat_preview" and _is_chat_preview_ajax():
+                        return jsonify({"ok": False, "error": str(exc)}), 400
                     error_anchor = {
                         "chat_preview": "chat-designer",
                         "preview": "step-preview",
@@ -5078,7 +5231,7 @@ def home():
         f"{flashes.html_for('global')}"
         f"{main_flow}"
         "</div>"
-        f"{_page_script(_mood_centroids_data(), mood_labels, scroll_anchor=scroll_anchor, scroll_to_preview=scroll_to_preview, scroll_to_bootstrap=scroll_to_bootstrap)}"
+        f"{_page_script(_mood_centroids_data(), mood_labels, scroll_anchor=scroll_anchor, scroll_to_preview=scroll_to_preview, scroll_to_bootstrap=scroll_to_bootstrap, instant_scroll=instant_scroll)}"
     )
     return render_page(body, title="Alchemy FM Channel Designer")
 

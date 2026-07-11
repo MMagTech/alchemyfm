@@ -5,6 +5,14 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy — preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "3.2.6",
+      "min_core_version": "2.5.0",
+      "changelog": "Chat preview uses AJAX so the generating banner stays visible for the full LLM wait, then redirects to Preview Results without snapping to the top.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "75dda5f0ea852ede932064b4485d84dc"
+    },
+    {
       "version": "3.2.5",
       "min_core_version": "2.5.0",
       "changelog": "Fix Chat Designer snapping closed to top after Generate Playlist Preview: stay in draft designer mode, keep panel open, no pre-submit scroll jump.",
