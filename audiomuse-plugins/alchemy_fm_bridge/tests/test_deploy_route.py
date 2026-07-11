@@ -80,8 +80,11 @@ class TestDeployRoute:
         assert "channel name is required" in body.lower()
 
     def test_push_deploy_requires_tracks(self, client, audiomuse_mocks, pg_db):
-        with patch.object(bridge, "preview_programming", return_value=[]):
-            resp = client.post("/", data=_push_form())
+        mock_client = patch.object(bridge, "_client")
+        with mock_client as client_factory:
+            client_factory.return_value.verify_deploy_ready.return_value = None
+            with patch.object(bridge, "preview_programming", return_value=[]):
+                resp = client.post("/", data=_push_form())
         assert resp.status_code == 200
         body = resp.get_data(as_text=True)
         assert "afm-flash-error" in body

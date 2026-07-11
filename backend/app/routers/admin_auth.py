@@ -11,6 +11,7 @@ from app.auth import (
     set_session_cookie,
     validate_admin_credentials,
 )
+from app.services.deploy_check import check_deploy_dependencies
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -51,3 +52,9 @@ def admin_logout(response: Response, _: str = Depends(require_admin)):
 @router.get("/me")
 def admin_me(username: str = Depends(require_admin)):
     return {"username": username, "session_max_age_sec": SESSION_MAX_AGE}
+
+
+@router.get("/deploy-check")
+async def admin_deploy_check(_: str = Depends(require_admin)):
+    """Verify AudioMuse + Navidrome — required for plugin deploy/bootstrap."""
+    return await check_deploy_dependencies()

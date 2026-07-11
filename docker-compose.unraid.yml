@@ -26,7 +26,7 @@ services:
     environment:
       DATABASE_URL: sqlite:////data/radio.db
       DATA_DIR: /data
-      AUDIOMUSE_URL: ${AUDIOMUSE_URL:-http://host.docker.internal:8000}
+      AUDIOMUSE_URL: ${AUDIOMUSE_URL:-http://host.docker.internal:8387}
       AUDIOMUSE_API_TOKEN: ${AUDIOMUSE_API_TOKEN:-}
       NAVIDROME_URL: ${NAVIDROME_URL:-http://host.docker.internal:4533}
       NAVIDROME_USER: ${NAVIDROME_USER:-}

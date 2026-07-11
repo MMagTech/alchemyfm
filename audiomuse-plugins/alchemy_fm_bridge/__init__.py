@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.16"
+PLUGIN_VERSION = "3.2.17"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -138,7 +138,34 @@ class AlchemyFmClient:
                 f"Could not reach Alchemy FM at {self.base_url}: {exc.reason}"
             ) from exc
 
+    def verify_deploy_ready(self) -> None:
+        """Ensure Alchemy FM can reach AudioMuse + Navidrome (bootstrap will fail otherwise)."""
+        try:
+            check = self._request("GET", "/api/admin/deploy-check")
+        except ChannelDesignerError as exc:
+            if exc.status == 404:
+                return
+            raise
+        if not isinstance(check, dict) or check.get("ok"):
+            return
+        parts: list[str] = []
+        audiomuse = check.get("audiomuse") if isinstance(check.get("audiomuse"), dict) else {}
+        navidrome = check.get("navidrome") if isinstance(check.get("navidrome"), dict) else {}
+        if not audiomuse.get("ok") and audiomuse.get("error"):
+            parts.append(str(audiomuse["error"]))
+        if not navidrome.get("ok") and navidrome.get("error"):
+            parts.append(str(navidrome["error"]))
+        hint = (
+            "Use the Alchemy FM LAN URL in plugin settings (http://192.168.x.x:PORT), "
+            "not the public Cloudflare URL."
+        )
+        body = "\n".join(parts) if parts else "AudioMuse or Navidrome is not reachable from Alchemy FM."
+        raise ChannelDesignerError(
+            f"Alchemy FM is not ready to deploy stations.\n{body}\n{hint}"
+        )
+
     def test_connection(self) -> list[dict[str, Any]]:
+        self.verify_deploy_ready()
         stations = self._request("GET", "/api/admin/stations")
         if not isinstance(stations, list):
             raise ChannelDesignerError("Unexpected response from /api/admin/stations")
@@ -6320,6 +6347,7 @@ def home():
                             + "#preview-results"
                         )
                     elif action == "push":
+                        _client().verify_deploy_ready()
                         unfiltered = _merged_programming_tracks_unfiltered(profile, slug)
                         preview_tracks = apply_track_filters(unfiltered, profile)
                         if not preview_tracks:
