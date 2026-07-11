@@ -79,7 +79,25 @@ Backend tests pin admin credentials in `backend/tests/conftest.py` so a develope
 
 ## CI
 
-Workflow: [`.github/workflows/test.yml`](../.github/workflows/test.yml)
+Workflows:
+
+| Workflow | Trigger | What it does |
+|----------|---------|--------------|
+| [`.github/workflows/test.yml`](../.github/workflows/test.yml) | PR + push to `master` | Plugin + backend pytest |
+| same — **release-plugin** job | push to `master` after tests pass | Rebuilds `alchemy_fm_bridge.zip`, bumps `plugin.json` + `PLUGIN_VERSION` if source changed, commits back to `master` |
+| [`.github/workflows/docker-publish.yml`](../.github/workflows/docker-publish.yml) | After **Test** succeeds on `master`, tags `v*`, or manual | Publishes backend/liquidsoap/icecast Docker images to GHCR (skips when only plugin files changed) |
+
+**Order on push to `master`:** Test → (if green) release-plugin + Publish Docker images.
+
+Docker images are **not** rebuilt for plugin-only commits. The plugin catalog zip **is** updated automatically when `__init__.py` changes.
+
+Local plugin release (same script as CI):
+
+```bash
+python scripts/release_plugin.py "Your changelog sentence."
+```
+
+Plugin + backend jobs:
 
 - **plugin-tests** job: Postgres service container + plugin suite
 - **backend-tests** job: SQLite in-memory + backend suite
