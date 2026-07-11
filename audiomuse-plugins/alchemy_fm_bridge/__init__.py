@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.1.8"
+PLUGIN_VERSION = "3.1.9"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -3040,6 +3040,7 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
             "Programming",
             "Defines what music fits this station. Alchemy FM re-runs this query when the queue needs more tracks.",
         )
+        + _programming_explainer_html()
         + "<div class='afm-field'>"
         + _field_label("Programming Type", mandatory=True)
         + f"<select name='programming_type' id='programming_type' class='afm-select'>"
@@ -3099,6 +3100,73 @@ def _collapsible_explainer_html(body: str) -> str:
         "<summary>Explanation</summary>"
         f"<div class='afm-collapsible-explainer-body afm-filter-explainer'>{body}</div>"
         "</details>"
+    )
+
+
+def _station_identity_explainer_html() -> str:
+    return _collapsible_explainer_html(
+        "<p><strong>What this controls:</strong> Listener-facing labels on Alchemy FM — not which tracks play. "
+        "Encoding, color themes, and heart playlist are in <strong>Alchemy FM Admin</strong>.</p>"
+        "<p><strong>Channel Name:</strong> Display name on the station picker and tune-in page. "
+        "<strong>Required before deploy</strong> — helpers and preview can suggest a draft name first.</p>"
+        "<p><strong>Slug:</strong> Permanent id for this station (URL-safe). Auto-filled from the name; "
+        "<strong>fixed after first deploy</strong> — pick carefully on a new channel.</p>"
+        "<p><strong>Description:</strong> Short homepage blurb (120 characters max).</p>"
+        "<p><strong>Icecast Mount:</strong> Stream path listeners tune to, e.g. <code>/yachtrock</code>. "
+        "Defaults from slug if left blank.</p>"
+    )
+
+
+def _programming_explainer_html() -> str:
+    return _collapsible_explainer_html(
+        "<p><strong>What this controls:</strong> The core music identity of the station. Alchemy FM "
+        "<strong>re-runs this query</strong> when the on-air queue needs more tracks (with Step 5 playback rules).</p>"
+        "<p><strong>Sonic Vibe (CLAP):</strong> Describe how tracks <em>sound</em> — not lyrics.</p>"
+        "<p><strong>Lyrics Theme:</strong> Search by meaning, story, or theme in lyrics.</p>"
+        "<p><strong>Mood Cluster:</strong> Pick from your library analysis — mood + sub-cluster.</p>"
+        "<p><strong>Song Alchemy Anchor:</strong> Reuse an existing anchor playlist as the vibe source.</p>"
+        "<p><strong>Similar to Seed Track:</strong> Build around sonic neighbors of one library track.</p>"
+        "<p><strong>Preview Size:</strong> How many tracks to fetch per preview run (Step 3).</p>"
+    )
+
+
+def _preview_explainer_html() -> str:
+    return _collapsible_explainer_html(
+        "<p><strong>What this does:</strong> Runs your Step 2 query in AudioMuse and shows matching tracks "
+        "in <strong>Preview Results</strong> below the form. Nothing goes on air until Step 6 deploy.</p>"
+        "<p><strong>Filters apply here:</strong> If you set optional filters, they trim the preview list. "
+        "Tweak filters → preview again → use jump buttons to move between Step 3, Filters, and results.</p>"
+        "<p><strong>Living pool:</strong> If living is enabled, preview also merges tracks already in this "
+        "channel's AudioMuse pool.</p>"
+        "<p><strong>Before deploy:</strong> Review tempo, energy, mood, and genre in the table. Fix programming "
+        "or filters if the list is empty or off-vibe.</p>"
+    )
+
+
+def _bootstrap_explainer_html() -> str:
+    return _collapsible_explainer_html(
+        "<p><strong>What this controls:</strong> A one-time <strong>cold-start opener</strong> — a Navidrome "
+        "playlist that plays first when you deploy. After the opener, <strong>Step 2 programming</strong> "
+        "takes over for all ongoing playback.</p>"
+        "<p><strong>Search:</strong> Matches <strong>playlist title only</strong> (not tracks inside). "
+        "Pick a result or paste a playlist id from Navidrome.</p>"
+        "<p><strong>Verify:</strong> Confirms AudioMuse can resolve the playlist. Deploy blocks if verification fails.</p>"
+        "<p><strong>Opener Track Limit:</strong> Max tracks to import from the opener (rest of queue comes from programming).</p>"
+        "<p><strong>Skip on first try:</strong> Leave unchecked until your Step 3 preview looks right.</p>"
+    )
+
+
+def _deploy_explainer_html() -> str:
+    return _collapsible_explainer_html(
+        "<p><strong>What this does:</strong> Creates or updates the station on Alchemy FM with your saved "
+        "programming, playback rules, and optional bootstrap/living settings.</p>"
+        "<p><strong>Start On Air After Push:</strong> Enables broadcast immediately if checked.</p>"
+        "<p><strong>Bootstrap Queue Immediately:</strong> Fills the play queue on deploy (programming batch + "
+        "optional opener).</p>"
+        "<p><strong>Required before deploy:</strong> Channel name (Step 1), working programming (Step 2), "
+        "and a successful preview with at least some tracks.</p>"
+        "<p><strong>Not here:</strong> Stream encoding, station artwork themes, and global admin settings — "
+        "use <strong>Alchemy FM Admin</strong> after deploy.</p>"
     )
 
 
@@ -3279,7 +3347,7 @@ def _bootstrap_fields_html(values: dict[str, Any]) -> str:
             "A Navidrome playlist that plays first at deploy only. After that, Step 2 programming takes over.",
             optional=True,
         )
-        + "<p class='hint'>Search by <strong>playlist title</strong> (not track contents). Pick a result or paste an id and click Verify.</p>"
+        + _bootstrap_explainer_html()
         + "<div class='afm-check-group'>"
         + "<label class='afm-check-label'><input type='checkbox' name='bootstrap_enabled'"
         + f"{' checked' if bootstrap_enabled else ''}> Use Navidrome Playlist Opener</label>"
@@ -3434,8 +3502,8 @@ def _living_fields_html(values: dict[str, Any]) -> str:
             optional=True,
         )
         + _living_explainer_html()
-        f"{pool_note}"
-        "<div class='afm-check-group'>"
+        + f"{pool_note}"
+        + "<div class='afm-check-group'>"
         "<label class='afm-check-label'><input type='checkbox' name='living_enabled'"
         f"{' checked' if living_enabled else ''}> Enable Living Channel</label>"
         "<label class='afm-check-label'><input type='checkbox' name='living_auto_add'"
@@ -3486,6 +3554,7 @@ def _station_identity_fields_html(values: dict[str, Any]) -> str:
             "Station Identity",
             "What listeners see on Alchemy FM — name, URL mount, and homepage description. Does not affect track selection.",
         )
+        + _station_identity_explainer_html()
         + "<div class='afm-field'>"
         + _field_label("Channel Name", mandatory=True)
         + f"<input name='name' required value='{html.escape(str(values.get('name', '')))}'></div>"
@@ -3518,6 +3587,7 @@ def _preview_step_html(*, show_results_jump: bool = False) -> str:
             "Preview Programming",
             "Runs your Step 2 query in AudioMuse and shows matching tracks below. Nothing goes on air until Step 6 deploy.",
         )
+        + _preview_explainer_html()
         + "<div class='afm-form-actions afm-form-actions-inline'>"
         + "<button type='submit' name='action' value='preview' class='afm-btn afm-btn-primary'>"
         "Preview Programming</button>"
@@ -3563,6 +3633,7 @@ def _deploy_actions_fields_html(values: dict[str, Any]) -> str:
             "Deploy to Alchemy FM",
             "Creates or updates the station and optionally fills the play queue. Encoding and themes are in Alchemy FM Admin.",
         )
+        + _deploy_explainer_html()
         + "<div class='afm-check-group'>"
         + "<label class='afm-check-label'><input type='checkbox' name='enabled'"
         + f"{' checked' if values.get('enabled', True) else ''}> Start On Air After Push</label>"
