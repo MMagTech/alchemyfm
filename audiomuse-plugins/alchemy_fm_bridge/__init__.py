@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.1.9"
+PLUGIN_VERSION = "3.2.2"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1315,6 +1315,7 @@ def _save_channel(
     profile: dict[str, Any],
     *,
     preview_ids: list[str],
+    unfiltered_preview_ids: list[str] | None = None,
     station: dict[str, Any] | None = None,
     action: str = "",
 ) -> None:
@@ -1323,6 +1324,9 @@ def _save_channel(
     channels = table("channels")
     slug = profile["station"]["slug"]
     anchor_id = profile.get("anchor_id")
+    if unfiltered_preview_ids:
+        profile = dict(profile)
+        profile["last_unfiltered_preview_ids"] = [str(i) for i in unfiltered_preview_ids if i]
     pushed_at = "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')" if action else "NULL"
     cur.execute(
         "INSERT INTO "
@@ -1390,6 +1394,69 @@ def _load_saved_channel(slug: str) -> tuple[dict[str, Any], list[str]] | None:
     except json.JSONDecodeError:
         return None
     return profile, [str(i) for i in preview_ids if i]
+
+
+def _channel_slug_from_values(values: dict[str, Any], form: Any | None = None) -> str:
+    slug = (values.get("editing_slug") or values.get("slug") or "").strip()
+    if not slug and form is not None:
+        slug = (form.get("editing_slug") or form.get("slug") or "").strip()
+    if not slug and form is not None:
+        slug = _slugify(form.get("name") or "") or ""
+    return slug
+
+
+def _try_restore_preview_state(
+    values: dict[str, Any],
+    form: Any | None = None,
+    *,
+    reapply_filters: bool = False,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Restore Preview Results after auxiliary form posts (e.g. artist search)."""
+    slug = _channel_slug_from_values(values, form)
+    if not slug:
+        return [], values
+    loaded = _load_saved_channel(slug)
+    if not loaded:
+        return [], values
+    profile, preview_ids = loaded
+    unfiltered_ids = profile.get("last_unfiltered_preview_ids") or preview_ids
+    if not unfiltered_ids and not preview_ids:
+        return [], values
+
+    current_profile = profile
+    if reapply_filters and form is not None:
+        try:
+            current_profile = profile_from_form(form, for_deploy=False)
+            current_profile = {
+                **profile,
+                "filters": current_profile.get("filters") or {},
+                "station": {**(profile.get("station") or {}), **(current_profile.get("station") or {})},
+            }
+        except ChannelDesignerError:
+            current_profile = profile
+
+    if reapply_filters and unfiltered_ids:
+        unfiltered = _preview_tracks_from_ids(unfiltered_ids)
+        preview_tracks = apply_track_filters(unfiltered, current_profile)
+        _apply_filter_feedback(values, current_profile, unfiltered, preview_tracks)
+    else:
+        preview_tracks = _preview_tracks_from_ids(preview_ids)
+
+    saved_values = _form_values_from_profile(profile)
+    for key in (
+        "clap_query",
+        "lyrics_query",
+        "chat_prompt",
+        "programming_type",
+        "name",
+        "slug",
+        "design_notes",
+    ):
+        if not (values.get(key) or "").strip() and saved_values.get(key):
+            values[key] = saved_values[key]
+    if not (values.get("chat_prompt") or "").strip() and saved_values.get("design_notes"):
+        values["chat_prompt"] = saved_values["design_notes"]
+    return preview_tracks, values
 
 
 def _preview_tracks_from_ids(item_ids: list[str]) -> list[dict[str, Any]]:
@@ -3183,6 +3250,12 @@ def _filters_explainer_html() -> str:
         "<p><strong>After Preview:</strong> The <strong>Filter Check</strong> panel below the fields "
         "shows which genre/mood terms matched — use the <strong>Genre</strong> column in Preview Results "
         "to see exact spellings.</p>"
+        "<p><strong>How to use:</strong> Set your filter fields, then click "
+        "<strong>Apply Filters to Preview</strong> to trim the last preview list without re-running "
+        "programming. The <strong>Search Artists</strong> button only finds artist names to exclude — "
+        "it does not refresh Preview Results by itself.</p>"
+        "<p><strong>Full refresh:</strong> To re-query AudioMuse from scratch (new tracks), use "
+        "<strong>Preview Programming</strong> in Step 3.</p>"
     )
 
 
@@ -3230,11 +3303,7 @@ def _filters_fields_html(
         artist_results_html = "<ul class='afm-seed-results'>" + "".join(items) + "</ul>"
     results_jump = ""
     if show_results_jump:
-        results_jump = (
-            '<div class="afm-form-actions afm-form-actions-inline">'
-            + _jump_nav_button("View Preview Results", target_id="preview-results", direction="down")
-            + "</div>"
-        )
+        results_jump = _jump_nav_button("View Preview Results", target_id="preview-results", direction="down")
     return (
         "<section class='afm-panel afm-step-panel' id='step-filters'>"
         + _step_panel_heading(
@@ -3290,13 +3359,17 @@ def _filters_fields_html(
         + f"<input name='exclude_artist_search' class='afm-text-input afm-seed-search-input' "
         + f"placeholder='Search artist to add…' value='{html.escape(str(values.get('exclude_artist_search', '')))}'>"
         + "<button type='submit' name='action' value='search_exclude_artist' formnovalidate "
-        + "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Search</button>"
+        + "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Search Artists</button>"
         + "</div>"
         + f"{artist_results_html}"
         + "<p class='hint'>Must match artist name in your library (search above to add). Case-insensitive.</p></div>"
         + _mood_datalist_html(mood_labels)
         + f"{feedback}"
-        + f"{results_jump}"
+        + '<div class="afm-form-actions afm-form-actions-inline">'
+        + "<button type='submit' name='action' value='apply_filters' formnovalidate "
+        + "class='afm-btn afm-btn-secondary'>Apply Filters to Preview</button>"
+        + results_jump
+        + "</div>"
         + "</section>"
     )
 
@@ -4192,9 +4265,10 @@ def _page_script(
 """
 
 
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
+_FILTER_REAPPLY_ACTIONS = frozenset(
+    {"apply_filters", "search_exclude_artist", "pick_exclude_artist"}
+)
+
 
 
 @bp.route("/", methods=["GET", "POST"])
@@ -4316,6 +4390,8 @@ def home():
                 values["exclude_artist_results"] = _search_artists(
                     request.form.get("exclude_artist_search") or ""
                 )
+            elif action == "apply_filters":
+                values["scroll_to_preview"] = True
             elif action == "start_clustering":
                 try:
                     _clustering_start()
@@ -4416,8 +4492,13 @@ def home():
                         _apply_filter_feedback(values, profile, unfiltered, preview_tracks)
                         item_ids = [t["item_id"] for t in preview_tracks]
                         _record_audition(slug, item_ids)
-                        _save_channel(profile, preview_ids=item_ids)
+                        _save_channel(
+                            profile,
+                            preview_ids=item_ids,
+                            unfiltered_preview_ids=[t["item_id"] for t in unfiltered],
+                        )
                         values["scroll_to_preview"] = True
+                        values["editing_slug"] = slug
                         flash = _flash_html(
                             f"Chat preview — {len(preview_tracks)} tracks. Tweak programming/filters, then deploy.",
                             "ok",
@@ -4435,7 +4516,11 @@ def home():
                         _record_audition(slug, item_ids)
                         if (profile.get("living") or {}).get("enabled"):
                             _add_to_pool(slug, item_ids, source="preview")
-                        _save_channel(profile, preview_ids=item_ids)
+                        _save_channel(
+                            profile,
+                            preview_ids=item_ids,
+                            unfiltered_preview_ids=[t["item_id"] for t in unfiltered],
+                        )
                         values["scroll_to_preview"] = True
                         flash = _flash_html(
                             f"Preview ready — {len(preview_tracks)} tracks from AudioMuse. "
@@ -4474,6 +4559,7 @@ def home():
                         _save_channel(
                             profile,
                             preview_ids=item_ids,
+                            unfiltered_preview_ids=[t["item_id"] for t in unfiltered],
                             station=station,
                             action=push_action,
                         )
@@ -4502,6 +4588,29 @@ def home():
                     ).strip()
                     _record_channel_error(slug, str(exc))
                     flash = _flash_html(str(exc), "error")
+
+    if request.method == "POST":
+        post_action = (request.form.get("action") or "").strip()
+        reapply_filters = post_action in _FILTER_REAPPLY_ACTIONS
+        if not preview_tracks or reapply_filters:
+            restored, values = _try_restore_preview_state(
+                values,
+                request.form,
+                reapply_filters=reapply_filters,
+            )
+            if restored:
+                preview_tracks = restored
+            if post_action == "apply_filters":
+                if preview_tracks:
+                    flash = _flash_html(
+                        f"Filters applied — {len(preview_tracks)} track(s) in preview.",
+                        "ok",
+                    )
+                else:
+                    flash = _flash_html(
+                        "No tracks left after filters. Broaden your rules or run Preview Programming again.",
+                        "error",
+                    )
 
     editing_slug = (values.get("editing_slug") or "").strip()
     stations_html = _stations_section_html(editing_slug or None)
