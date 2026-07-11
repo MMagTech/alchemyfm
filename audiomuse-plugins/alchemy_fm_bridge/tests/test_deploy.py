@@ -93,7 +93,7 @@ def test_verify_deploy_ready_legacy_backend_audiomuse_401():
             assert "AUDIOMUSE_API_TOKEN" in str(exc)
 
 
-def test_verify_deploy_ready_legacy_backend_outdated():
+def test_verify_deploy_ready_legacy_backend_allows_deploy():
     client = bridge.AlchemyFmClient("http://alchemyfm.test", "admin", "test-password")
 
     def fake_request(method, path, payload=None):
@@ -105,12 +105,10 @@ def test_verify_deploy_ready_legacy_backend_outdated():
         patch.object(client, "_request", side_effect=fake_request),
         patch.object(bridge, "audiomuse_get", return_value={"centroids": []}),
     ):
-        try:
-            client.verify_deploy_ready()
-            assert False, "expected ChannelDesignerError"
-        except bridge.ChannelDesignerError as exc:
-            assert "deploy-check" in str(exc)
-            assert "AUDIOMUSE_API_TOKEN" in str(exc)
+        warning = client.verify_deploy_ready()
+    assert warning is not None
+    assert "deploy-check" in warning
+    assert "AUDIOMUSE_API_TOKEN" in warning
 
 
 def test_push_station_create_and_bootstrap():

@@ -17,6 +17,22 @@ class AudioMuseClient:
         if settings.audiomuse_api_token:
             self.headers["Authorization"] = f"Bearer {settings.audiomuse_api_token}"
 
+    def _request_error(self, exc: Exception, method: str, path: str) -> str:
+        if isinstance(exc, httpx.HTTPStatusError):
+            status = exc.response.status_code
+            if status == 401:
+                if not settings.audiomuse_api_token:
+                    return (
+                        f"AudioMuse rejected the request (HTTP 401) during {method} {path}. "
+                        "Set AUDIOMUSE_API_TOKEN in Alchemy FM .env to the token from "
+                        "AudioMuse Settings → API."
+                    )
+                return (
+                    f"AudioMuse rejected the API token (HTTP 401) during {method} {path}. "
+                    "Verify AUDIOMUSE_API_TOKEN in Alchemy FM .env matches AudioMuse Settings → API."
+                )
+        return str(exc)
+
     async def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.get(
@@ -24,7 +40,10 @@ class AudioMuseClient:
                 params=params,
                 headers=self.headers,
             )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except Exception as exc:
+                raise ValueError(self._request_error(exc, "GET", path)) from exc
             return response.json()
 
     async def _post(self, path: str, payload: dict[str, Any]) -> Any:
@@ -34,7 +53,10 @@ class AudioMuseClient:
                 json=payload,
                 headers=self.headers,
             )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except Exception as exc:
+                raise ValueError(self._request_error(exc, "POST", path)) from exc
             return response.json()
 
     def _programming_block(self, programming_json: str | None) -> dict[str, Any]:

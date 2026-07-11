@@ -26,7 +26,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.18"
+PLUGIN_VERSION = "3.2.19"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -188,8 +188,8 @@ class AlchemyFmClient:
                 f"Could not reach Alchemy FM at {self.base_url}: {exc.reason}"
             ) from exc
 
-    def _verify_deploy_ready_legacy_backend(self) -> None:
-        """Backend predates /api/admin/deploy-check — probe AudioMuse from plugin and warn."""
+    def _verify_deploy_ready_legacy_backend(self) -> str | None:
+        """Backend predates /api/admin/deploy-check — probe AudioMuse from plugin."""
         _agent_debug_log(
             "deploy-check-missing-404",
             {"base_url": self.base_url},
@@ -215,29 +215,23 @@ class AlchemyFmClient:
                 f"Cannot reach AudioMuse from plugin: {exc}\n"
                 "Fix AudioMuse connectivity before deploying."
             ) from exc
-        raise ChannelDesignerError(
-            "Alchemy FM backend is outdated (missing /api/admin/deploy-check).\n"
-            "Pull ghcr.io/mmagtech/alchemyfm-backend:latest and restart.\n\n"
-            "Plugin can reach AudioMuse, but deploy/bootstrap runs inside Alchemy FM and needs "
-            "these in Alchemy FM .env:\n"
-            "  AUDIOMUSE_URL=http://192.168.x.x:8387\n"
-            "  AUDIOMUSE_API_TOKEN=<token from AudioMuse Settings → API>\n"
-            "  NAVIDROME_URL=http://192.168.x.x:4533\n"
-            "  NAVIDROME_USER=...\n"
-            "  NAVIDROME_PASSWORD=..."
+        return (
+            "Alchemy FM backend is outdated (missing /api/admin/deploy-check). "
+            "Pull ghcr.io/mmagtech/alchemyfm-backend:latest and restart. "
+            "Deploy will continue, but bootstrap needs AUDIOMUSE_API_TOKEN, AUDIOMUSE_URL, "
+            "NAVIDROME_URL, NAVIDROME_USER, and NAVIDROME_PASSWORD in Alchemy FM .env."
         )
 
-    def verify_deploy_ready(self) -> None:
+    def verify_deploy_ready(self) -> str | None:
         """Ensure Alchemy FM can reach AudioMuse + Navidrome (bootstrap will fail otherwise)."""
         try:
             check = self._request("GET", "/api/admin/deploy-check")
         except ChannelDesignerError as exc:
             if exc.status == 404:
-                self._verify_deploy_ready_legacy_backend()
-                return
+                return self._verify_deploy_ready_legacy_backend()
             raise
         if not isinstance(check, dict) or check.get("ok"):
-            return
+            return None
         parts: list[str] = []
         audiomuse = check.get("audiomuse") if isinstance(check.get("audiomuse"), dict) else {}
         navidrome = check.get("navidrome") if isinstance(check.get("navidrome"), dict) else {}
@@ -254,8 +248,9 @@ class AlchemyFmClient:
             f"Alchemy FM is not ready to deploy stations.\n{body}\n{hint}"
         )
 
-    def test_connection(self) -> list[dict[str, Any]]:
-        self.verify_deploy_ready()
+    def test_connection(self, *, skip_deploy_check: bool = False) -> list[dict[str, Any]]:
+        if not skip_deploy_check:
+            self.verify_deploy_ready()
         stations = self._request("GET", "/api/admin/stations")
         if not isinstance(stations, list):
             raise ChannelDesignerError("Unexpected response from /api/admin/stations")
@@ -6382,7 +6377,11 @@ def home():
                         scroll_anchor = "edit-toolbar"
             elif action == "test":
                 try:
-                    stations = _client().test_connection()
+                    client = _client()
+                    deploy_warning = client.verify_deploy_ready()
+                    stations = client.test_connection(skip_deploy_check=True)
+                    if deploy_warning:
+                        flashes.add(deploy_warning, "warn", anchor="step-deploy")
                     flashes.add(
                         f"Alchemy FM connected — {len(stations)} station(s) on air.",
                         "ok",
@@ -6437,7 +6436,8 @@ def home():
                             + "#preview-results"
                         )
                     elif action == "push":
-                        _client().verify_deploy_ready()
+                        client = _client()
+                        deploy_warning = client.verify_deploy_ready()
                         unfiltered = _merged_programming_tracks_unfiltered(profile, slug)
                         preview_tracks = apply_track_filters(unfiltered, profile)
                         if not preview_tracks:
@@ -6456,7 +6456,7 @@ def home():
                         _record_audition(slug, item_ids)
                         if (profile.get("living") or {}).get("enabled"):
                             _add_to_pool(slug, item_ids, source="preview")
-                        station, push_action = _client().push_station(
+                        station, push_action = client.push_station(
                             payload,
                             slug=slug,
                             bootstrap=bool(payload.get("bootstrap_queue")),
@@ -6468,6 +6468,8 @@ def home():
                             station=station,
                             action=push_action,
                         )
+                        if deploy_warning:
+                            flashes.add(deploy_warning, "warn", anchor="step-deploy")
                         flashes.add(
                             f"Channel '{station.get('name')}' {push_action} on Alchemy FM "
                             f"(id {station.get('id')}) with live {profile['programming']['type']} programming.",
