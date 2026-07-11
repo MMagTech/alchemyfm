@@ -5,6 +5,14 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy — preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "3.2.5",
+      "min_core_version": "2.5.0",
+      "changelog": "Fix Chat Designer snapping closed to top after Generate Playlist Preview: stay in draft designer mode, keep panel open, no pre-submit scroll jump.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "368055bcabb10465d1c3abb86b959aa6"
+    },
+    {
       "version": "3.2.4",
       "min_core_version": "2.5.0",
       "changelog": "Exclude Artists typeahead: library artists appear as you type; click to add comma-separated entries. Removes separate Search button and form round-trip.",
