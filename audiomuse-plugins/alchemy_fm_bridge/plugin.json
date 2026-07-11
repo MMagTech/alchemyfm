@@ -5,6 +5,30 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy — preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "3.2.4",
+      "min_core_version": "2.5.0",
+      "changelog": "Exclude Artists typeahead: library artists appear as you type; click to add comma-separated entries. Removes separate Search button and form round-trip.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "9c4d5375dd56534ed505938824a9040e"
+    },
+    {
+      "version": "3.2.3",
+      "min_core_version": "2.5.0",
+      "changelog": "Filters copy: rename artist Search to Find Artist; clarify that filters fine-tune the last preview and Apply Filters updates results.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "015aaabfe8da18a9a45fde303a744da7"
+    },
+    {
+      "version": "3.2.2",
+      "min_core_version": "2.5.0",
+      "changelog": "Fix preview tracks clearing when using Filters artist search; add Apply Filters to Preview button; clarify filter workflow in Explanation.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "12e631dda930a2c0ff50f1f93f7cc52a"
+    },
+    {
       "version": "3.2.1",
       "min_core_version": "2.5.0",
       "changelog": "In-app loading feedback for slow actions (Chat Designer, Preview, Deploy): spinner, status banner, and panel highlight instead of relying on the browser status bar.",

@@ -12,7 +12,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from flask import Blueprint, request, redirect, url_for
+from flask import Blueprint, jsonify, request, redirect, url_for
 
 from plugin.api import (
     get_db,
@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.1"
+PLUGIN_VERSION = "3.2.4"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1315,6 +1315,7 @@ def _save_channel(
     profile: dict[str, Any],
     *,
     preview_ids: list[str],
+    unfiltered_preview_ids: list[str] | None = None,
     station: dict[str, Any] | None = None,
     action: str = "",
 ) -> None:
@@ -1323,6 +1324,9 @@ def _save_channel(
     channels = table("channels")
     slug = profile["station"]["slug"]
     anchor_id = profile.get("anchor_id")
+    if unfiltered_preview_ids:
+        profile = dict(profile)
+        profile["last_unfiltered_preview_ids"] = [str(i) for i in unfiltered_preview_ids if i]
     pushed_at = "to_char(now(), 'YYYY-MM-DD HH24:MI:SS')" if action else "NULL"
     cur.execute(
         "INSERT INTO "
@@ -1390,6 +1394,69 @@ def _load_saved_channel(slug: str) -> tuple[dict[str, Any], list[str]] | None:
     except json.JSONDecodeError:
         return None
     return profile, [str(i) for i in preview_ids if i]
+
+
+def _channel_slug_from_values(values: dict[str, Any], form: Any | None = None) -> str:
+    slug = (values.get("editing_slug") or values.get("slug") or "").strip()
+    if not slug and form is not None:
+        slug = (form.get("editing_slug") or form.get("slug") or "").strip()
+    if not slug and form is not None:
+        slug = _slugify(form.get("name") or "") or ""
+    return slug
+
+
+def _try_restore_preview_state(
+    values: dict[str, Any],
+    form: Any | None = None,
+    *,
+    reapply_filters: bool = False,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Restore Preview Results after auxiliary form posts (e.g. artist search)."""
+    slug = _channel_slug_from_values(values, form)
+    if not slug:
+        return [], values
+    loaded = _load_saved_channel(slug)
+    if not loaded:
+        return [], values
+    profile, preview_ids = loaded
+    unfiltered_ids = profile.get("last_unfiltered_preview_ids") or preview_ids
+    if not unfiltered_ids and not preview_ids:
+        return [], values
+
+    current_profile = profile
+    if reapply_filters and form is not None:
+        try:
+            current_profile = profile_from_form(form, for_deploy=False)
+            current_profile = {
+                **profile,
+                "filters": current_profile.get("filters") or {},
+                "station": {**(profile.get("station") or {}), **(current_profile.get("station") or {})},
+            }
+        except ChannelDesignerError:
+            current_profile = profile
+
+    if reapply_filters and unfiltered_ids:
+        unfiltered = _preview_tracks_from_ids(unfiltered_ids)
+        preview_tracks = apply_track_filters(unfiltered, current_profile)
+        _apply_filter_feedback(values, current_profile, unfiltered, preview_tracks)
+    else:
+        preview_tracks = _preview_tracks_from_ids(preview_ids)
+
+    saved_values = _form_values_from_profile(profile)
+    for key in (
+        "clap_query",
+        "lyrics_query",
+        "chat_prompt",
+        "programming_type",
+        "name",
+        "slug",
+        "design_notes",
+    ):
+        if not (values.get(key) or "").strip() and saved_values.get(key):
+            values[key] = saved_values[key]
+    if not (values.get("chat_prompt") or "").strip() and saved_values.get("design_notes"):
+        values["chat_prompt"] = saved_values["design_notes"]
+    return preview_tracks, values
 
 
 def _preview_tracks_from_ids(item_ids: list[str]) -> list[dict[str, Any]]:
@@ -1831,6 +1898,7 @@ class _FlashQueue:
             "discover",
             "chat-designer",
             "step-preview",
+            "step-filters",
             "bootstrap-opener",
             "preview-results",
             "step-deploy",
@@ -2960,6 +3028,51 @@ html:not(.dark-mode) .afm-shell .afm-bootstrap-menu {
   background: color-mix(in srgb, var(--accent, #6366f1) 16%, transparent);
   outline: none;
 }
+.afm-artist-picker {
+  position: relative;
+  margin-top: 0.5rem;
+}
+.afm-artist-suggestions {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  right: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0.3rem;
+  max-height: 12rem;
+  overflow-y: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+  background: var(--bg, #0f172a);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+.afm-artist-suggestions[hidden] { display: none !important; }
+html:not(.dark-mode) .afm-shell .afm-artist-suggestions {
+  background: var(--bg-card, #ffffff);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.1);
+}
+.afm-artist-suggestion {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  padding: 0.5rem 0.65rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text, inherit);
+  font: inherit;
+  line-height: 1.35;
+  cursor: pointer;
+}
+.afm-artist-suggestion:hover,
+.afm-artist-suggestion:focus-visible,
+.afm-artist-suggestion.is-active {
+  background: color-mix(in srgb, var(--accent, #6366f1) 16%, transparent);
+  outline: none;
+}
 #bootstrap-opener { scroll-margin-top: 1rem; }
 @media (max-width: 720px) {
   .afm-field-grid, .afm-field-grid-3 { grid-template-columns: 1fr; }
@@ -3318,6 +3431,12 @@ def _filters_explainer_html() -> str:
         "<p><strong>After Preview:</strong> The <strong>Filter Check</strong> panel below the fields "
         "shows which genre/mood terms matched — use the <strong>Genre</strong> column in Preview Results "
         "to see exact spellings.</p>"
+        "<p><strong>How to use:</strong> Set your filter fields, then click "
+        "<strong>Apply Filters to Preview</strong> to trim the last preview list without re-running "
+        "programming. Under <strong>Exclude Artists</strong>, type to see library matches — "
+        "click a name to add it to the comma-separated list above.</p>"
+        "<p><strong>Full refresh:</strong> To re-query AudioMuse from scratch (new tracks), use "
+        "<strong>Preview Programming</strong> in Step 3.</p>"
     )
 
 
@@ -3347,29 +3466,14 @@ def _filters_fields_html(
     *,
     mood_labels: list[str] | None = None,
     show_results_jump: bool = False,
+    flash_html: str = "",
 ) -> str:
     mood_labels = mood_labels if mood_labels is not None else _audiomuse_mood_labels()
     feedback = _filter_feedback_html(values.get("filter_feedback"))
-    exclude_artist_results = values.get("exclude_artist_results") or []
-    artist_results_html = ""
-    if exclude_artist_results:
-        items = []
-        for artist in exclude_artist_results:
-            items.append(
-                "<li>"
-                f'<button type="submit" name="pick_exclude_artist" value="{html.escape(artist)}" '
-                'formnovalidate class="afm-btn afm-btn-secondary" style="width:100%;text-align:left;">'
-                f"Add {html.escape(artist)}"
-                "</button></li>"
-            )
-        artist_results_html = "<ul class='afm-seed-results'>" + "".join(items) + "</ul>"
+    artist_search_url = html.escape(url_for("alchemy_fm_bridge.search_artists_api"))
     results_jump = ""
     if show_results_jump:
-        results_jump = (
-            '<div class="afm-form-actions afm-form-actions-inline">'
-            + _jump_nav_button("View Preview Results", target_id="preview-results", direction="down")
-            + "</div>"
-        )
+        results_jump = _jump_nav_button("View Preview Results", target_id="preview-results", direction="down")
     return (
         "<section class='afm-panel afm-step-panel' id='step-filters'>"
         + _step_panel_heading(
@@ -3379,6 +3483,7 @@ def _filters_fields_html(
             optional=True,
         )
         + _filters_explainer_html()
+        + flash_html
         + "<div class='afm-field-grid'>"
         "<div><label>Tempo Min (BPM)</label>"
         f"<input type='number' name='filter_tempo_min' min='0' step='1' "
@@ -3419,19 +3524,26 @@ def _filters_fields_html(
         + "<div class='afm-field'>"
         + _field_label("Exclude Artists")
         + f"<input name='filter_exclude_artists' id='filter_exclude_artists' class='afm-text-input' "
-        + f"placeholder='comma-separated artist names' "
+        + f"placeholder='Artists to exclude — added from picker below or type comma-separated' "
         + f"value='{html.escape(str(values.get('filter_exclude_artists', '')))}'>"
-        + "<div class='afm-seed-search-row'>"
-        + f"<input name='exclude_artist_search' class='afm-text-input afm-seed-search-input' "
-        + f"placeholder='Search artist to add…' value='{html.escape(str(values.get('exclude_artist_search', '')))}'>"
-        + "<button type='submit' name='action' value='search_exclude_artist' formnovalidate "
-        + "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Search</button>"
+        + f'<div class="afm-artist-picker" id="afm-artist-picker" data-artist-search-url="{artist_search_url}">'
+        + '<input type="text" id="exclude_artist_typeahead" class="afm-text-input" autocomplete="off" '
+        + 'placeholder="Start typing an artist name…" role="combobox" aria-expanded="false" '
+        + 'aria-controls="afm-artist-suggestions" aria-autocomplete="list">'
+        + '<ul id="afm-artist-suggestions" class="afm-artist-suggestions" role="listbox" hidden></ul>'
         + "</div>"
-        + f"{artist_results_html}"
-        + "<p class='hint'>Must match artist name in your library (search above to add). Case-insensitive.</p></div>"
+        + "<p class='hint'>Artists from your library appear as you type. Click one to add it to the list "
+        "above (comma-separated). Pick another to keep building the list. Then click "
+        "<strong>Apply Filters to Preview</strong>.</p></div>"
         + _mood_datalist_html(mood_labels)
         + f"{feedback}"
-        + f"{results_jump}"
+        + "<p class='hint afm-filters-workflow-hint'><strong>Filters fine-tune your last preview</strong> — "
+        "they trim tracks already in Preview Results; they do not fetch new ones.</p>"
+        + '<div class="afm-form-actions afm-form-actions-inline">'
+        + "<button type='submit' name='action' value='apply_filters' formnovalidate "
+        + "class='afm-btn afm-btn-secondary'>Apply Filters to Preview</button>"
+        + results_jump
+        + "</div>"
         + "</section>"
     )
 
@@ -4379,14 +4491,143 @@ def _page_script(
       designerForm.setAttribute('aria-busy', 'true');
     }});
   }}
+
+  (function initExcludeArtistTypeahead() {{
+    const picker = document.getElementById('afm-artist-picker');
+    const input = document.getElementById('exclude_artist_typeahead');
+    const menu = document.getElementById('afm-artist-suggestions');
+    const excludeField = document.getElementById('filter_exclude_artists');
+    if (!picker || !input || !menu || !excludeField) return;
+
+    const apiUrl = picker.getAttribute('data-artist-search-url') || '';
+    let debounceTimer = null;
+    let activeIndex = -1;
+    let currentArtists = [];
+
+    function closeMenu() {{
+      menu.innerHTML = '';
+      menu.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+      activeIndex = -1;
+      currentArtists = [];
+    }}
+
+    function appendArtist(name) {{
+      const term = String(name || '').trim();
+      if (!term) return;
+      const parts = (excludeField.value || '')
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean);
+      if (!parts.some((part) => part.toLowerCase() === term.toLowerCase())) {{
+        parts.push(term);
+      }}
+      excludeField.value = parts.join(', ');
+      input.value = '';
+      closeMenu();
+      input.focus();
+    }}
+
+    function setActive(index) {{
+      const buttons = menu.querySelectorAll('.afm-artist-suggestion');
+      buttons.forEach((btn, idx) => {{
+        btn.classList.toggle('is-active', idx === index);
+      }});
+      activeIndex = index;
+      const active = buttons[index];
+      if (active) active.scrollIntoView({{ block: 'nearest' }});
+    }}
+
+    function renderMenu(artists) {{
+      menu.innerHTML = '';
+      currentArtists = artists;
+      if (!artists.length) {{
+        closeMenu();
+        return;
+      }}
+      artists.forEach((artist, idx) => {{
+        const item = document.createElement('li');
+        item.setAttribute('role', 'presentation');
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'afm-artist-suggestion';
+        btn.setAttribute('role', 'option');
+        btn.textContent = artist;
+        btn.addEventListener('mousedown', (event) => {{
+          event.preventDefault();
+          appendArtist(artist);
+        }});
+        btn.addEventListener('mouseenter', () => setActive(idx));
+        item.appendChild(btn);
+        menu.appendChild(item);
+      }});
+      menu.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+      setActive(0);
+    }}
+
+    async function fetchArtists(query) {{
+      if (!apiUrl) return [];
+      const resp = await fetch(apiUrl + '?q=' + encodeURIComponent(query), {{
+        headers: {{ Accept: 'application/json' }},
+      }});
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      return Array.isArray(data.artists) ? data.artists : [];
+    }}
+
+    input.addEventListener('input', () => {{
+      clearTimeout(debounceTimer);
+      const query = input.value.trim();
+      if (query.length < 2) {{
+        closeMenu();
+        return;
+      }}
+      debounceTimer = setTimeout(async () => {{
+        try {{
+          const artists = await fetchArtists(query);
+          renderMenu(artists);
+        }} catch (err) {{
+          closeMenu();
+        }}
+      }}, 280);
+    }});
+
+    input.addEventListener('keydown', (event) => {{
+      const buttons = menu.querySelectorAll('.afm-artist-suggestion');
+      if (!buttons.length) return;
+      if (event.key === 'ArrowDown') {{
+        event.preventDefault();
+        setActive(Math.min(activeIndex + 1, buttons.length - 1));
+      }} else if (event.key === 'ArrowUp') {{
+        event.preventDefault();
+        setActive(Math.max(activeIndex - 1, 0));
+      }} else if (event.key === 'Enter') {{
+        if (activeIndex >= 0 && currentArtists[activeIndex]) {{
+          event.preventDefault();
+          appendArtist(currentArtists[activeIndex]);
+        }}
+      }} else if (event.key === 'Escape') {{
+        closeMenu();
+      }}
+    }});
+
+    document.addEventListener('click', (event) => {{
+      if (!picker.contains(event.target)) closeMenu();
+    }});
+  }})();
 }})();
 </script>
 """
 
 
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
+_FILTER_REAPPLY_ACTIONS = frozenset({"apply_filters"})
+
+
+@bp.route("/api/search-artists")
+def search_artists_api():
+    query = (request.args.get("q") or request.args.get("query") or "").strip()
+    return jsonify({"artists": _search_artists(query)})
 
 
 @bp.route("/", methods=["GET", "POST"])
@@ -4494,12 +4735,6 @@ def home():
                 values["programming_type"] = "similar_seed"
                 if request.form.get("seed_search"):
                     values["seed_search_results"] = _search_tracks(request.form.get("seed_search") or "")
-            pick_exclude_artist = (request.form.get("pick_exclude_artist") or "").strip()
-            if pick_exclude_artist:
-                values["filter_exclude_artists"] = _append_csv_term(
-                    request.form.get("filter_exclude_artists") or "",
-                    pick_exclude_artist,
-                )
             elif action == "search_seed":
                 values["seed_search_results"] = _search_tracks(request.form.get("seed_search") or "")
             elif action == "search_bootstrap_playlist":
@@ -4516,10 +4751,8 @@ def home():
                     request.form.get("bootstrap_playlist_id") or "",
                     limit=limit,
                 )
-            elif action == "search_exclude_artist":
-                values["exclude_artist_results"] = _search_artists(
-                    request.form.get("exclude_artist_search") or ""
-                )
+            elif action == "apply_filters":
+                values["scroll_to_preview"] = True
             elif action == "start_clustering":
                 try:
                     _clustering_start()
@@ -4633,8 +4866,13 @@ def home():
                         _apply_filter_feedback(values, profile, unfiltered, preview_tracks)
                         item_ids = [t["item_id"] for t in preview_tracks]
                         _record_audition(slug, item_ids)
-                        _save_channel(profile, preview_ids=item_ids)
+                        _save_channel(
+                            profile,
+                            preview_ids=item_ids,
+                            unfiltered_preview_ids=[t["item_id"] for t in unfiltered],
+                        )
                         values["scroll_to_preview"] = True
+                        values["editing_slug"] = slug
                         scroll_anchor = "preview-results"
                         flashes.add(
                             f"Chat preview — {len(preview_tracks)} tracks. Tweak programming/filters, then deploy.",
@@ -4654,7 +4892,11 @@ def home():
                         _record_audition(slug, item_ids)
                         if (profile.get("living") or {}).get("enabled"):
                             _add_to_pool(slug, item_ids, source="preview")
-                        _save_channel(profile, preview_ids=item_ids)
+                        _save_channel(
+                            profile,
+                            preview_ids=item_ids,
+                            unfiltered_preview_ids=[t["item_id"] for t in unfiltered],
+                        )
                         values["scroll_to_preview"] = True
                         scroll_anchor = "preview-results"
                         flashes.add(
@@ -4696,6 +4938,7 @@ def home():
                         _save_channel(
                             profile,
                             preview_ids=item_ids,
+                            unfiltered_preview_ids=[t["item_id"] for t in unfiltered],
                             station=station,
                             action=push_action,
                         )
@@ -4732,6 +4975,33 @@ def home():
                     }.get(action, "step-preview")
                     flashes.add(str(exc), "error", anchor=error_anchor)
                     scroll_anchor = error_anchor
+
+    if request.method == "POST":
+        post_action = (request.form.get("action") or "").strip()
+        reapply_filters = post_action in _FILTER_REAPPLY_ACTIONS
+        if not preview_tracks or reapply_filters:
+            restored, values = _try_restore_preview_state(
+                values,
+                request.form,
+                reapply_filters=reapply_filters,
+            )
+            if restored:
+                preview_tracks = restored
+            if post_action == "apply_filters":
+                if preview_tracks:
+                    flashes.add(
+                        f"Filters applied — {len(preview_tracks)} track(s) in preview.",
+                        "ok",
+                        anchor="preview-results",
+                    )
+                    scroll_anchor = "preview-results"
+                else:
+                    flashes.add(
+                        "No tracks left after filters. Broaden your rules or run Preview Programming again.",
+                        "error",
+                        anchor="step-filters",
+                    )
+                    scroll_anchor = "step-filters"
 
     editing_slug = (values.get("editing_slug") or "").strip()
     stations_html = _stations_section_html(
@@ -4776,7 +5046,7 @@ def home():
         f"{_station_identity_fields_html(values)}"
         f"{_programming_fields_html(values)}"
         f"{_preview_step_html(show_results_jump=has_preview_tracks, flash_html=flashes.html_for('step-preview'))}"
-        f"{_filters_fields_html(values, show_results_jump=has_preview_tracks)}"
+        f"{_filters_fields_html(values, show_results_jump=has_preview_tracks, flash_html=flashes.html_for('step-filters'))}"
         f"{_bootstrap_fields_html(values, flash_html=flashes.html_for('bootstrap-opener'))}"
         f"{_living_fields_html(values)}"
         f"{_playback_rules_fields_html(values)}"
