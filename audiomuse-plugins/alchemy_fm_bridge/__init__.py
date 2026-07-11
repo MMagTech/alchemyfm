@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.14"
+PLUGIN_VERSION = "3.2.15"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -381,6 +381,14 @@ def _normalize_mount(value: str) -> str:
 
 
 def _track_rows_from_results(results: Any) -> list[dict[str, Any]]:
+    if isinstance(results, dict):
+        for key in ("results", "tracks", "items", "data"):
+            nested = results.get(key)
+            if isinstance(nested, list):
+                results = nested
+                break
+        else:
+            return []
     if not isinstance(results, list):
         return []
     rows: list[dict[str, Any]] = []
@@ -398,6 +406,39 @@ def _track_rows_from_results(results: Any) -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+def _parse_centroid_index(value: Any) -> int | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        return None
+
+
+def _preview_empty_message(
+    unfiltered: list[dict[str, Any]], profile: dict[str, Any]
+) -> str:
+    filters = profile.get("filters") or {}
+    if unfiltered and _filters_active(filters):
+        return (
+            f"Filters removed all {len(unfiltered)} track(s) from programming. "
+            "Broaden your filter rules or clear them, then preview again."
+        )
+    ptype = (profile.get("programming") or {}).get("type", "")
+    if ptype == "mood_centroid":
+        return "AudioMuse returned no tracks for that mood cluster. Pick a different cluster or mood."
+    if ptype == "alchemy_anchor":
+        return "AudioMuse returned no tracks for that anchor. Pick a different Song Alchemy anchor."
+    if ptype == "similar_seed":
+        return "AudioMuse returned no similar tracks for that seed. Try another library track."
+    if ptype == "lyrics_query":
+        return "AudioMuse returned no tracks for that lyrics theme. Try a broader theme."
+    return "AudioMuse returned no tracks for that sonic vibe. Try different wording or a broader query."
 
 
 def preview_programming(profile: dict[str, Any]) -> list[dict[str, Any]]:
@@ -422,14 +463,14 @@ def preview_programming(profile: dict[str, Any]) -> list[dict[str, Any]]:
 
     if ptype == "mood_centroid":
         mood = (profile["programming"].get("mood") or "").strip().lower()
-        centroid_index = profile["programming"].get("centroid_index")
+        centroid_index = _parse_centroid_index(profile["programming"].get("centroid_index"))
         if not mood or centroid_index is None:
-            raise ChannelDesignerError("Choose a mood cluster.")
+            raise ChannelDesignerError("Choose a mood and cluster.")
         data = audiomuse_get(
             "/api/similar_tracks",
             params={
                 "mood": mood,
-                "centroid_index": str(int(centroid_index)),
+                "centroid_index": str(centroid_index),
                 "n": str(limit),
                 "eliminate_duplicates": "true",
             },
@@ -491,10 +532,10 @@ def _programming_source_ref(programming: dict[str, Any]) -> str:
         return query
     if ptype == "mood_centroid":
         mood = (programming.get("mood") or "").strip().lower()
-        centroid_index = programming.get("centroid_index")
+        centroid_index = _parse_centroid_index(programming.get("centroid_index"))
         if not mood or centroid_index is None:
             raise ChannelDesignerError("Mood cluster programming requires mood and cluster.")
-        return f"{mood}:{int(centroid_index)}"
+        return f"{mood}:{centroid_index}"
     if ptype == "alchemy_anchor":
         anchor_id = str(programming.get("anchor_id") or "").strip()
         if not anchor_id:
@@ -1356,13 +1397,24 @@ def profile_from_form(form, *, for_deploy: bool = False) -> dict[str, Any]:
         programming["query"] = (form.get("lyrics_query") or "").strip()
     elif ptype == "mood_centroid":
         programming["mood"] = (form.get("mood_name") or "").strip().lower()
-        programming["centroid_index"] = form.get("centroid_index")
+        centroid_index = _parse_centroid_index(form.get("centroid_index"))
+        if not programming["mood"] or centroid_index is None:
+            raise ChannelDesignerError("Choose a mood and cluster.")
+        programming["centroid_index"] = centroid_index
     elif ptype == "alchemy_anchor":
         programming["anchor_id"] = (form.get("anchor_id") or "").strip()
+        if not programming["anchor_id"]:
+            raise ChannelDesignerError(
+                "Choose a Song Alchemy anchor from the search results (typing alone is not enough)."
+            )
     elif ptype == "similar_seed":
         programming["seed_id"] = (
             (form.get("seed_id") or form.get("pick_seed") or "").strip()
         )
+        if not programming["seed_id"]:
+            raise ChannelDesignerError(
+                "Pick a seed track from search results or paste a track item id."
+            )
     else:
         raise ChannelDesignerError(f"Unsupported programming type: {ptype}")
 
@@ -2076,6 +2128,7 @@ class _FlashQueue:
             "stations",
             "discover",
             "chat-designer",
+            "step-programming",
             "step-preview",
             "step-filters",
             "bootstrap-opener",
@@ -2329,17 +2382,21 @@ html:not(.dark-mode) .afm-shell .afm-filter-feedback {
   border: 1px solid color-mix(in srgb, #ef4444 45%, transparent);
   color: var(--text, #fef2f2);
 }
-.afm-deploy-status {
+.afm-deploy-status,
+.afm-preview-status {
   position: sticky;
   top: 0.75rem;
   z-index: 5;
   margin: 0 0 1rem;
 }
-.afm-deploy-status[hidden] { display: none !important; }
-.afm-deploy-status .afm-flash {
+.afm-deploy-status[hidden],
+.afm-preview-status[hidden] { display: none !important; }
+.afm-deploy-status .afm-flash,
+.afm-preview-status .afm-flash {
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.22);
 }
-.afm-deploy-status .afm-flash + .afm-flash {
+.afm-deploy-status .afm-flash + .afm-flash,
+.afm-preview-status .afm-flash + .afm-flash {
   margin-top: 0.5rem;
 }
 .afm-action-loading {
@@ -3569,6 +3626,7 @@ def _programming_fields_html(
     *,
     track_search_url: str = "",
     anchor_search_url: str = "",
+    flash_html: str = "",
 ) -> str:
     ptype = values.get("programming_type", "clap_query")
     hidden = lambda key: "" if ptype == key else " hidden"
@@ -3597,6 +3655,7 @@ def _programming_fields_html(
             "Defines what music fits this station. Alchemy FM re-runs this query when the queue needs more tracks.",
         )
         + _programming_explainer_html()
+        + flash_html
         + "<div class='afm-field'>"
         + _field_label("Programming Type", mandatory=True)
         + f"<select name='programming_type' id='programming_type' class='afm-select'>"
@@ -4170,7 +4229,8 @@ def _station_identity_fields_html(values: dict[str, Any]) -> str:
         + _station_identity_explainer_html()
         + "<div class='afm-field'>"
         + _field_label("Channel Name", mandatory=True)
-        + f"<input name='name' required value='{html.escape(str(values.get('name', '')))}'></div>"
+        + f"<input name='name' value='{html.escape(str(values.get('name', '')))}'>"
+        + "<p class='hint'>Required before deploy — preview can use a draft name from your programming.</p></div>"
         + "<div class='afm-field'>"
         + _field_label("Slug")
         + f"<input name='slug' placeholder='auto from name' "
@@ -4189,7 +4249,32 @@ def _station_identity_fields_html(values: dict[str, Any]) -> str:
     )
 
 
-def _preview_step_html(*, show_results_jump: bool = False, flash_html: str = "") -> str:
+def _preview_status_html(values: dict[str, Any], *, flash_html: str = "") -> str:
+    parts: list[str] = []
+    flash = (flash_html or "").strip()
+    if flash:
+        parts.append(flash)
+    last_err = (values.get("preview_last_error") or "").strip()
+    if last_err and "afm-flash-error" not in flash:
+        parts.append(_flash_html(f"Last preview failed: {last_err}", "error"))
+    if not parts:
+        return (
+            '<div id="afm-preview-status" class="afm-preview-status" hidden '
+            'role="status" aria-live="polite"></div>'
+        )
+    return (
+        '<div id="afm-preview-status" class="afm-preview-status" role="status" aria-live="polite">'
+        + "".join(parts)
+        + "</div>"
+    )
+
+
+def _preview_step_html(
+    values: dict[str, Any],
+    *,
+    show_results_jump: bool = False,
+    flash_html: str = "",
+) -> str:
     results_jump = ""
     if show_results_jump:
         results_jump = _jump_nav_button("View Preview Results", target_id="preview-results", direction="down")
@@ -4201,14 +4286,14 @@ def _preview_step_html(*, show_results_jump: bool = False, flash_html: str = "")
             "Runs your Step 2 query in AudioMuse and shows matching tracks below. Nothing goes on air until Step 6 deploy.",
         )
         + _preview_explainer_html()
-        + flash_html
+        + _preview_status_html(values, flash_html=flash_html)
         + _action_loading_html(
             "afm-preview-loading",
             title="Running preview…",
             detail="Querying AudioMuse for tracks that match your programming.",
         )
         + "<div class='afm-form-actions afm-form-actions-inline'>"
-        + "<button type='submit' name='action' value='preview' class='afm-btn afm-btn-primary' "
+        + "<button type='submit' name='action' value='preview' formnovalidate class='afm-btn afm-btn-primary' "
         + 'data-afm-loading="afm-preview-loading" data-afm-loading-panel="step-preview" '
         + 'data-afm-loading-no-scroll="true" '
         + 'data-loading-label="Previewing…">'
@@ -6261,9 +6346,7 @@ def home():
                         unfiltered = _merged_programming_tracks_unfiltered(profile, slug)
                         preview_tracks = apply_track_filters(unfiltered, profile)
                         if not preview_tracks:
-                            raise ChannelDesignerError(
-                                "No tracks matched programming (and living pool, if enabled)."
-                            )
+                            raise ChannelDesignerError(_preview_empty_message(unfiltered, profile))
                         _apply_filter_feedback(values, profile, unfiltered, preview_tracks)
                         bootstrap_check = _apply_bootstrap_check(values, profile)
                         item_ids = [t["item_id"] for t in preview_tracks]
@@ -6276,6 +6359,7 @@ def home():
                             unfiltered_preview_ids=[t["item_id"] for t in unfiltered],
                         )
                         edit_slug = (request.form.get("editing_slug") or slug).strip()
+                        values["preview_last_error"] = ""
                         return redirect(
                             url_for("alchemy_fm_bridge.home", edit=edit_slug, preview_ok=1)
                             + "#preview-results"
@@ -6340,17 +6424,21 @@ def home():
                     _record_channel_error(slug, str(exc))
                     if action == "push":
                         values["deploy_last_error"] = str(exc)
+                    if action == "preview":
+                        values["preview_last_error"] = str(exc)
                     if action == "chat_preview" and _is_chat_preview_ajax():
                         return jsonify({"ok": False, "error": str(exc)}), 400
                     error_anchor = {
                         "chat_preview": "chat-designer",
-                        "preview": "step-programming",
+                        "preview": "step-preview",
                         "push": "step-deploy",
                     }.get(action, "step-preview")
                     if action == "chat_preview":
                         values["chat_designer_open"] = True
                         values["chat_prompt"] = (request.form.get("chat_prompt") or "").strip()
                     flashes.add(str(exc), "error", anchor=error_anchor)
+                    if action == "preview":
+                        flashes.add(str(exc), "error", anchor="step-programming")
                     scroll_anchor = error_anchor
                 except Exception as exc:
                     if action == "chat_preview" and _is_chat_preview_ajax():
@@ -6368,13 +6456,26 @@ def home():
                         values["deploy_last_error"] = message
                         flashes.add(message, "error", anchor="step-deploy")
                         scroll_anchor = "step-deploy"
+                    elif action == "preview":
+                        slug = (
+                            request.form.get("editing_slug")
+                            or request.form.get("slug")
+                            or _slugify(request.form.get("name") or "channel")
+                        ).strip()
+                        message = f"Preview failed: {exc}"
+                        logger.exception("alchemy_fm_bridge preview failed slug=%s", slug)
+                        _record_channel_error(slug, message)
+                        values["preview_last_error"] = message
+                        flashes.add(message, "error", anchor="step-preview")
+                        flashes.add(message, "error", anchor="step-programming")
+                        scroll_anchor = "step-preview"
                     else:
                         raise
 
     if request.method == "POST":
         post_action = (request.form.get("action") or "").strip()
         reapply_filters = post_action in _FILTER_REAPPLY_ACTIONS
-        if not preview_tracks or reapply_filters:
+        if (not preview_tracks or reapply_filters) and post_action != "preview":
             restored, values = _try_restore_preview_state(
                 values,
                 request.form,
@@ -6406,6 +6507,13 @@ def home():
         )
         if slug_for_error:
             values["deploy_last_error"] = _channel_last_error(slug_for_error)
+    if not (values.get("preview_last_error") or "").strip():
+        slug_for_preview_error = _channel_slug_from_values(
+            values,
+            request.form if request.method == "POST" else None,
+        )
+        if slug_for_preview_error:
+            values["preview_last_error"] = _channel_last_error(slug_for_preview_error)
     stations_html = _stations_section_html(
         editing_slug or None,
         flash_html=flashes.html_for("stations"),
@@ -6455,8 +6563,8 @@ def home():
         f"{_chat_designer_fields_html(values, flash_html=flashes.html_for('chat-designer'))}"
         f"{_discover_channels_html(flash_html=flashes.html_for('discover'))}"
         f"{_station_identity_fields_html(values)}"
-        f"{_programming_fields_html(values, track_search_url=track_search_url, anchor_search_url=anchor_search_url)}"
-        f"{_preview_step_html(show_results_jump=has_preview_tracks, flash_html=flashes.html_for('step-preview'))}"
+        f"{_programming_fields_html(values, track_search_url=track_search_url, anchor_search_url=anchor_search_url, flash_html=flashes.html_for('step-programming'))}"
+        f"{_preview_step_html(values, show_results_jump=has_preview_tracks, flash_html=flashes.html_for('step-preview'))}"
         f"{_filters_fields_html(values, show_results_jump=has_preview_tracks, flash_html=flashes.html_for('step-filters'), genre_search_url=genre_search_url, mood_search_url=mood_search_url)}"
         f"{_bootstrap_fields_html(values, flash_html=flashes.html_for('bootstrap-opener'), verify_url=bootstrap_verify_url)}"
         f"{_living_fields_html(values)}"
