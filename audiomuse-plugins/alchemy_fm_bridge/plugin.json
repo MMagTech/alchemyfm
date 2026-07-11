@@ -7,10 +7,10 @@
     {
       "version": "3.2.26",
       "min_core_version": "2.5.0",
-      "changelog": "Fix Song Alchemy anchor preview/deploy: resolve anchor by typed name, auto-select single search match, show selected anchor confirmation, scroll Step 2 errors into view.",
+      "changelog": "Fix Song Alchemy anchor preview/deploy.",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": ""
+      "checksum": "223c2c153e83320e17b33b644ad12da5"
     },
     {
       "version": "3.2.25",
