@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.1.7"
+PLUGIN_VERSION = "3.1.8"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -3397,6 +3397,23 @@ def _discover_channels_html() -> str:
     )
 
 
+def _living_explainer_html() -> str:
+    return _collapsible_explainer_html(
+        "<p><strong>When living runs:</strong> In AudioMuse only — not Alchemy FM on-air refills. "
+        "Uses your <strong>Step 2 Programming</strong> query and <strong>Filters</strong> for this station.</p>"
+        "<p><strong>Enable Living Channel:</strong> Master switch for this slug's evolving track pool. "
+        "Off = pool stays frozen at whatever you last previewed or deployed.</p>"
+        "<p><strong>Auto-Add:</strong> When a new song finishes analysis in AudioMuse, add it to this "
+        "station's pool if it passes your filters. Requires the worker to reach AudioMuse "
+        "(plugin Settings → API URL if needed).</p>"
+        "<p><strong>Refresh:</strong> Nightly cron re-runs programming, merges new matches into the pool, "
+        "and can push updates to Alchemy FM. Enable the global task under "
+        "<strong>Administration → Scheduled Tasks → Alchemy FM</strong> once for all living stations.</p>"
+        "<p><strong>Pool count:</strong> Tracks stored for this channel in AudioMuse — used by preview, "
+        "living auto-add, and cron. Alchemy FM has its own on-air queue; living grows the design-time pool.</p>"
+    )
+
+
 def _living_fields_html(values: dict[str, Any]) -> str:
     slug = (values.get("editing_slug") or values.get("slug") or "").strip()
     pool_note = ""
@@ -3416,8 +3433,7 @@ def _living_fields_html(values: dict[str, Any]) -> str:
             "Let this station's track pool grow as new songs are analyzed. Requires Scheduled Tasks → Alchemy FM.",
             optional=True,
         )
-        + "<p class='hint'>Auto-add puts new analyzed songs into the pool when they pass filters. "
-        "Refresh re-runs programming and can push updates to Alchemy FM.</p>"
+        + _living_explainer_html()
         f"{pool_note}"
         "<div class='afm-check-group'>"
         "<label class='afm-check-label'><input type='checkbox' name='living_enabled'"
