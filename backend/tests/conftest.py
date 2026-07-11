@@ -26,6 +26,7 @@ os.environ["LIQUIDSOAP_CALLBACK_SECRET"] = "test-callback-secret"
 from app.database import Base, SessionLocal, Station, engine, init_db  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.main import app  # noqa: E402
+from app.services.navidrome import navidrome_client  # noqa: E402
 
 # Repo-root .env is loaded at import time — override for deterministic tests.
 settings.admin_username = "admin"
@@ -120,6 +121,24 @@ def internal_client(client: TestClient) -> Generator[TestClient, None, None]:
     app.dependency_overrides.pop(require_internal_client, None)
 
 
+@pytest.fixture(autouse=True)
+def _mock_navidrome_stream_url() -> Generator[None, None, None]:
+    """CI has no Navidrome credentials; queue rebuild/bootstrap only need a URL string."""
+    with patch.object(
+        navidrome_client,
+        "stream_url",
+        side_effect=lambda item_id: f"http://navidrome.test/stream/{item_id}",
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _mock_extend_queue() -> Generator[None, None, None]:
+    """Avoid live AudioMuse calls when internal callbacks trigger ensure_queue_fresh."""
+    with patch("app.services.queue.extend_queue", new=AsyncMock(return_value=None)):
+        yield
+
+
 @pytest.fixture
 def bootstrap_mocks():
     """Mock AudioMuse/Navidrome during queue bootstrap and refresh."""
@@ -137,6 +156,5 @@ def bootstrap_mocks():
     with (
         patch("app.services.queue.fetch_bootstrap_batch", new=AsyncMock(return_value=batch)),
         patch("app.services.navidrome.navidrome_client.enrich_tracks", new=AsyncMock(return_value=enriched)),
-        patch("app.services.queue.extend_queue", new=AsyncMock(return_value=None)),
     ):
         yield batch
