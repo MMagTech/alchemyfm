@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.6"
+PLUGIN_VERSION = "3.2.7"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -4229,7 +4229,58 @@ def _form_values_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
 
 
 def _is_chat_preview_ajax() -> bool:
-    return request.headers.get("X-AFM-Chat-Preview") == "1"
+    if request.headers.get("X-AFM-Chat-Preview") == "1":
+        return True
+    if (request.form.get("afm_ajax") or "").strip() == "chat_preview":
+        return True
+    return False
+
+
+def _chat_preview_redirect(slug: str) -> str:
+    return url_for("alchemy_fm_bridge.home", draft=slug, chat_preview_ok=1) + "#preview-results"
+
+
+def _run_chat_preview_from_form(form) -> dict[str, Any]:
+    profile = profile_from_form(form, for_deploy=False)
+    values: dict[str, Any] = _form_values_from_profile(profile)
+    if (form.get("editing_slug") or "").strip():
+        values["editing_slug"] = form.get("editing_slug").strip()
+    slug = profile["station"]["slug"]
+
+    prompt = (form.get("chat_prompt") or "").strip()
+    values["chat_designer_open"] = True
+    values["chat_prompt"] = prompt
+    raw = _chat_playlist_tracks(prompt)
+    if not raw:
+        raise ChannelDesignerError("Chat designer returned no tracks.")
+    profile["design_notes"] = prompt
+    profile["programming"] = {
+        "type": "clap_query",
+        "query": prompt[:120],
+        "limit": PREVIEW_LIMIT_DEFAULT,
+    }
+    if not (form.get("name") or "").strip():
+        profile["station"]["name"] = prompt[:60]
+        if not (form.get("editing_slug") or "").strip():
+            profile["station"]["slug"] = _slugify(profile["station"]["name"]) or "draft-channel"
+            profile["station"]["icecast_mount"] = _normalize_mount(profile["station"]["slug"])
+    slug = profile["station"]["slug"]
+    unfiltered = enrich_preview(raw)
+    preview_tracks = apply_track_filters(unfiltered, profile)
+    _apply_filter_feedback(values, profile, unfiltered, preview_tracks)
+    item_ids = [t["item_id"] for t in preview_tracks]
+    _record_audition(slug, item_ids)
+    _save_channel(
+        profile,
+        preview_ids=item_ids,
+        unfiltered_preview_ids=[t["item_id"] for t in unfiltered],
+    )
+    return {
+        "ok": True,
+        "track_count": len(preview_tracks),
+        "slug": slug,
+        "redirect": _chat_preview_redirect(slug),
+    }
 
 
 def _apply_draft_channel(
@@ -4558,8 +4609,14 @@ def _page_script(
     showAfmActionLoading(submitter);
     const formData = new FormData(designerForm);
     formData.set('action', 'chat_preview');
+    formData.set('afm_ajax', 'chat_preview');
+    const chatPreviewUrl = (
+      designerForm.getAttribute('data-chat-preview-url')
+      || designerForm.action
+      || window.location.href
+    );
     try {{
-      const resp = await fetch(designerForm.action || window.location.href, {{
+      const resp = await fetch(chatPreviewUrl, {{
         method: 'POST',
         body: formData,
         credentials: 'same-origin',
@@ -4568,11 +4625,21 @@ def _page_script(
           'Accept': 'application/json',
         }},
       }});
+      const rawText = await resp.text();
       let data = null;
       try {{
-        data = await resp.json();
+        data = rawText ? JSON.parse(rawText) : null;
       }} catch (parseErr) {{
-        throw new Error('Chat preview returned an unexpected response.');
+        const snippet = rawText.replace(/\\s+/g, ' ').trim().slice(0, 140);
+        const contentType = resp.headers.get('content-type') || 'unknown type';
+        throw new Error(
+          'Chat preview returned an unexpected response (HTTP '
+          + resp.status
+          + ', '
+          + contentType
+          + ').'
+          + (snippet ? ' ' + snippet : '')
+        );
       }}
       if (!resp.ok || !data || !data.ok) {{
         throw new Error((data && data.error) || 'Chat preview failed.');
@@ -4746,6 +4813,23 @@ _FILTER_REAPPLY_ACTIONS = frozenset({"apply_filters"})
 def search_artists_api():
     query = (request.args.get("q") or request.args.get("query") or "").strip()
     return jsonify({"artists": _search_artists(query)})
+
+
+@bp.route("/api/chat-preview", methods=["POST"])
+def chat_preview_api():
+    try:
+        return jsonify(_run_chat_preview_from_form(request.form))
+    except ChannelDesignerError as exc:
+        slug = (
+            request.form.get("editing_slug")
+            or request.form.get("slug")
+            or _slugify(request.form.get("name") or "channel")
+        ).strip()
+        _record_channel_error(slug, str(exc))
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        logger.exception("chat preview API failed")
+        return jsonify({"ok": False, "error": f"Chat preview failed: {exc}"}), 500
 
 
 @bp.route("/", methods=["GET", "POST"])
@@ -4980,58 +5064,15 @@ def home():
                     slug = profile["station"]["slug"]
 
                     if action == "chat_preview":
-                        prompt = (request.form.get("chat_prompt") or "").strip()
-                        values["chat_designer_open"] = True
-                        values["chat_prompt"] = prompt
-                        raw = _chat_playlist_tracks(prompt)
-                        if not raw:
-                            raise ChannelDesignerError("Chat designer returned no tracks.")
-                        profile["design_notes"] = prompt
-                        profile["programming"] = {
-                            "type": "clap_query",
-                            "query": prompt[:120],
-                            "limit": PREVIEW_LIMIT_DEFAULT,
-                        }
-                        if not (request.form.get("name") or "").strip():
-                            profile["station"]["name"] = prompt[:60]
-                            if not (request.form.get("editing_slug") or "").strip():
-                                profile["station"]["slug"] = _slugify(profile["station"]["name"]) or "draft-channel"
-                                profile["station"]["icecast_mount"] = _normalize_mount(
-                                    profile["station"]["slug"]
-                                )
-                        values = _form_values_from_profile(profile)
-                        values["chat_prompt"] = prompt
-                        slug = profile["station"]["slug"]
-                        unfiltered = enrich_preview(raw)
-                        preview_tracks = apply_track_filters(unfiltered, profile)
-                        _apply_filter_feedback(values, profile, unfiltered, preview_tracks)
-                        item_ids = [t["item_id"] for t in preview_tracks]
-                        _record_audition(slug, item_ids)
-                        _save_channel(
-                            profile,
-                            preview_ids=item_ids,
-                            unfiltered_preview_ids=[t["item_id"] for t in unfiltered],
-                        )
+                        result = _run_chat_preview_from_form(request.form)
                         if _is_chat_preview_ajax():
-                            return jsonify(
-                                {
-                                    "ok": True,
-                                    "track_count": len(preview_tracks),
-                                    "redirect": (
-                                        url_for(
-                                            "alchemy_fm_bridge.home",
-                                            draft=slug,
-                                            chat_preview_ok=1,
-                                        )
-                                        + "#preview-results"
-                                    ),
-                                }
-                            )
+                            return jsonify(result)
                         values["scroll_to_preview"] = True
                         values["chat_designer_open"] = True
+                        values["chat_prompt"] = (request.form.get("chat_prompt") or "").strip()
                         scroll_anchor = "preview-results"
                         flashes.add(
-                            f"Chat preview — {len(preview_tracks)} tracks. Tweak programming/filters, then deploy.",
+                            f"Chat preview — {result['track_count']} tracks. Tweak programming/filters, then deploy.",
                             "ok",
                             anchor="preview-results",
                         )
@@ -5136,6 +5177,11 @@ def home():
                         values["chat_prompt"] = (request.form.get("chat_prompt") or "").strip()
                     flashes.add(str(exc), "error", anchor=error_anchor)
                     scroll_anchor = error_anchor
+                except Exception as exc:
+                    if action == "chat_preview" and _is_chat_preview_ajax():
+                        logger.exception("chat preview failed")
+                        return jsonify({"ok": False, "error": f"Chat preview failed: {exc}"}), 500
+                    raise
 
     if request.method == "POST":
         post_action = (request.form.get("action") or "").strip()
@@ -5198,9 +5244,11 @@ def home():
         + f"{_audition_history_html(editing_slug or None)}"
         + "</section>"
     )
+    chat_preview_url = html.escape(url_for("alchemy_fm_bridge.chat_preview_api"))
     designer_form = (
         f"{designer_section_open}"
-        "<form method='post' id='afm-designer-form' class='afm-designer-form'>"
+        f"<form method='post' id='afm-designer-form' class='afm-designer-form' "
+        f"data-chat-preview-url='{chat_preview_url}'>"
         f"{_designer_flow_overview_html(flash_html=flashes.html_for('designer'))}"
         f"{_chat_designer_fields_html(values, flash_html=flashes.html_for('chat-designer'))}"
         f"{_discover_channels_html(flash_html=flashes.html_for('discover'))}"
