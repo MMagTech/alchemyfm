@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.7"
+PLUGIN_VERSION = "3.2.8"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -483,6 +483,103 @@ def _programming_source_ref(programming: dict[str, Any]) -> str:
     raise ChannelDesignerError(f"Unsupported programming type: {ptype}")
 
 
+# Mirrors AudioMuse config.STRATIFIED_GENRES — used to pick the Genre column from mood_vector tags.
+STRATIFIED_GENRES = (
+    "rock",
+    "pop",
+    "alternative",
+    "indie",
+    "electronic",
+    "jazz",
+    "metal",
+    "classic rock",
+    "soul",
+    "indie rock",
+    "electronica",
+    "folk",
+    "punk",
+    "blues",
+    "hard rock",
+    "ambient",
+    "acoustic",
+    "experimental",
+    "hip-hop",
+    "country",
+    "funk",
+    "electro",
+    "heavy metal",
+    "progressive rock",
+    "rnb",
+    "indie pop",
+    "house",
+)
+
+
+def _parse_mood_vector(value: Any) -> dict[str, float]:
+    """Parse AudioMuse mood_vector (comma-separated string or dict) into tag -> score."""
+    if not value:
+        return {}
+    if isinstance(value, dict):
+        parsed: dict[str, float] = {}
+        for key, raw_score in value.items():
+            label = str(key).strip()
+            if not label:
+                continue
+            try:
+                parsed[label] = float(raw_score)
+            except (TypeError, ValueError):
+                continue
+        return parsed
+    if isinstance(value, str):
+        parsed: dict[str, float] = {}
+        for part in value.split(","):
+            label, _, raw_score = part.partition(":")
+            label = label.strip()
+            if not label:
+                continue
+            try:
+                parsed[label] = float(raw_score)
+            except ValueError:
+                continue
+        return parsed
+    return {}
+
+
+def _top_stratified_genre(mood_scores: dict[str, float]) -> str:
+    """Highest-scoring stratified genre label in mood_scores (AudioMuse top_stratified_genre)."""
+    if not mood_scores:
+        return ""
+    scores_by_lower = {label.lower(): (label, score) for label, score in mood_scores.items()}
+    candidates: list[tuple[str, float]] = []
+    for genre in STRATIFIED_GENRES:
+        match = scores_by_lower.get(genre.lower())
+        if match:
+            candidates.append(match)
+    if not candidates:
+        return ""
+    return max(candidates, key=lambda item: item[1])[0]
+
+
+def _mood_tags_from_scores(mood_scores: dict[str, float], *, limit: int = 4) -> list[str]:
+    top = sorted(mood_scores.items(), key=lambda kv: kv[1], reverse=True)[:limit]
+    return [name for name, _ in top]
+
+
+def _apply_score_metadata(row: dict[str, Any], score: dict[str, Any]) -> None:
+    row["tempo"] = score.get("tempo")
+    row["energy"] = score.get("energy")
+    row["year"] = score.get("year")
+    mood_scores = _parse_mood_vector(score.get("mood_vector") or score.get("moods"))
+    row["top_genre"] = (
+        score.get("top_genre")
+        or score.get("genre")
+        or _top_stratified_genre(mood_scores)
+        or ""
+    )
+    row["mood_tags"] = _mood_tags_from_scores(mood_scores)
+    row["mood"] = ", ".join(row["mood_tags"][:2])
+
+
 def enrich_preview(tracks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ids = [t["item_id"] for t in tracks]
     if not ids:
@@ -495,18 +592,7 @@ def enrich_preview(tracks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for track in tracks:
         row = dict(track)
         score = scores.get(track["item_id"]) or {}
-        row["tempo"] = score.get("tempo")
-        row["energy"] = score.get("energy")
-        row["year"] = score.get("year")
-        row["top_genre"] = score.get("top_genre") or score.get("genre") or ""
-        moods = score.get("mood_vector") or score.get("moods")
-        if isinstance(moods, dict):
-            top = sorted(moods.items(), key=lambda kv: kv[1], reverse=True)[:4]
-            row["mood_tags"] = [name for name, _ in top]
-            row["mood"] = ", ".join(name for name, _ in top[:2])
-        else:
-            row["mood_tags"] = []
-            row["mood"] = ""
+        _apply_score_metadata(row, score)
         enriched.append(row)
     return enriched
 
@@ -1793,13 +1879,7 @@ def on_song_analyzed(song: dict[str, Any]) -> None:
     try:
         scores = get_score_data_by_ids([item_id])
         if scores:
-            score = scores[0]
-            track["year"] = score.get("year")
-            track["top_genre"] = score.get("top_genre") or score.get("genre") or ""
-            moods = score.get("mood_vector") or score.get("moods")
-            if isinstance(moods, dict):
-                top = sorted(moods.items(), key=lambda kv: kv[1], reverse=True)[:4]
-                track["mood_tags"] = [name for name, _ in top]
+            _apply_score_metadata(track, scores[0])
     except Exception:
         pass
     for slug, profile, _alchemy_id in _living_channel_profiles():
