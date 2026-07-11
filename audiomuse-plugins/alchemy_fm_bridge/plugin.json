@@ -5,6 +5,14 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy — preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "3.2.11",
+      "min_core_version": "2.5.0",
+      "changelog": "Deploy status stays visible: sticky Step 6 message box, persisted last deploy error from the channel record, instant scroll to deploy on success/failure.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "cacd3416311dc07c439dc6ec19563b94"
+    },
+    {
       "version": "3.2.10",
       "min_core_version": "2.5.0",
       "changelog": "Preview Results table: click column headers (Title, Artist, Genre, BPM, Energy, Mood) to sort ascending/descending.",
@@ -95,7 +103,7 @@
     {
       "version": "3.1.9",
       "min_core_version": "2.5.0",
-      "changelog": "Collapsible Explanation on every step and optional section (Steps 1–6, Filters, Bootstrap, Living).",
+      "changelog": "Collapsible Explanation on every step and optional section (Steps 1\u20136, Filters, Bootstrap, Living).",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
       "checksum": "dcd550606f07ab2a976d2ece7b9750ba"
@@ -223,7 +231,7 @@
     {
       "version": "3.0.5",
       "min_core_version": "2.5.0",
-      "changelog": "Designer flow UX: numbered steps, purpose text above each section, logical reorder (identity → program → preview → optional → playback → deploy).",
+      "changelog": "Designer flow UX: numbered steps, purpose text above each section, logical reorder (identity \u2192 program \u2192 preview \u2192 optional \u2192 playback \u2192 deploy).",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
       "checksum": "2a492f438496c7b7292164b4a47e9efb"
@@ -431,7 +439,7 @@
     {
       "version": "2.0.2",
       "min_core_version": "2.5.0",
-      "changelog": "Catalog refresh publish — v2 Channel Designer (CLAP, lyrics, moods, preview, deploy).",
+      "changelog": "Catalog refresh publish \u2014 v2 Channel Designer (CLAP, lyrics, moods, preview, deploy).",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
       "checksum": "238d2ed40646759fc7b3e44bd4136479"
