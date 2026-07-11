@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.2"
+PLUGIN_VERSION = "3.2.3"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -3252,8 +3252,8 @@ def _filters_explainer_html() -> str:
         "to see exact spellings.</p>"
         "<p><strong>How to use:</strong> Set your filter fields, then click "
         "<strong>Apply Filters to Preview</strong> to trim the last preview list without re-running "
-        "programming. The <strong>Search Artists</strong> button only finds artist names to exclude — "
-        "it does not refresh Preview Results by itself.</p>"
+        "programming. The <strong>Find Artist</strong> button only looks up library names to add to "
+        "Exclude Artists — it does not trim Preview Results by itself.</p>"
         "<p><strong>Full refresh:</strong> To re-query AudioMuse from scratch (new tracks), use "
         "<strong>Preview Programming</strong> in Step 3.</p>"
     )
@@ -3357,14 +3357,18 @@ def _filters_fields_html(
         + f"value='{html.escape(str(values.get('filter_exclude_artists', '')))}'>"
         + "<div class='afm-seed-search-row'>"
         + f"<input name='exclude_artist_search' class='afm-text-input afm-seed-search-input' "
-        + f"placeholder='Search artist to add…' value='{html.escape(str(values.get('exclude_artist_search', '')))}'>"
+        + f"placeholder='Type artist name to look up…' value='{html.escape(str(values.get('exclude_artist_search', '')))}'>"
         + "<button type='submit' name='action' value='search_exclude_artist' formnovalidate "
-        + "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Search Artists</button>"
+        + "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Find Artist</button>"
         + "</div>"
         + f"{artist_results_html}"
-        + "<p class='hint'>Must match artist name in your library (search above to add). Case-insensitive.</p></div>"
+        + "<p class='hint'>Looks up names in your library — pick one to add to the exclude list above. "
+        "Does not update Preview Results; click <strong>Apply Filters to Preview</strong> when your "
+        "exclude list (and other rules) are set.</p></div>"
         + _mood_datalist_html(mood_labels)
         + f"{feedback}"
+        + "<p class='hint afm-filters-workflow-hint'><strong>Filters fine-tune your last preview</strong> — "
+        "they trim tracks already in Preview Results; they do not fetch new ones.</p>"
         + '<div class="afm-form-actions afm-form-actions-inline">'
         + "<button type='submit' name='action' value='apply_filters' formnovalidate "
         + "class='afm-btn afm-btn-secondary'>Apply Filters to Preview</button>"
