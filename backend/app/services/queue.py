@@ -621,7 +621,12 @@ async def bootstrap_station(db: Session, station: Station) -> None:
 
     batch = await fetch_bootstrap_batch(station)
     if not batch:
-        raise ValueError(f"No tracks imported for station {station.slug} — check source settings")
+        raise ValueError(
+            f"No tracks imported for station {station.slug} — "
+            f"check {station.source_type} programming and AudioMuse analysis. "
+            f"Alchemy FM calls AudioMuse at {settings.audiomuse_url} during bootstrap "
+            "(Test connection only verifies login, not programming import)."
+        )
 
     import_batch_to_pool(db, station, batch)
     station.identity_seed_item_id = ""

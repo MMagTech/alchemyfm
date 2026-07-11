@@ -26,7 +26,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.19"
+PLUGIN_VERSION = "3.2.20"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -248,17 +248,20 @@ class AlchemyFmClient:
             f"Alchemy FM is not ready to deploy stations.\n{body}\n{hint}"
         )
 
-    def test_connection(self, *, skip_deploy_check: bool = False) -> list[dict[str, Any]]:
-        if not skip_deploy_check:
-            self.verify_deploy_ready()
+    def _list_stations(self) -> list[dict[str, Any]]:
         stations = self._request("GET", "/api/admin/stations")
         if not isinstance(stations, list):
             raise ChannelDesignerError("Unexpected response from /api/admin/stations")
         return stations
 
+    def test_connection(self, *, skip_deploy_check: bool = False) -> list[dict[str, Any]]:
+        if not skip_deploy_check:
+            self.verify_deploy_ready()
+        return self._list_stations()
+
     def find_station_by_slug(self, slug: str) -> dict[str, Any] | None:
         slug = slug.strip().lower()
-        for station in self.test_connection():
+        for station in self._list_stations():
             if str(station.get("slug", "")).lower() == slug:
                 return station
         return None
@@ -341,7 +344,17 @@ class AlchemyFmClient:
         bootstrap: bool = True,
     ) -> tuple[dict[str, Any], str]:
         target_slug = (slug or payload.get("slug") or "").strip().lower()
-        existing = self.find_station_by_slug(target_slug) if target_slug else None
+        _agent_debug_log(
+            "push-station-start",
+            {"slug": target_slug, "bootstrap": bootstrap, "source_type": payload.get("source_type")},
+            "H5",
+        )
+        try:
+            existing = self.find_station_by_slug(target_slug) if target_slug else None
+        except ChannelDesignerError as exc:
+            raise ChannelDesignerError(
+                f"Deploy failed while listing stations on Alchemy FM.\n{exc}"
+            ) from exc
         if existing:
             station_id = int(existing["id"])
             update_fields = {
@@ -349,21 +362,46 @@ class AlchemyFmClient:
                 for key, value in payload.items()
                 if key not in ("slug", "bootstrap_queue")
             }
-            station = self.update_station(station_id, update_fields)
+            try:
+                station = self.update_station(station_id, update_fields)
+            except ChannelDesignerError as exc:
+                raise ChannelDesignerError(
+                    f"Deploy failed while updating station '{target_slug}'.\n{exc}"
+                ) from exc
             action = "updated"
         else:
-            # Create without inline bootstrap — Alchemy FM runs bootstrap on POST create
-            # when bootstrap_queue is true, and push_station always calls /bootstrap next.
-            # Skipping inline bootstrap avoids duplicate work and opaque 500s on create.
             create_payload = {
                 key: value for key, value in payload.items() if key != "bootstrap_queue"
             }
             create_payload["bootstrap_queue"] = False
-            station = self.create_station(create_payload)
+            try:
+                station = self.create_station(create_payload)
+            except ChannelDesignerError as exc:
+                raise ChannelDesignerError(
+                    f"Deploy failed while creating station '{target_slug}'.\n{exc}"
+                ) from exc
             station_id = int(station["id"])
             action = "created"
+        _agent_debug_log(
+            "push-station-saved",
+            {"slug": target_slug, "station_id": station_id, "action": action},
+            "H5",
+        )
         if bootstrap and payload.get("bootstrap_queue", True):
-            station = self.bootstrap_station(station_id)
+            try:
+                station = self.bootstrap_station(station_id)
+            except ChannelDesignerError as exc:
+                raise ChannelDesignerError(
+                    "Station was saved on Alchemy FM, but bootstrap failed while importing "
+                    "programming tracks into the play queue. Test connection does not run "
+                    "this step — it only checks admin login and lists stations.\n"
+                    f"{exc}"
+                ) from exc
+            _agent_debug_log(
+                "push-station-bootstrapped",
+                {"slug": target_slug, "station_id": station_id, "queued_count": station.get("queued_count")},
+                "H5",
+            )
         return station, action
 
 
@@ -4442,7 +4480,7 @@ def _deploy_actions_fields_html(values: dict[str, Any], *, flash_html: str = "")
         + "</div>"
         + f"<input type='hidden' name='saved_anchor_id' value='{html.escape(str(values.get('saved_anchor_id', '')))}'>"
         + "<div class='afm-form-actions'>"
-        + f"<button type='submit' name='action' value='push' class='afm-btn afm-btn-primary' "
+        + f"<button type='submit' name='action' value='push' class='afm-btn afm-btn-primary' formnovalidate "
         + f'data-afm-loading="afm-deploy-loading" data-afm-loading-panel="step-deploy" '
         + f'data-loading-label="Deploying…">{html.escape(deploy_label)}</button>'
         + "<button type='submit' name='action' value='test' formnovalidate class='afm-btn afm-btn-secondary'>Test Connection</button>"
@@ -6439,6 +6477,18 @@ def home():
                         client = _client()
                         deploy_warning = client.verify_deploy_ready()
                         unfiltered = _merged_programming_tracks_unfiltered(profile, slug)
+                        if not unfiltered:
+                            loaded = _load_saved_channel(slug)
+                            if loaded:
+                                saved_profile, preview_ids = loaded
+                                fallback_ids = saved_profile.get("last_unfiltered_preview_ids") or preview_ids
+                                if fallback_ids:
+                                    unfiltered = _preview_tracks_from_ids(fallback_ids)
+                                    _agent_debug_log(
+                                        "deploy-used-saved-preview",
+                                        {"slug": slug, "track_count": len(unfiltered)},
+                                        "H4",
+                                    )
                         preview_tracks = apply_track_filters(unfiltered, profile)
                         if not preview_tracks:
                             raise ChannelDesignerError(
