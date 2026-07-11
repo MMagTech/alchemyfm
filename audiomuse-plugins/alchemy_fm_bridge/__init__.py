@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.1.6"
+PLUGIN_VERSION = "3.1.7"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -2426,8 +2426,33 @@ html:not(.dark-mode) .afm-shell .afm-filter-feedback {
 .afm-collapsible-explainer-body {
   padding: 0.75rem 0.9rem 0.9rem;
 }
+#step-preview,
+#step-filters,
+#preview-results,
 .afm-preview-results-panel {
   scroll-margin-top: 1rem;
+}
+.afm-jump-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 0.85rem;
+}
+.afm-jump-btn {
+  font-size: 0.84rem;
+  padding: 0.38rem 0.7rem;
+}
+.afm-preview-results-jump {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.afm-preview-results-panel > summary .afm-preview-results-jump {
+  margin-left: 0;
+}
+@media (min-width: 640px) {
+  .afm-preview-results-panel > summary .afm-preview-results-jump {
+    margin-left: auto;
+  }
 }
 .afm-preview-results-panel > summary {
   list-style: none;
@@ -2925,6 +2950,15 @@ def _preview_table_html(tracks: list[dict[str, Any]]) -> str:
     )
 
 
+def _jump_nav_button(label: str, *, target_id: str, direction: str = "down") -> str:
+    arrow = "↓" if direction == "down" else "↑"
+    return (
+        f'<button type="button" class="afm-btn afm-btn-secondary afm-jump-btn" '
+        f'data-afm-jump="{html.escape(target_id)}">'
+        f"{html.escape(label)} {arrow}</button>"
+    )
+
+
 def _preview_results_html(
     preview_tracks: list[dict[str, Any]],
     *,
@@ -2933,9 +2967,23 @@ def _preview_results_html(
     count = len(preview_tracks)
     open_attr = " open" if count else ""
     highlight_class = " afm-preview-results-highlight" if highlight else ""
+    jump_back = ""
+    if count:
+        jump_back = (
+            '<span class="afm-preview-results-jump">'
+            + _jump_nav_button("Step 3", target_id="step-preview", direction="up")
+            + _jump_nav_button("Filters", target_id="step-filters", direction="up")
+            + "</span>"
+        )
     if count:
         meta = f"{count} Track(s) From Your Last Step 3 Preview"
-        body = _preview_table_html(preview_tracks)
+        body = (
+            '<div class="afm-jump-nav">'
+            + _jump_nav_button("Back to Step 3", target_id="step-preview", direction="up")
+            + _jump_nav_button("Back to Filters", target_id="step-filters", direction="up")
+            + "</div>"
+            + _preview_table_html(preview_tracks)
+        )
     else:
         meta = "Run Preview Programming in Step 3 to See Tracks Here"
         body = "<p class='hint'>No preview yet. Set programming above, then click <strong>Preview Programming</strong>.</p>"
@@ -2944,6 +2992,7 @@ def _preview_results_html(
         "<summary>"
         '<span class="afm-preview-results-title">Preview Results</span>'
         f'<span class="afm-preview-results-meta">{html.escape(meta)}</span>'
+        f"{jump_back}"
         "</summary>"
         f'<div class="afm-preview-results-body">{body}</div>'
         "</details>"
@@ -3090,7 +3139,12 @@ def _playback_rules_explainer_html() -> str:
     )
 
 
-def _filters_fields_html(values: dict[str, Any], *, mood_labels: list[str] | None = None) -> str:
+def _filters_fields_html(
+    values: dict[str, Any],
+    *,
+    mood_labels: list[str] | None = None,
+    show_results_jump: bool = False,
+) -> str:
     mood_labels = mood_labels if mood_labels is not None else _audiomuse_mood_labels()
     feedback = _filter_feedback_html(values.get("filter_feedback"))
     exclude_artist_results = values.get("exclude_artist_results") or []
@@ -3106,8 +3160,15 @@ def _filters_fields_html(values: dict[str, Any], *, mood_labels: list[str] | Non
                 "</button></li>"
             )
         artist_results_html = "<ul class='afm-seed-results'>" + "".join(items) + "</ul>"
+    results_jump = ""
+    if show_results_jump:
+        results_jump = (
+            '<div class="afm-form-actions afm-form-actions-inline">'
+            + _jump_nav_button("View Preview Results", target_id="preview-results", direction="down")
+            + "</div>"
+        )
     return (
-        "<section class='afm-panel afm-step-panel'>"
+        "<section class='afm-panel afm-step-panel' id='step-filters'>"
         + _step_panel_heading(
             "Optional",
             "Filters",
@@ -3167,6 +3228,7 @@ def _filters_fields_html(values: dict[str, Any], *, mood_labels: list[str] | Non
         + "<p class='hint'>Must match artist name in your library (search above to add). Case-insensitive.</p></div>"
         + _mood_datalist_html(mood_labels)
         + f"{feedback}"
+        + f"{results_jump}"
         + "</section>"
     )
 
@@ -3429,7 +3491,10 @@ def _station_identity_fields_html(values: dict[str, Any]) -> str:
     )
 
 
-def _preview_step_html() -> str:
+def _preview_step_html(*, show_results_jump: bool = False) -> str:
+    results_jump = ""
+    if show_results_jump:
+        results_jump = _jump_nav_button("View Preview Results", target_id="preview-results", direction="down")
     return (
         "<section class='afm-panel afm-step-panel' id='step-preview'>"
         + _step_panel_heading(
@@ -3440,6 +3505,7 @@ def _preview_step_html() -> str:
         + "<div class='afm-form-actions afm-form-actions-inline'>"
         + "<button type='submit' name='action' value='preview' class='afm-btn afm-btn-primary'>"
         "Preview Programming</button>"
+        + results_jump
         + "</div></section>"
     )
 
@@ -3992,6 +4058,22 @@ def _page_script(
       el.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
     }});
   }}
+
+  function scrollToAfmJump(targetId) {{
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    if (el.tagName === 'DETAILS') el.open = true;
+    window.requestAnimationFrame(() => {{
+      el.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+    }});
+  }}
+
+  document.querySelectorAll('[data-afm-jump]').forEach((btn) => {{
+    btn.addEventListener('click', () => {{
+      const targetId = btn.getAttribute('data-afm-jump');
+      if (targetId) scrollToAfmJump(targetId);
+    }});
+  }});
   const shouldScrollPreview = {scroll_flag} || window.location.hash === '#preview-results';
   if (shouldScrollPreview) {{
     if (document.readyState === 'loading') {{
@@ -4349,6 +4431,7 @@ def home():
     designer_section_close = "</section>" if not editing_slug else ""
     scroll_to_preview = bool(values.get("scroll_to_preview"))
     scroll_to_bootstrap = bool(values.get("scroll_to_bootstrap"))
+    has_preview_tracks = len(preview_tracks) > 0
     preview_block = _preview_results_html(
         preview_tracks,
         highlight=scroll_to_preview,
@@ -4367,8 +4450,8 @@ def home():
         f"{_discover_channels_html()}"
         f"{_station_identity_fields_html(values)}"
         f"{_programming_fields_html(values)}"
-        f"{_preview_step_html()}"
-        f"{_filters_fields_html(values)}"
+        f"{_preview_step_html(show_results_jump=has_preview_tracks)}"
+        f"{_filters_fields_html(values, show_results_jump=has_preview_tracks)}"
         f"{_bootstrap_fields_html(values)}"
         f"{_living_fields_html(values)}"
         f"{_playback_rules_fields_html(values)}"
