@@ -10,7 +10,15 @@
       "changelog": "In-app loading feedback for slow actions (Chat Designer, Preview, Deploy): spinner, status banner, and panel highlight instead of relying on the browser status bar.",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": "e304d9d2a5a9705a25ecb2db4346a454"
+      "checksum": "58f92a9d14a61b729b2bce92743014fd"
+    },
+    {
+      "version": "3.2.0",
+      "min_core_version": "2.5.0",
+      "changelog": "Contextual status messages: flashes appear next to the step or control that triggered them (preview, deploy, bootstrap, etc.) instead of only at the top of the page.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "4e55c2f8c8306fd56b5e9623913cb012"
     },
     {
       "version": "3.1.9",

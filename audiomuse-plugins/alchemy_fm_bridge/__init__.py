@@ -1814,7 +1814,40 @@ def refresh_living_channels() -> None:
 
 def _flash_html(message: str, level: str = "ok") -> str:
     level_class = "afm-flash-ok" if level == "ok" else "afm-flash-error"
-    return f'<p class="afm-flash {level_class}">{html.escape(message)}</p>'
+    return (
+        f'<p class="afm-flash {level_class}" role="status">'
+        f"{html.escape(message)}</p>"
+    )
+
+
+class _FlashQueue:
+    """Contextual status messages keyed by UI anchor (section id)."""
+
+    _ANCHORS = frozenset(
+        {
+            "global",
+            "designer",
+            "stations",
+            "discover",
+            "chat-designer",
+            "step-preview",
+            "bootstrap-opener",
+            "preview-results",
+            "step-deploy",
+            "edit-toolbar",
+        }
+    )
+
+    def __init__(self) -> None:
+        self._by_anchor: dict[str, list[str]] = {}
+
+    def add(self, message: str, level: str = "ok", *, anchor: str = "global") -> None:
+        if anchor not in self._ANCHORS:
+            anchor = "global"
+        self._by_anchor.setdefault(anchor, []).append(_flash_html(message, level))
+
+    def html_for(self, anchor: str) -> str:
+        return "".join(self._by_anchor.get(anchor, []))
 
 
 def _action_loading_html(
@@ -1862,13 +1895,14 @@ def _step_panel_heading(
     )
 
 
-def _designer_flow_overview_html() -> str:
+def _designer_flow_overview_html(*, flash_html: str = "") -> str:
     return (
         '<section class="afm-panel afm-flow-overview-panel">'
         + _panel_heading(
             "How to Build a Station",
             "Follow the Steps Below — Only Step 2 Is Required Before Preview.",
         )
+        + flash_html
         + "<ol class='afm-flow-steps'>"
         "<li><strong>Name It</strong> — What listeners see (mount, homepage).</li>"
         "<li><strong>Program It</strong> — How AudioMuse finds music (CLAP, lyrics, mood, etc.). "
@@ -2032,6 +2066,11 @@ html:not(.dark-mode) .afm-shell .afm-filter-feedback {
   border-radius: 10px;
   margin: 0 0 1rem;
   line-height: 1.45;
+}
+.afm-panel .afm-flash,
+.afm-edit-bar .afm-flash,
+.afm-preview-results-body > .afm-flash:first-child {
+  margin-top: 0;
 }
 .afm-flash-ok {
   background: color-mix(in srgb, #22c55e 14%, transparent);
@@ -2517,7 +2556,13 @@ html:not(.dark-mode) .afm-shell .afm-filter-feedback {
 }
 #step-preview,
 #step-filters,
+#step-deploy,
 #preview-results,
+#bootstrap-opener,
+#chat-designer,
+#discover,
+#stations,
+#designer,
 .afm-preview-results-panel {
   scroll-margin-top: 1rem;
 }
@@ -3052,6 +3097,7 @@ def _preview_results_html(
     preview_tracks: list[dict[str, Any]],
     *,
     highlight: bool = False,
+    flash_html: str = "",
 ) -> str:
     count = len(preview_tracks)
     open_attr = " open" if count else ""
@@ -3083,7 +3129,7 @@ def _preview_results_html(
         f'<span class="afm-preview-results-meta">{html.escape(meta)}</span>'
         f"{jump_back}"
         "</summary>"
-        f'<div class="afm-preview-results-body">{body}</div>'
+        f'<div class="afm-preview-results-body">{flash_html}{body}</div>'
         "</details>"
     )
 
@@ -3422,7 +3468,7 @@ def _bootstrap_playlist_results_html(results: list[dict[str, Any]], *, query: st
     )
 
 
-def _bootstrap_fields_html(values: dict[str, Any]) -> str:
+def _bootstrap_fields_html(values: dict[str, Any], *, flash_html: str = "") -> str:
     bootstrap_enabled = values.get("bootstrap_enabled", False)
     playlist_results = values.get("bootstrap_playlist_results") or []
     search_query = str(values.get("bootstrap_playlist_search", ""))
@@ -3437,6 +3483,7 @@ def _bootstrap_fields_html(values: dict[str, Any]) -> str:
             optional=True,
         )
         + _bootstrap_explainer_html()
+        + flash_html
         + "<div class='afm-check-group'>"
         + "<label class='afm-check-label'><input type='checkbox' name='bootstrap_enabled'"
         + f"{' checked' if bootstrap_enabled else ''}> Use Navidrome Playlist Opener</label>"
@@ -3470,7 +3517,7 @@ def _bootstrap_fields_html(values: dict[str, Any]) -> str:
     )
 
 
-def _chat_designer_fields_html(values: dict[str, Any]) -> str:
+def _chat_designer_fields_html(values: dict[str, Any], *, flash_html: str = "") -> str:
     return (
         '<details class="afm-panel afm-collapsible-helper" id="chat-designer">'
         "<summary>"
@@ -3481,6 +3528,7 @@ def _chat_designer_fields_html(values: dict[str, Any]) -> str:
         "description and shows Preview Results — it does not deploy.</span></span>"
         "</summary>"
         '<div class="afm-collapsible-body">'
+        f"{flash_html}"
         "<p class='hint'>Slow LLM call — requires AudioMuse chat/AI configured. Tweak Programming after preview, "
         "then use Step 3 Preview Programming before deploy.</p>"
         + "<div class='afm-field'>"
@@ -3504,7 +3552,7 @@ def _chat_designer_fields_html(values: dict[str, Any]) -> str:
     )
 
 
-def _discover_channels_html() -> str:
+def _discover_channels_html(*, flash_html: str = "") -> str:
     task = _last_clustering_task()
     task_note = ""
     if task:
@@ -3552,6 +3600,7 @@ def _discover_channels_html() -> str:
         "It does not import cluster tracks or deploy.</span></span>"
         "</summary>"
         '<div class="afm-collapsible-body">'
+        f"{flash_html}"
         '<div class="afm-form-actions afm-form-actions-inline" style="margin-bottom:0.75rem;">'
         '<button type="submit" name="action" value="start_clustering" formnovalidate '
         'class="afm-btn afm-btn-secondary">Run Clustering</button>'
@@ -3672,7 +3721,7 @@ def _station_identity_fields_html(values: dict[str, Any]) -> str:
     )
 
 
-def _preview_step_html(*, show_results_jump: bool = False) -> str:
+def _preview_step_html(*, show_results_jump: bool = False, flash_html: str = "") -> str:
     results_jump = ""
     if show_results_jump:
         results_jump = _jump_nav_button("View Preview Results", target_id="preview-results", direction="down")
@@ -3684,6 +3733,7 @@ def _preview_step_html(*, show_results_jump: bool = False) -> str:
             "Runs your Step 2 query in AudioMuse and shows matching tracks below. Nothing goes on air until Step 6 deploy.",
         )
         + _preview_explainer_html()
+        + flash_html
         + _action_loading_html(
             "afm-preview-loading",
             title="Running preview…",
@@ -3726,7 +3776,7 @@ def _playback_rules_fields_html(values: dict[str, Any]) -> str:
     )
 
 
-def _deploy_actions_fields_html(values: dict[str, Any]) -> str:
+def _deploy_actions_fields_html(values: dict[str, Any], *, flash_html: str = "") -> str:
     editing_slug = (values.get("editing_slug") or "").strip()
     deploy_label = "Save Changes to Alchemy FM" if editing_slug else "Deploy to Alchemy FM"
     return (
@@ -3737,6 +3787,7 @@ def _deploy_actions_fields_html(values: dict[str, Any]) -> str:
             "Creates or updates the station and optionally fills the play queue. Encoding and themes are in Alchemy FM Admin.",
         )
         + _deploy_explainer_html()
+        + flash_html
         + _action_loading_html(
             "afm-deploy-loading",
             title="Deploying to Alchemy FM…",
@@ -3788,7 +3839,7 @@ def _programming_label(profile: dict[str, Any] | None, station: dict[str, Any]) 
     return f"{type_label}: {detail}"[:72]
 
 
-def _edit_toolbar_html(values: dict[str, Any]) -> str:
+def _edit_toolbar_html(values: dict[str, Any], *, flash_html: str = "") -> str:
     editing_slug = (values.get("editing_slug") or "").strip()
     if not editing_slug:
         return ""
@@ -3847,6 +3898,7 @@ def _edit_toolbar_html(values: dict[str, Any]) -> str:
         )
     return (
         f'<div class="afm-edit-bar" id="designer">'
+        f"{flash_html}"
         "<div>"
         '<span class="afm-edit-eyebrow">Editing Station</span>'
         f'<h2 class="afm-edit-title">{html.escape(name)}</h2>'
@@ -3869,7 +3921,7 @@ def _edit_toolbar_html(values: dict[str, Any]) -> str:
     )
 
 
-def _stations_section_html(editing_slug: str | None = None) -> str:
+def _stations_section_html(editing_slug: str | None = None, *, flash_html: str = "") -> str:
     try:
         stations = _client().test_connection()
     except ChannelDesignerError as exc:
@@ -3974,6 +4026,7 @@ def _stations_section_html(editing_slug: str | None = None) -> str:
         f"<p class='afm-section-note'>{html.escape(note)}</p></div>"
         f"{new_channel}"
         "</div>"
+        f"{flash_html}"
         f"{table_html}"
         "</section>"
     )
@@ -4050,13 +4103,17 @@ def _page_script(
     mood_centroids: dict[str, Any] | None = None,
     mood_labels: list[str] | None = None,
     *,
+    scroll_anchor: str = "",
     scroll_to_preview: bool = False,
     scroll_to_bootstrap: bool = False,
 ) -> str:
     mood_json = json.dumps(mood_centroids or {})
     mood_labels_json = json.dumps(mood_labels or [])
-    scroll_flag = "true" if scroll_to_preview else "false"
-    bootstrap_scroll_flag = "true" if scroll_to_bootstrap else "false"
+    if scroll_to_preview and not scroll_anchor:
+        scroll_anchor = "preview-results"
+    if scroll_to_bootstrap and not scroll_anchor:
+        scroll_anchor = "bootstrap-opener"
+    scroll_anchor_json = json.dumps(scroll_anchor or "")
     return f"""
 <script type="application/json" id="mood-centroids-data">{mood_json}</script>
 <script type="application/json" id="mood-labels-data">{mood_labels_json}</script>
@@ -4248,16 +4305,7 @@ def _page_script(
     checkMoodTerms();
   }}
 
-  function scrollToPreviewResults() {{
-    const el = document.getElementById('preview-results');
-    if (!el) return;
-    if (el.tagName === 'DETAILS') el.open = true;
-    window.requestAnimationFrame(() => {{
-      el.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
-    }});
-  }}
-
-  function scrollToAfmJump(targetId) {{
+  function scrollToAfmAnchor(targetId) {{
     const el = document.getElementById(targetId);
     if (!el) return;
     if (el.tagName === 'DETAILS') el.open = true;
@@ -4266,37 +4314,36 @@ def _page_script(
     }});
   }}
 
+  function scrollToPreviewResults() {{
+    scrollToAfmAnchor('preview-results');
+  }}
+
+  function scrollToAfmJump(targetId) {{
+    scrollToAfmAnchor(targetId);
+  }}
+
   document.querySelectorAll('[data-afm-jump]').forEach((btn) => {{
     btn.addEventListener('click', () => {{
       const targetId = btn.getAttribute('data-afm-jump');
       if (targetId) scrollToAfmJump(targetId);
     }});
   }});
-  const shouldScrollPreview = {scroll_flag} || window.location.hash === '#preview-results';
-  if (shouldScrollPreview) {{
+  const scrollAnchor = {scroll_anchor_json};
+  const hashAnchor = (window.location.hash || '').replace(/^#/, '');
+  const targetAnchor = scrollAnchor || hashAnchor;
+  if (targetAnchor) {{
+    const runScroll = () => scrollToAfmAnchor(targetAnchor);
     if (document.readyState === 'loading') {{
-      document.addEventListener('DOMContentLoaded', scrollToPreviewResults);
+      document.addEventListener('DOMContentLoaded', runScroll);
     }} else {{
-      scrollToPreviewResults();
+      runScroll();
     }}
   }}
-
-  function scrollToBootstrapOpener() {{
-    const el = document.getElementById('bootstrap-opener');
-    if (!el) return;
+  if (targetAnchor === 'bootstrap-opener') {{
     window.requestAnimationFrame(() => {{
-      el.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
       const searchInput = document.getElementById('bootstrap_playlist_search');
       if (searchInput) searchInput.focus({{ preventScroll: true }});
     }});
-  }}
-  const shouldScrollBootstrap = {bootstrap_scroll_flag} || window.location.hash === '#bootstrap-opener';
-  if (shouldScrollBootstrap) {{
-    if (document.readyState === 'loading') {{
-      document.addEventListener('DOMContentLoaded', scrollToBootstrapOpener);
-    }} else {{
-      scrollToBootstrapOpener();
-    }}
   }}
 
   const designerForm = document.getElementById('afm-designer-form');
@@ -4344,7 +4391,8 @@ def _page_script(
 
 @bp.route("/", methods=["GET", "POST"])
 def home():
-    flash = ""
+    flashes = _FlashQueue()
+    scroll_anchor = ""
     preview_tracks: list[dict[str, Any]] = []
     values: dict[str, Any] = {
         "programming_type": "clap_query",
@@ -4363,9 +4411,14 @@ def home():
             try:
                 values, preview_tracks, channel_name = _apply_loaded_channel(edit_slug)
             except ChannelDesignerError as exc:
-                flash = _flash_html(str(exc), "error")
+                flashes.add(str(exc), "error")
         elif request.args.get("new"):
-            flash = _flash_html("New Channel — Design Programming, Preview Tracks, Then Deploy.", "ok")
+            flashes.add(
+                "New Channel — Design Programming, Preview Tracks, Then Deploy.",
+                "ok",
+                anchor="designer",
+            )
+            scroll_anchor = "designer"
 
     if request.method == "POST":
         action = (request.form.get("action") or "").strip()
@@ -4381,10 +4434,12 @@ def home():
                     "name": clap_query[:60] or f"Cluster {discover_id}",
                 }
             )
-            flash = _flash_html(
+            flashes.add(
                 "Cluster playlist loaded into designer — preview, then deploy.",
                 "ok",
+                anchor="discover",
             )
+            scroll_anchor = "discover"
         elif action == "edit":
             load_slug = (request.form.get("load_slug") or "").strip()
             if load_slug:
@@ -4399,15 +4454,19 @@ def home():
                     raise ChannelDesignerError("Invalid station id for delete.")
                 _client().delete_station(station_id)
                 _delete_local_channel(delete_slug)
-                flash = _flash_html(
+                flashes.add(
                     f"Deleted station '{delete_slug or station_id}' from Alchemy FM.",
                     "ok",
+                    anchor="stations",
                 )
+                scroll_anchor = "stations"
                 logger.info("alchemy_fm_bridge deleted station id=%s slug=%s", station_id, delete_slug)
             except ChannelDesignerError as exc:
-                flash = _flash_html(str(exc), "error")
+                flashes.add(str(exc), "error", anchor="stations")
+                scroll_anchor = "stations"
             except ValueError as exc:
-                flash = _flash_html(str(exc), "error")
+                flashes.add(str(exc), "error", anchor="stations")
+                scroll_anchor = "stations"
         else:
             values.update({k: request.form.get(k, values.get(k, "")) for k in request.form})
             values["enabled"] = request.form.get("enabled") == "on"
@@ -4464,29 +4523,33 @@ def home():
             elif action == "start_clustering":
                 try:
                     _clustering_start()
-                    flash = _flash_html(
+                    flashes.add(
                         "Clustering started in AudioMuse. Check Active Tasks, then refresh this page.",
                         "ok",
+                        anchor="discover",
                     )
+                    scroll_anchor = "discover"
                 except ChannelDesignerError as exc:
-                    flash = _flash_html(str(exc), "error")
+                    flashes.add(str(exc), "error", anchor="discover")
+                    scroll_anchor = "discover"
             elif action.startswith("op_"):
                 edit_slug = (request.form.get("editing_slug") or "").strip()
                 station_id = int(request.form.get("op_station_id") or "0")
                 if station_id <= 0:
-                    flash = _flash_html("No Alchemy FM station id for this operation.", "error")
+                    flashes.add("No Alchemy FM station id for this operation.", "error", anchor="edit-toolbar")
+                    scroll_anchor = "edit-toolbar"
                 else:
                     try:
                         client = _client()
                         if action == "op_refresh_queue":
                             client.refresh_queue(station_id)
-                            flash = _flash_html("Queue refresh requested.", "ok")
+                            flashes.add("Queue refresh requested.", "ok", anchor="edit-toolbar")
                         elif action == "op_bootstrap":
                             client.bootstrap_station(station_id)
-                            flash = _flash_html("Station pool/bootstrap rebuild started.", "ok")
+                            flashes.add("Station pool/bootstrap rebuild started.", "ok", anchor="edit-toolbar")
                         elif action == "op_rebuild_m3u":
                             client.rebuild_m3u(station_id)
-                            flash = _flash_html("queue.m3u rebuilt from database.", "ok")
+                            flashes.add("queue.m3u rebuilt from database.", "ok", anchor="edit-toolbar")
                         elif action == "op_toggle_enabled":
                             remote = None
                             for st in client.test_connection():
@@ -4495,13 +4558,14 @@ def home():
                                     break
                             current = bool(remote.get("enabled")) if remote else False
                             client.set_station_enabled(station_id, not current)
-                            flash = _flash_html(
+                            flashes.add(
                                 "Station taken off air." if current else "Station put on air.",
                                 "ok",
+                                anchor="edit-toolbar",
                             )
                         elif action == "op_delete_artwork":
                             client.delete_artwork(station_id)
-                            flash = _flash_html("Station artwork removed.", "ok")
+                            flashes.add("Station artwork removed.", "ok", anchor="edit-toolbar")
                         elif action == "op_upload_artwork":
                             upload = request.files.get("artwork_file")
                             if not upload or not upload.filename:
@@ -4515,18 +4579,26 @@ def home():
                                 data,
                                 upload.mimetype or "image/jpeg",
                             )
-                            flash = _flash_html("Station artwork uploaded.", "ok")
+                            flashes.add("Station artwork uploaded.", "ok", anchor="edit-toolbar")
                         if edit_slug:
                             loaded = _apply_loaded_channel(edit_slug)
                             values, preview_tracks, _ = loaded
+                        scroll_anchor = "edit-toolbar"
                     except ChannelDesignerError as exc:
-                        flash = _flash_html(str(exc), "error")
+                        flashes.add(str(exc), "error", anchor="edit-toolbar")
+                        scroll_anchor = "edit-toolbar"
             elif action == "test":
                 try:
                     stations = _client().test_connection()
-                    flash = _flash_html(f"Alchemy FM connected — {len(stations)} station(s) on air.", "ok")
+                    flashes.add(
+                        f"Alchemy FM connected — {len(stations)} station(s) on air.",
+                        "ok",
+                        anchor="step-deploy",
+                    )
+                    scroll_anchor = "step-deploy"
                 except ChannelDesignerError as exc:
-                    flash = _flash_html(str(exc), "error")
+                    flashes.add(str(exc), "error", anchor="step-deploy")
+                    scroll_anchor = "step-deploy"
             elif action in ("preview", "push", "chat_preview"):
                 try:
                     for_deploy = action == "push"
@@ -4563,9 +4635,11 @@ def home():
                         _record_audition(slug, item_ids)
                         _save_channel(profile, preview_ids=item_ids)
                         values["scroll_to_preview"] = True
-                        flash = _flash_html(
+                        scroll_anchor = "preview-results"
+                        flashes.add(
                             f"Chat preview — {len(preview_tracks)} tracks. Tweak programming/filters, then deploy.",
                             "ok",
+                            anchor="preview-results",
                         )
                     elif action == "preview":
                         unfiltered = _merged_programming_tracks_unfiltered(profile, slug)
@@ -4582,15 +4656,18 @@ def home():
                             _add_to_pool(slug, item_ids, source="preview")
                         _save_channel(profile, preview_ids=item_ids)
                         values["scroll_to_preview"] = True
-                        flash = _flash_html(
+                        scroll_anchor = "preview-results"
+                        flashes.add(
                             f"Preview ready — {len(preview_tracks)} tracks from AudioMuse. "
                             "Review below, then deploy to Alchemy FM.",
                             "ok",
+                            anchor="preview-results",
                         )
                         if bootstrap_check and not bootstrap_check.get("ok"):
-                            flash += _flash_html(
+                            flashes.add(
                                 f"Bootstrap warning: {bootstrap_check.get('error')}",
                                 "error",
+                                anchor="bootstrap-opener",
                             )
                     elif action == "push":
                         unfiltered = _merged_programming_tracks_unfiltered(profile, slug)
@@ -4622,11 +4699,13 @@ def home():
                             station=station,
                             action=push_action,
                         )
-                        flash = _flash_html(
+                        flashes.add(
                             f"Channel '{station.get('name')}' {push_action} on Alchemy FM "
                             f"(id {station.get('id')}) with live {profile['programming']['type']} programming.",
                             "ok",
+                            anchor="step-deploy",
                         )
+                        scroll_anchor = "step-deploy"
                         values = _form_values_from_profile(profile)
                         values["editing_slug"] = slug
                         if station:
@@ -4646,11 +4725,20 @@ def home():
                         or _slugify(request.form.get("name") or "channel")
                     ).strip()
                     _record_channel_error(slug, str(exc))
-                    flash = _flash_html(str(exc), "error")
+                    error_anchor = {
+                        "chat_preview": "chat-designer",
+                        "preview": "step-preview",
+                        "push": "step-deploy",
+                    }.get(action, "step-preview")
+                    flashes.add(str(exc), "error", anchor=error_anchor)
+                    scroll_anchor = error_anchor
 
     editing_slug = (values.get("editing_slug") or "").strip()
-    stations_html = _stations_section_html(editing_slug or None)
-    edit_bar = _edit_toolbar_html(values)
+    stations_html = _stations_section_html(
+        editing_slug or None,
+        flash_html=flashes.html_for("stations"),
+    )
+    edit_bar = _edit_toolbar_html(values, flash_html=flashes.html_for("edit-toolbar"))
     designer_section_open = (
         '<section class="afm-section" id="designer">'
         '<div class="afm-section-head">'
@@ -4663,10 +4751,15 @@ def home():
     designer_section_close = "</section>" if not editing_slug else ""
     scroll_to_preview = bool(values.get("scroll_to_preview"))
     scroll_to_bootstrap = bool(values.get("scroll_to_bootstrap"))
+    if scroll_to_preview and not scroll_anchor:
+        scroll_anchor = "preview-results"
+    if scroll_to_bootstrap and not scroll_anchor:
+        scroll_anchor = "bootstrap-opener"
     has_preview_tracks = len(preview_tracks) > 0
     preview_block = _preview_results_html(
         preview_tracks,
         highlight=scroll_to_preview,
+        flash_html=flashes.html_for("preview-results"),
     )
     audition_block = (
         "<section class='afm-panel'>"
@@ -4677,17 +4770,17 @@ def home():
     designer_form = (
         f"{designer_section_open}"
         "<form method='post' id='afm-designer-form' class='afm-designer-form'>"
-        f"{_designer_flow_overview_html()}"
-        f"{_chat_designer_fields_html(values)}"
-        f"{_discover_channels_html()}"
+        f"{_designer_flow_overview_html(flash_html=flashes.html_for('designer'))}"
+        f"{_chat_designer_fields_html(values, flash_html=flashes.html_for('chat-designer'))}"
+        f"{_discover_channels_html(flash_html=flashes.html_for('discover'))}"
         f"{_station_identity_fields_html(values)}"
         f"{_programming_fields_html(values)}"
-        f"{_preview_step_html(show_results_jump=has_preview_tracks)}"
+        f"{_preview_step_html(show_results_jump=has_preview_tracks, flash_html=flashes.html_for('step-preview'))}"
         f"{_filters_fields_html(values, show_results_jump=has_preview_tracks)}"
-        f"{_bootstrap_fields_html(values)}"
+        f"{_bootstrap_fields_html(values, flash_html=flashes.html_for('bootstrap-opener'))}"
         f"{_living_fields_html(values)}"
         f"{_playback_rules_fields_html(values)}"
-        f"{_deploy_actions_fields_html(values)}"
+        f"{_deploy_actions_fields_html(values, flash_html=flashes.html_for('step-deploy'))}"
         "</form>"
         f"{preview_block}"
         f"{audition_block}"
@@ -4704,10 +4797,10 @@ def home():
         f"{_page_styles()}"
         '<div class="afm-shell">'
         f"{_page_header_html()}"
-        f"{flash}"
+        f"{flashes.html_for('global')}"
         f"{main_flow}"
         "</div>"
-        f"{_page_script(_mood_centroids_data(), mood_labels, scroll_to_preview=scroll_to_preview, scroll_to_bootstrap=scroll_to_bootstrap)}"
+        f"{_page_script(_mood_centroids_data(), mood_labels, scroll_anchor=scroll_anchor, scroll_to_preview=scroll_to_preview, scroll_to_bootstrap=scroll_to_bootstrap)}"
     )
     return render_page(body, title="Alchemy FM Channel Designer")
 
