@@ -102,3 +102,54 @@ class TestDeployRoute:
         body = resp.get_data(as_text=True)
         assert "502" in body or "bootstrap failed" in body.lower()
         assert bridge._channel_last_error("deploy-route-fm")
+
+    def test_push_deploy_uses_saved_preview_when_form_empty(self, client, audiomuse_mocks, pg_db):
+        slug = "saved-preview-fm"
+        profile = {
+            "programming": {"type": "clap_query", "query": "late night rock", "limit": 30},
+            "refresh": {"mode": "similar_to_last"},
+            "filters": {},
+            "living": {"enabled": False},
+            "bootstrap": {},
+            "station": {
+                "name": "Saved Preview FM",
+                "slug": slug,
+                "description": "",
+                "icecast_mount": f"/{slug}",
+                "enabled": True,
+                "bootstrap_queue": True,
+                "queue_target": 30,
+                "refresh_threshold": 10,
+                "artist_separation_minutes": 90,
+            },
+        }
+        bridge._save_channel(
+            profile,
+            preview_ids=["t1", "t2", "t3"],
+            unfiltered_preview_ids=["t1", "t2", "t3"],
+        )
+
+        mock_client = patch.object(bridge, "_client")
+        with mock_client as client_factory:
+            alchemy = client_factory.return_value
+            alchemy.verify_deploy_ready.return_value = None
+            alchemy.push_station.return_value = (
+                {"id": 1, "name": "Saved Preview FM", "slug": slug, "enabled": True, "queued_count": 3},
+                "created",
+            )
+            with patch.object(bridge, "preview_programming") as preview_mock:
+                preview_mock.side_effect = AssertionError("deploy should use saved preview, not re-query")
+                resp = client.post(
+                    "/",
+                    data=_push_form(
+                        name="Saved Preview FM",
+                        slug=slug,
+                        clap_query="",
+                        editing_slug=slug,
+                    ),
+                )
+
+        assert resp.status_code == 200
+        body = resp.get_data(as_text=True)
+        assert "created on Alchemy FM" in body
+        alchemy.push_station.assert_called_once()

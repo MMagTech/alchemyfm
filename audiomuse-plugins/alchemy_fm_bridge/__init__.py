@@ -26,7 +26,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.21"
+PLUGIN_VERSION = "3.2.23"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -188,7 +188,7 @@ class AlchemyFmClient:
                 f"Could not reach Alchemy FM at {self.base_url}: {exc.reason}"
             ) from exc
 
-    def _verify_deploy_ready_legacy_backend(self) -> str | None:
+    def _verify_deploy_ready_legacy_backend(self, *, strict: bool = True) -> str | None:
         """Backend predates /api/admin/deploy-check — probe AudioMuse from plugin."""
         _agent_debug_log(
             "deploy-check-missing-404",
@@ -205,16 +205,22 @@ class AlchemyFmClient:
                 "H3",
             )
             if exc.status == 401:
-                raise ChannelDesignerError(
+                message = (
                     "AudioMuse returned 401 Unauthorized.\n"
                     "1. Channel Designer plugin settings: audiomuse_api_token\n"
                     "2. Alchemy FM .env: AUDIOMUSE_API_TOKEN (same token — required for bootstrap)\n"
                     "Copy the token from AudioMuse Settings → API."
-                ) from exc
-            raise ChannelDesignerError(
+                )
+                if strict:
+                    raise ChannelDesignerError(message) from exc
+                return message
+            message = (
                 f"Cannot reach AudioMuse from plugin: {exc}\n"
                 "Fix AudioMuse connectivity before deploying."
-            ) from exc
+            )
+            if strict:
+                raise ChannelDesignerError(message) from exc
+            return message
         return (
             "Alchemy FM backend is outdated (missing /api/admin/deploy-check). "
             "Pull ghcr.io/mmagtech/alchemyfm-backend:latest and restart. "
@@ -222,14 +228,20 @@ class AlchemyFmClient:
             "NAVIDROME_URL, NAVIDROME_USER, and NAVIDROME_PASSWORD in Alchemy FM .env."
         )
 
-    def verify_deploy_ready(self) -> str | None:
-        """Ensure Alchemy FM can reach AudioMuse + Navidrome (bootstrap will fail otherwise)."""
+    def verify_deploy_ready(self, *, strict: bool = True) -> str | None:
+        """Ensure Alchemy FM can reach AudioMuse + Navidrome (bootstrap will fail otherwise).
+
+        When strict=False (Deploy), returns a warning string instead of raising so deploy
+        can proceed — Test Connection may succeed while bootstrap env on Alchemy is wrong.
+        """
         try:
             check = self._request("GET", "/api/admin/deploy-check")
         except ChannelDesignerError as exc:
             if exc.status == 404:
-                return self._verify_deploy_ready_legacy_backend()
-            raise
+                return self._verify_deploy_ready_legacy_backend(strict=strict)
+            if strict:
+                raise
+            return str(exc)
         if not isinstance(check, dict) or check.get("ok"):
             return None
         parts: list[str] = []
@@ -244,9 +256,10 @@ class AlchemyFmClient:
             "not the public Cloudflare URL."
         )
         body = "\n".join(parts) if parts else "AudioMuse or Navidrome is not reachable from Alchemy FM."
-        raise ChannelDesignerError(
-            f"Alchemy FM is not ready to deploy stations.\n{body}\n{hint}"
-        )
+        message = f"Alchemy FM is not ready to deploy stations.\n{body}\n{hint}"
+        if strict:
+            raise ChannelDesignerError(message)
+        return message
 
     def _list_stations(self) -> list[dict[str, Any]]:
         stations = self._request("GET", "/api/admin/stations")
@@ -2219,9 +2232,23 @@ def refresh_living_channels() -> None:
 
 def _flash_html(message: str, level: str = "ok") -> str:
     level_class = "afm-flash-ok" if level == "ok" else "afm-flash-error"
+    role = "alert" if level == "error" else "status"
     return (
-        f'<p class="afm-flash {level_class}" role="status">'
+        f'<p class="afm-flash {level_class}" role="{role}">'
         f"{html.escape(message)}</p>"
+    )
+
+
+def _pinned_deploy_error_html(message: str) -> str:
+    text = (message or "").strip()
+    if not text:
+        return ""
+    return (
+        '<div id="afm-deploy-error-pinned" class="afm-deploy-error-pinned" role="alert" '
+        'aria-live="assertive">'
+        "<strong>Deploy failed — fix this before trying again</strong>"
+        f"<p>{html.escape(text)}</p>"
+        "</div>"
     )
 
 
@@ -2488,6 +2515,34 @@ html:not(.dark-mode) .afm-shell .afm-filter-feedback {
   background: color-mix(in srgb, #ef4444 14%, transparent);
   border: 1px solid color-mix(in srgb, #ef4444 45%, transparent);
   color: var(--text, #fef2f2);
+}
+.afm-deploy-error-pinned {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  margin: 0;
+  padding: 0.85rem 1.25rem;
+  background: color-mix(in srgb, #ef4444 92%, #1a1a1a);
+  border-bottom: 2px solid #fca5a5;
+  color: #fff;
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.35);
+  line-height: 1.45;
+}
+.afm-deploy-error-pinned strong {
+  display: block;
+  font-size: 0.95rem;
+  margin-bottom: 0.35rem;
+}
+.afm-deploy-error-pinned p {
+  margin: 0;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.afm-shell.has-deploy-error-pinned {
+  padding-top: 4.5rem;
 }
 .afm-deploy-status,
 .afm-preview-status {
@@ -3576,6 +3631,65 @@ def _mood_centroids_step2_warning() -> str:
             )
         return f"Mood clusters could not load: {exc}"
     return ""
+
+
+def _programming_signature(programming: dict[str, Any]) -> tuple[Any, ...]:
+    ptype = (programming.get("type") or "").strip()
+    if ptype in ("clap_query", "lyrics_query"):
+        return (ptype, (programming.get("query") or "").strip())
+    if ptype == "mood_centroid":
+        return (
+            ptype,
+            (programming.get("mood") or "").strip().lower(),
+            str(_parse_centroid_index(programming.get("centroid_index"))),
+        )
+    if ptype == "alchemy_anchor":
+        return (ptype, str(programming.get("anchor_id") or "").strip())
+    if ptype == "similar_seed":
+        return (ptype, str(programming.get("seed_id") or "").strip())
+    return (ptype,)
+
+
+def _programming_changed(current: dict[str, Any], saved: dict[str, Any]) -> bool:
+    current_prog = current.get("programming") if isinstance(current.get("programming"), dict) else {}
+    saved_prog = saved.get("programming") if isinstance(saved.get("programming"), dict) else {}
+    return _programming_signature(current_prog) != _programming_signature(saved_prog)
+
+
+def _deploy_unfiltered_tracks(profile: dict[str, Any], slug: str) -> list[dict[str, Any]]:
+    """Tracks for deploy — prefer last successful preview when programming unchanged."""
+    slug = slug.strip()
+    loaded = _load_saved_channel(slug)
+    if loaded:
+        saved_profile, preview_ids = loaded
+        if not _programming_changed(profile, saved_profile):
+            fallback_ids = saved_profile.get("last_unfiltered_preview_ids") or preview_ids
+            if fallback_ids:
+                tracks = _preview_tracks_from_ids(fallback_ids)
+                if tracks:
+                    _agent_debug_log(
+                        "deploy-used-saved-preview",
+                        {"slug": slug, "track_count": len(tracks), "reason": "programming-unchanged"},
+                        "H6",
+                    )
+                    return tracks
+    try:
+        return _merged_programming_tracks_unfiltered(profile, slug)
+    except ChannelDesignerError:
+        if not loaded:
+            raise
+        saved_profile, preview_ids = loaded
+        fallback_ids = saved_profile.get("last_unfiltered_preview_ids") or preview_ids
+        if fallback_ids:
+            tracks = _preview_tracks_from_ids(fallback_ids)
+            if tracks:
+                _agent_debug_log(
+                    "deploy-used-saved-preview",
+                    {"slug": slug, "track_count": len(tracks), "reason": "live-preview-failed"},
+                    "H6",
+                )
+                return tracks
+        raise
 
 
 def _programming_incomplete(programming: dict[str, Any]) -> bool:
@@ -5134,9 +5248,9 @@ def _page_script(
     const el = document.getElementById(targetId);
     if (!el) return;
     if (el.tagName === 'DETAILS') el.open = true;
-    const instantTargets = ['preview-results', 'step-deploy'];
+    const instantTargets = ['preview-results', 'step-deploy', 'afm-deploy-error-pinned', 'afm-deploy-status'];
     const behavior = ({instant_scroll_flag} && instantTargets.includes(targetId)) ? 'instant' : 'smooth';
-    const block = targetId === 'step-deploy' ? 'center' : 'start';
+    const block = 'start';
     const run = () => {{
       el.scrollIntoView({{ behavior: behavior, block: block }});
     }};
@@ -5161,16 +5275,59 @@ def _page_script(
       if (targetId) scrollToAfmJump(targetId);
     }});
   }});
+  function resetAfmLoadingChrome() {{
+    document.querySelectorAll('.afm-action-loading').forEach((el) => {{
+      el.hidden = true;
+    }});
+    document.querySelectorAll('.is-working').forEach((el) => {{
+      el.classList.remove('is-working');
+    }});
+    const shell = document.querySelector('.afm-shell');
+    if (shell) shell.classList.remove('is-busy');
+    const busyForm = document.getElementById('afm-designer-form');
+    if (busyForm) {{
+      busyForm.removeAttribute('aria-busy');
+      busyForm.querySelectorAll('button[type="submit"]').forEach((btn) => {{
+        btn.disabled = false;
+        btn.classList.remove('is-loading');
+      }});
+    }}
+  }}
+
+  function scrollToDeployFailure() {{
+    const pinned = document.getElementById('afm-deploy-error-pinned');
+    const deployStatus = document.getElementById('afm-deploy-status');
+    const target = pinned || (
+      deployStatus && deployStatus.querySelector('.afm-flash-error') ? deployStatus : null
+    );
+    if (!target) return false;
+    // #region agent log
+    fetch('http://127.0.0.1:7920/ingest/eeadc61f-7597-4521-a8a2-a7597a4d1eae',{{method:'POST',headers:{{'Content-Type':'application/json','X-Debug-Session-Id':'b5959d'}},body:JSON.stringify({{sessionId:'b5959d',location:'alchemy_fm_bridge:scrollToDeployFailure',message:'deploy error scroll',data:{{targetId:target.id}},timestamp:Date.now(),hypothesisId:'H5'}})}}).catch(()=>{{}});
+    // #endregion agent log
+    target.scrollIntoView({{ behavior: 'instant', block: 'start' }});
+    return true;
+  }}
+
+  resetAfmLoadingChrome();
+  window.addEventListener('pageshow', () => {{
+    resetAfmLoadingChrome();
+  }});
+
   const scrollAnchor = {scroll_anchor_json};
   const hashAnchor = (window.location.hash || '').replace(/^#/, '');
   const targetAnchor = scrollAnchor || hashAnchor;
   if (targetAnchor) {{
-    const runScroll = () => scrollToAfmAnchor(targetAnchor);
+    const runScroll = () => {{
+      if (targetAnchor === 'step-deploy' && scrollToDeployFailure()) return;
+      scrollToAfmAnchor(targetAnchor);
+    }};
     if (document.readyState === 'loading') {{
       document.addEventListener('DOMContentLoaded', runScroll);
     }} else {{
       runScroll();
     }}
+  }} else if (scrollToDeployFailure()) {{
+    /* error persisted from last deploy — keep banner in view */
   }}
   if (targetAnchor === 'bootstrap-opener') {{
     window.requestAnimationFrame(() => {{
@@ -5298,6 +5455,12 @@ def _page_script(
     designerForm.addEventListener('submit', (event) => {{
       const submitter = event.submitter;
       if (!submitter || submitter.disabled) return;
+      Object.values(sections).forEach((el) => {{
+        if (!el) return;
+        el.querySelectorAll('input, select, textarea').forEach((input) => {{
+          input.disabled = false;
+        }});
+      }});
       if (
         submitter.getAttribute('data-afm-ajax-preview') === 'true'
         && submitter.name === 'action'
@@ -6543,20 +6706,8 @@ def home():
                         )
                     elif action == "push":
                         client = _client()
-                        deploy_warning = client.verify_deploy_ready()
-                        unfiltered = _merged_programming_tracks_unfiltered(profile, slug)
-                        if not unfiltered:
-                            loaded = _load_saved_channel(slug)
-                            if loaded:
-                                saved_profile, preview_ids = loaded
-                                fallback_ids = saved_profile.get("last_unfiltered_preview_ids") or preview_ids
-                                if fallback_ids:
-                                    unfiltered = _preview_tracks_from_ids(fallback_ids)
-                                    _agent_debug_log(
-                                        "deploy-used-saved-preview",
-                                        {"slug": slug, "track_count": len(unfiltered)},
-                                        "H4",
-                                    )
+                        deploy_warning = client.verify_deploy_ready(strict=False)
+                        unfiltered = _deploy_unfiltered_tracks(profile, slug)
                         preview_tracks = apply_track_filters(unfiltered, profile)
                         if not preview_tracks:
                             raise ChannelDesignerError(
@@ -6617,6 +6768,11 @@ def home():
                     _record_channel_error(slug, str(exc))
                     if action == "push":
                         values["deploy_last_error"] = str(exc)
+                        _agent_debug_log(
+                            "deploy-error-rendered",
+                            {"slug": slug, "message": str(exc)[:300], "kind": "ChannelDesignerError"},
+                            "H5",
+                        )
                     if action == "preview":
                         values["preview_last_error"] = str(exc)
                     if action == "chat_preview" and _is_chat_preview_ajax():
@@ -6630,6 +6786,8 @@ def home():
                         values["chat_designer_open"] = True
                         values["chat_prompt"] = (request.form.get("chat_prompt") or "").strip()
                     flashes.add(str(exc), "error", anchor=error_anchor)
+                    if action == "push":
+                        flashes.add(str(exc), "error", anchor="global")
                     if action == "preview":
                         flashes.add(str(exc), "error", anchor="step-programming")
                     scroll_anchor = error_anchor
@@ -6647,7 +6805,13 @@ def home():
                         logger.exception("alchemy_fm_bridge deploy failed slug=%s", slug)
                         _record_channel_error(slug, message)
                         values["deploy_last_error"] = message
+                        _agent_debug_log(
+                            "deploy-error-rendered",
+                            {"slug": slug, "message": message[:300], "kind": "Exception"},
+                            "H5",
+                        )
                         flashes.add(message, "error", anchor="step-deploy")
+                        flashes.add(message, "error", anchor="global")
                         scroll_anchor = "step-deploy"
                     elif action == "preview":
                         slug = (
@@ -6775,9 +6939,19 @@ def home():
         main_flow = f"{stations_html}{designer_form}"
 
     mood_labels = _audiomuse_mood_labels()
+    deploy_error_message = (values.get("deploy_last_error") or "").strip()
+    pinned_deploy_error = _pinned_deploy_error_html(deploy_error_message)
+    if deploy_error_message:
+        _agent_debug_log(
+            "deploy-error-page-render",
+            {"message_len": len(deploy_error_message), "has_pinned": bool(pinned_deploy_error)},
+            "H5",
+        )
+    shell_class = "afm-shell has-deploy-error-pinned" if pinned_deploy_error else "afm-shell"
     body = (
         f"{_page_styles()}"
-        '<div class="afm-shell">'
+        f'<div class="{shell_class}">'
+        f"{pinned_deploy_error}"
         f"{_page_header_html()}"
         f"{flashes.html_for('global')}"
         f"{main_flow}"
