@@ -19,6 +19,7 @@ SOURCE_URL = (
     "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/"
     "audiomuse-plugins/alchemy_fm_bridge.zip"
 )
+MAX_CATALOG_VERSIONS = 2
 
 
 def md5_file(path: Path) -> str:
@@ -91,6 +92,15 @@ def latest_catalog_entry(data: dict) -> dict | None:
     return first if isinstance(first, dict) else None
 
 
+def trim_catalog_versions(data: dict) -> None:
+    """Keep only the newest N catalog entries (current + previous release)."""
+    versions = data.get("versions")
+    if not isinstance(versions, list):
+        return
+    if len(versions) > MAX_CATALOG_VERSIONS:
+        data["versions"] = versions[:MAX_CATALOG_VERSIONS]
+
+
 def catalog_is_current() -> bool:
     """True when committed zip already bundles the current __init__.py at PLUGIN_VERSION."""
     source_bytes = INIT_PY.read_bytes()
@@ -134,6 +144,7 @@ def main() -> int:
         # Same version — refresh checksum/metadata only (e.g. rebuilt zip on Linux CI).
         latest["checksum"] = checksum
         latest["changelog"] = changelog
+        trim_catalog_versions(data)
         save_plugin_json(data)
         print(f"Refreshed catalog checksum for plugin {current_version} ({checksum}).")
         from verify_plugin_release import verify_plugin_release
@@ -164,6 +175,7 @@ def main() -> int:
     if not isinstance(versions, list):
         raise RuntimeError("plugin.json versions must be a list")
     versions.insert(0, entry)
+    trim_catalog_versions(data)
     save_plugin_json(data)
 
     print(f"Released plugin {current_version} (checksum {checksum})")

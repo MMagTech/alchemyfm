@@ -64,6 +64,8 @@ git commit -m "Release Channel Designer plugin X.Y.Z."
 
 CI runs `verify_plugin_release.py` on every PR/push and **fails** if catalog version, checksum, or zip contents drift. The release job on `master` rebuilds the zip if needed; set **`RELEASE_BOT_TOKEN`** (repo secret with push + bypass on protected `master`) so the bot can push release commits when you only merge source changes.
 
+The catalog keeps **only the two newest versions** (current + previous). Version **3.0.0** starts a fresh release line after the 3.2.x fixes.
+
 ### Workflow
 
 **Full step-by-step guide (what is universal vs per-station):** [docs/CHANNEL_DESIGNER_HELP.md](../docs/CHANNEL_DESIGNER_HELP.md)

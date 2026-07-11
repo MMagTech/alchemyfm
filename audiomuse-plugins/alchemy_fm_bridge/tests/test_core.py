@@ -16,6 +16,12 @@ class TestDecodeJsonBody:
         assert bridge._decode_json_body("", context="Test API") is None
 
 
+class TestProgrammingDetailFromValues:
+    def test_empty_clap_query_does_not_crash(self):
+        detail = bridge._programming_detail_from_values({"programming_type": "clap_query"})
+        assert "not set" in detail.lower()
+
+
 class TestTrackRowsFromResults:
     def test_bare_list(self):
         rows = bridge._track_rows_from_results(

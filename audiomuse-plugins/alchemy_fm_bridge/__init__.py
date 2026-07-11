@@ -26,7 +26,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.27"
+PLUGIN_VERSION = "3.0.0"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -107,6 +107,13 @@ class ChannelDesignerError(Exception):
     def __init__(self, message: str, status: int | None = None) -> None:
         super().__init__(message)
         self.status = status
+
+
+def _text(value: Any) -> str:
+    """Coerce optional form/JSON values to a stripped string (None-safe)."""
+    if value is None:
+        return ""
+    return str(value).strip()
 
 
 def _decode_json_body(body: str, *, context: str) -> Any:
@@ -3903,7 +3910,7 @@ def _deploy_readiness(values: dict[str, Any]) -> dict[str, Any]:
     warnings: list[str] = []
     slug = _channel_slug_from_values(values)
     profile = _profile_from_values(values)
-    if not (profile.get("station") or {}).get("name", "").strip():
+    if not _text((profile.get("station") or {}).get("name")):
         blockers.append("Step 1: Channel name is required before deploy.")
 
     programming = profile.get("programming") or {}
@@ -4220,10 +4227,10 @@ def _preview_results_html(
 
 
 def _programming_detail_from_values(values: dict[str, Any]) -> str:
-    ptype = (values.get("programming_type") or "clap_query").strip()
+    ptype = _text(values.get("programming_type") or "clap_query")
     label = PROGRAMMING_TYPE_LABELS.get(ptype, ptype.replace("_", " ").title())
     if ptype in ("clap_query", "lyrics_query"):
-        query = (values.get("clap_query") if ptype == "clap_query" else values.get("lyrics_query") or "").strip()
+        query = _text(values.get("clap_query" if ptype == "clap_query" else "lyrics_query"))
         if len(query) < 3:
             return f"{label} — not set (need at least 3 characters)"
         return f"{label}: {query[:80]}"
@@ -5372,14 +5379,14 @@ def _form_values_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
     values["living_auto_add"] = bool(living.get("auto_add_on_analyze", living.get("enabled")))
     values["living_auto_refresh"] = bool(living.get("auto_refresh_alchemy", living.get("enabled")))
     if ptype == "clap_query":
-        values["clap_query"] = programming.get("query", "")
+        values["clap_query"] = programming.get("query") or ""
     elif ptype == "lyrics_query":
-        values["lyrics_query"] = programming.get("query", "")
+        values["lyrics_query"] = programming.get("query") or ""
     elif ptype == "mood_centroid":
-        values["mood_name"] = programming.get("mood", "")
-        values["centroid_index"] = programming.get("centroid_index", "")
+        values["mood_name"] = programming.get("mood") or ""
+        values["centroid_index"] = programming.get("centroid_index") or ""
     elif ptype == "alchemy_anchor":
-        anchor_id = str(programming.get("anchor_id", "")).strip()
+        anchor_id = _text(programming.get("anchor_id"))
         values["anchor_id"] = anchor_id
         if anchor_id:
             for anchor in _anchors():
@@ -5387,7 +5394,7 @@ def _form_values_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
                     values["anchor_search"] = str(anchor.get("name") or anchor_id)
                     break
     elif ptype == "similar_seed":
-        values["seed_id"] = programming.get("seed_id", "")
+        values["seed_id"] = programming.get("seed_id") or ""
     return values
 
 
