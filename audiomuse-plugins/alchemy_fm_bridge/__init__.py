@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.10"
+PLUGIN_VERSION = "3.2.11"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1750,6 +1750,29 @@ def _record_channel_error(slug: str, message: str) -> None:
     cur.close()
 
 
+def _channel_last_error(slug: str) -> str:
+    slug = slug.strip()
+    if not slug:
+        return ""
+    db = get_db()
+    cur = db.cursor()
+    channels = table("channels")
+    try:
+        cur.execute(
+            "SELECT last_error FROM " + channels + " WHERE slug = %s",
+            (slug,),
+        )
+        row = cur.fetchone()
+    except Exception:
+        db.rollback()
+        return ""
+    finally:
+        cur.close()
+    if not row:
+        return ""
+    return str(row[0] or "").strip()
+
+
 def _channel_rows() -> list[tuple]:
     db = get_db()
     cur = db.cursor()
@@ -2270,6 +2293,19 @@ html:not(.dark-mode) .afm-shell .afm-filter-feedback {
   background: color-mix(in srgb, #ef4444 14%, transparent);
   border: 1px solid color-mix(in srgb, #ef4444 45%, transparent);
   color: var(--text, #fef2f2);
+}
+.afm-deploy-status {
+  position: sticky;
+  top: 0.75rem;
+  z-index: 5;
+  margin: 0 0 1rem;
+}
+.afm-deploy-status[hidden] { display: none !important; }
+.afm-deploy-status .afm-flash {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.22);
+}
+.afm-deploy-status .afm-flash + .afm-flash {
+  margin-top: 0.5rem;
 }
 .afm-action-loading {
   display: flex;
@@ -4087,6 +4123,26 @@ def _playback_rules_fields_html(values: dict[str, Any]) -> str:
     )
 
 
+def _deploy_status_html(values: dict[str, Any], *, flash_html: str = "") -> str:
+    parts: list[str] = []
+    flash = (flash_html or "").strip()
+    if flash:
+        parts.append(flash)
+    last_err = (values.get("deploy_last_error") or "").strip()
+    if last_err and "afm-flash-error" not in flash:
+        parts.append(_flash_html(f"Last deploy failed: {last_err}", "error"))
+    if not parts:
+        return (
+            '<div id="afm-deploy-status" class="afm-deploy-status" hidden '
+            'role="status" aria-live="polite"></div>'
+        )
+    return (
+        '<div id="afm-deploy-status" class="afm-deploy-status" role="status" aria-live="polite">'
+        + "".join(parts)
+        + "</div>"
+    )
+
+
 def _deploy_actions_fields_html(values: dict[str, Any], *, flash_html: str = "") -> str:
     editing_slug = (values.get("editing_slug") or "").strip()
     deploy_label = "Save Changes to Alchemy FM" if editing_slug else "Deploy to Alchemy FM"
@@ -4098,7 +4154,7 @@ def _deploy_actions_fields_html(values: dict[str, Any], *, flash_html: str = "")
             "Creates or updates the station and optionally fills the play queue. Encoding and themes are in Alchemy FM Admin.",
         )
         + _deploy_explainer_html()
-        + flash_html
+        + _deploy_status_html(values, flash_html=flash_html)
         + _action_loading_html(
             "afm-deploy-loading",
             title="Deploying to Alchemy FM…",
@@ -4687,9 +4743,11 @@ def _page_script(
     const el = document.getElementById(targetId);
     if (!el) return;
     if (el.tagName === 'DETAILS') el.open = true;
-    const behavior = ({instant_scroll_flag} && targetId === 'preview-results') ? 'instant' : 'smooth';
+    const instantTargets = ['preview-results', 'step-deploy'];
+    const behavior = ({instant_scroll_flag} && instantTargets.includes(targetId)) ? 'instant' : 'smooth';
+    const block = targetId === 'step-deploy' ? 'center' : 'start';
     window.requestAnimationFrame(() => {{
-      el.scrollIntoView({{ behavior: behavior, block: 'start' }});
+      el.scrollIntoView({{ behavior: behavior, block: block }});
     }});
   }}
 
@@ -5536,6 +5594,7 @@ def home():
                         scroll_anchor = "step-deploy"
                         values = _form_values_from_profile(profile)
                         values["editing_slug"] = slug
+                        values["deploy_last_error"] = ""
                         if station:
                             values["edit_station_id"] = int(station.get("id") or 0)
                             values["edit_on_air"] = bool(station.get("enabled"))
@@ -5553,6 +5612,8 @@ def home():
                         or _slugify(request.form.get("name") or "channel")
                     ).strip()
                     _record_channel_error(slug, str(exc))
+                    if action == "push":
+                        values["deploy_last_error"] = str(exc)
                     if action == "chat_preview" and _is_chat_preview_ajax():
                         return jsonify({"ok": False, "error": str(exc)}), 400
                     error_anchor = {
@@ -5569,7 +5630,20 @@ def home():
                     if action == "chat_preview" and _is_chat_preview_ajax():
                         logger.exception("chat preview failed")
                         return jsonify({"ok": False, "error": f"Chat preview failed: {exc}"}), 500
-                    raise
+                    if action == "push":
+                        slug = (
+                            request.form.get("editing_slug")
+                            or request.form.get("slug")
+                            or _slugify(request.form.get("name") or "channel")
+                        ).strip()
+                        message = f"Deploy failed: {exc}"
+                        logger.exception("alchemy_fm_bridge deploy failed slug=%s", slug)
+                        _record_channel_error(slug, message)
+                        values["deploy_last_error"] = message
+                        flashes.add(message, "error", anchor="step-deploy")
+                        scroll_anchor = "step-deploy"
+                    else:
+                        raise
 
     if request.method == "POST":
         post_action = (request.form.get("action") or "").strip()
@@ -5599,6 +5673,13 @@ def home():
                     scroll_anchor = "step-filters"
 
     editing_slug = (values.get("editing_slug") or "").strip()
+    if not (values.get("deploy_last_error") or "").strip():
+        slug_for_error = _channel_slug_from_values(
+            values,
+            request.form if request.method == "POST" else None,
+        )
+        if slug_for_error:
+            values["deploy_last_error"] = _channel_last_error(slug_for_error)
     stations_html = _stations_section_html(
         editing_slug or None,
         flash_html=flashes.html_for("stations"),
@@ -5620,6 +5701,8 @@ def home():
         scroll_anchor = "preview-results"
     if scroll_to_bootstrap and not scroll_anchor:
         scroll_anchor = "bootstrap-opener"
+    if scroll_anchor in ("step-deploy", "preview-results"):
+        instant_scroll = True
     has_preview_tracks = len(preview_tracks) > 0
     preview_block = _preview_results_html(
         preview_tracks,
