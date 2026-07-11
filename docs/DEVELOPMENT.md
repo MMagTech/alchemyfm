@@ -57,12 +57,6 @@ uvicorn app.main:app --reload --port 8080
 
 Liquidsoap and Icecast will not run in this mode — useful for API/UI work with mocked or partial integration.
 
-## Useful scripts
-
-| Script | Purpose |
-|--------|---------|
-| `scripts/test_on_air_restart.py` | Manual check for on-air / stream epoch behavior |
-
 There is an automated test suite — see [docs/TESTING.md](TESTING.md). Run `pytest` locally before opening a PR; CI runs on every pull request.
 
 ## Making changes
@@ -82,7 +76,7 @@ There is an automated test suite — see [docs/TESTING.md](TESTING.md). Run `pyt
 ### Liquidsoap / Icecast
 
 - Station scripts generated at runtime under `DATA_DIR`; template in `backend/app/services/liquidsoap.py`
-- Edit `liquidsoap/radio.liq` or supervisor for playback behavior changes
+- Container entrypoint: `liquidsoap/supervisor.sh`
 
 ## Optional features
 

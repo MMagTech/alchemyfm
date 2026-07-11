@@ -945,13 +945,6 @@ const RadioApp = {
     syncStationUi();
   },
 
-  /** Custom live player — play/pause, tuned-in timer, vertical volume, spectrum visualizer. */
-  initLivePlayer(audio, options = {}) {
-    if (!audio) return;
-    this.initLivePlayerEngine(audio, options);
-    this.bindLivePlayerStationUi(audio);
-  },
-
   _milkdropMod: null,
 
   async loadMilkdropFullscreen() {

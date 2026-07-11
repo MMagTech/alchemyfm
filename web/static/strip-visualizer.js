@@ -119,17 +119,10 @@ const StripVisualizer = {
     }
 
     const api = {
-      isLive() { return stripLive; },
       suspend() {
         stripSuspended = true;
         cancelAnimationFrame(animId);
         animId = null;
-      },
-      suspendIdle() {
-        stripSuspended = true;
-        stripLive = false;
-        cancelAnimationFrame(animId);
-        animId = requestAnimationFrame(drawIdle);
       },
       resume() {
         stripSuspended = false;

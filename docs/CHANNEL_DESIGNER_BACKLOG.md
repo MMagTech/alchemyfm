@@ -222,7 +222,6 @@ similar_seed     → GET /api/similar_tracks?item_id=
 |------|----------|-------|
 | `_pool_item_ids()` | `__init__.py` | Unused; intended for pool-driven programming |
 | `profiles` table | plugin migrate | v1 legacy; never read/written |
-| `alchemy_client.py` | plugin folder | Orphan; `__init__.py` inlines client |
 
 ---
 

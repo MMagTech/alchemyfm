@@ -5,7 +5,6 @@ const AlchemyHome = {
   _pollTimer: null,
   _resizeHandler: null,
   _gridAbort: null,
-  _mounted: false,
   _stationsCacheKey: 'alchemyfm-stations-cache',
   _stationsBySlug: new Map(),
   _playInFlight: null,
@@ -314,7 +313,6 @@ const AlchemyHome = {
   mount() {
     if (!document.getElementById('stations')) return;
     this.unmount();
-    this._mounted = true;
     this.bindGridUi();
     this.loadStations();
     this._pollTimer = setInterval(() => this.loadStations(), 8000);
@@ -325,7 +323,6 @@ const AlchemyHome = {
   },
 
   unmount() {
-    this._mounted = false;
     this._gridAbort?.abort();
     this._gridAbort = null;
     clearInterval(this._pollTimer);

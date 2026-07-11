@@ -223,29 +223,11 @@ class NavidromeClient:
             result.append(NavidromePlaylist(id=pl_id, name=str(pl.get("name") or "Untitled")))
         return sorted(result, key=lambda p: p.name.lower())
 
-    async def get_playlist(self, playlist_id: str) -> dict:
-        data = await self._request("getPlaylist", {"id": playlist_id})
-        return data.get("playlist") or {}
-
-    async def song_in_playlist(self, playlist_id: str, item_id: str) -> bool:
-        playlist = await self.get_playlist(playlist_id)
-        entries = playlist.get("entry") or []
-        if isinstance(entries, dict):
-            entries = [entries]
-        return any(str(entry.get("id")) == str(item_id) for entry in entries)
-
     async def append_song_to_playlist(self, playlist_id: str, item_id: str) -> None:
         await self._request(
             "updatePlaylist",
             {"playlistId": playlist_id, "songIdToAdd": item_id},
         )
-
-    async def add_song_to_playlist(self, playlist_id: str, item_id: str) -> bool:
-        """Append song if not already in playlist. Returns True if newly added."""
-        if await self.song_in_playlist(playlist_id, item_id):
-            return False
-        await self.append_song_to_playlist(playlist_id, item_id)
-        return True
 
     async def heart_song_with_playlist(
         self, item_id: str, playlist_id: str | None

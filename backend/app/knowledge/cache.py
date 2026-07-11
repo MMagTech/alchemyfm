@@ -136,17 +136,6 @@ def purge_track(db: Session, item_id: str) -> None:
     db.commit()
 
 
-def sweep_expired(db: Session) -> int:
-    now = datetime.utcnow()
-    deleted = (
-        db.query(TrackKnowledge)
-        .filter(TrackKnowledge.expires_at <= now)
-        .delete(synchronize_session=False)
-    )
-    db.commit()
-    return deleted
-
-
 def validate_facts(facts: list[dict], min_confidence: float, max_chars: int) -> list[dict]:
     clean: list[dict] = []
     for fact in facts:

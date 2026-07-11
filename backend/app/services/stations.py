@@ -6,19 +6,16 @@ from app.config import settings
 from app.database import BroadcastSettings, QueueItem, QueueItemStatus, Station
 from app.services.broadcast_settings import get_broadcast_settings
 from app.schemas import (
-    NowPlaying,
     StationAdmin,
     StationCreate,
     StationDetail,
     StationSummary,
     StationUpdate,
-    TrackRef,
 )
 from app.services.stream_urls import public_stream_url
 from app.services.queue import (
     bootstrap_station,
     delete_station_files,
-    ensure_queue_fresh,
     get_now_playing,
     get_recently_played,
     get_up_next,

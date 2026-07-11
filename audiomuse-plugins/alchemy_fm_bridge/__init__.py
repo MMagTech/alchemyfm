@@ -359,12 +359,10 @@ REFRESH_MODES = (
     ("source_only", "Stay in Source Pool (Allow Repeats)"),
 )
 
-DIRECT_ALCHEMY_TYPES = frozenset({"alchemy_anchor", "similar_seed"})
 LIVE_SOURCE_TYPES = frozenset(
     {"clap_query", "lyrics_query", "mood_centroid", "alchemy_anchor", "similar_seed"}
 )
 PREVIEW_LIMIT_DEFAULT = 30
-ANCHOR_BLEND_TRACKS = 8
 BOOTSTRAP_TRACK_LIMIT_DEFAULT = 30
 CHAT_PLAYLIST_LIMIT = 60
 
@@ -1015,56 +1013,6 @@ def _mood_datalist_html(labels: list[str]) -> str:
         return ""
     options = "".join(f'<option value="{html.escape(label)}"></option>' for label in labels)
     return f"<datalist id='afm-mood-labels'>{options}</datalist>"
-
-
-def _centroid_from_alchemy_response(data: Any) -> list[float] | None:
-    if not isinstance(data, dict):
-        return None
-    for key in ("add_centroid_vector", "centroid"):
-        vec = data.get(key)
-        if isinstance(vec, list) and vec:
-            return [float(x) for x in vec]
-    return None
-
-
-def _blend_centroid_from_tracks(tracks: list[dict[str, Any]], *, n_results: int = 50) -> list[float]:
-    blend_ids = [t["item_id"] for t in tracks[:ANCHOR_BLEND_TRACKS]]
-    if not blend_ids:
-        raise ChannelDesignerError("No tracks to build an anchor from.")
-    data = audiomuse_post(
-        "/api/alchemy",
-        {
-            "items": [{"id": item_id, "op": "ADD", "type": "song"} for item_id in blend_ids],
-            "n": n_results,
-        },
-    )
-    centroid = _centroid_from_alchemy_response(data)
-    if not centroid:
-        raise ChannelDesignerError(
-            "AudioMuse could not build an anchor centroid from the preview tracks. "
-            "Ensure those tracks are analyzed (embeddings in the library) and try Preview again."
-        )
-    return centroid
-
-
-def ensure_programming_anchor(profile: dict[str, Any], tracks: list[dict[str, Any]]) -> int:
-    """Map AudioMuse-native programming to a Song Alchemy anchor Alchemy FM can run."""
-    ptype = profile["programming"]["type"]
-    existing = profile.get("anchor_id")
-    if ptype == "alchemy_anchor":
-        return int(profile["programming"]["anchor_id"])
-
-    if existing:
-        return int(existing)
-
-    station_name = profile["station"]["name"]
-    centroid = _blend_centroid_from_tracks(tracks)
-    anchor_name = f"AFM: {station_name}"[:80]
-    data = audiomuse_post("/api/anchors", {"name": anchor_name, "centroid": centroid})
-    anchor = data.get("anchor") if isinstance(data, dict) else None
-    if not isinstance(anchor, dict) or not anchor.get("id"):
-        raise ChannelDesignerError("Failed to save Song Alchemy anchor for this channel.")
-    return int(anchor["id"])
 
 
 def _bootstrap_from_form(form) -> dict[str, Any] | None:

@@ -540,15 +540,7 @@
     let pollTimer = null;
     let refreshToken = 0;
     let lastStreamEpoch = null;
-    let milkdropMod = null;
     let currentStation = null;
-
-    async function ensureMilkdropMod() {
-      if (!milkdropMod) {
-        milkdropMod = await RadioApp.loadMilkdropFullscreen();
-      }
-      return milkdropMod;
-    }
 
     function syncFullscreenVizButton() {
       const btn = document.getElementById('viz-fullscreen-btn');
@@ -664,9 +656,6 @@
       );
       if (audio) {
         GlobalLivePlayer.notifyStationMeta(s);
-      }
-      if (window.__milkdropActive && milkdropMod) {
-        milkdropMod.updateMeta(GlobalLivePlayer.getHeardVizMeta());
       }
     }
 

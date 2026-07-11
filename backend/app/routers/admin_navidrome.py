@@ -27,10 +27,6 @@ class NavidromePlaylistsResponse(BaseModel):
     playlists: list[NavidromePlaylistRead]
 
 
-class SongHeartRead(BaseModel):
-    hearted: bool
-
-
 class HeartRequest(BaseModel):
     hearted: bool
 
@@ -53,18 +49,6 @@ async def list_playlists():
     return NavidromePlaylistsResponse(
         playlists=[NavidromePlaylistRead(id=p.id, name=p.name) for p in playlists]
     )
-
-
-@router.get("/songs/{item_id}", response_model=SongHeartRead)
-async def read_song_heart(item_id: str):
-    try:
-        hearted = await navidrome_client.is_song_hearted(item_id)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.exception("Failed to read Navidrome song %s", item_id)
-        raise HTTPException(status_code=502, detail="Could not read song from Navidrome") from exc
-    return SongHeartRead(hearted=hearted)
 
 
 @router.post("/songs/{item_id}/heart", response_model=HeartResponse)

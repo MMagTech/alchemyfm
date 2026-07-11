@@ -148,42 +148,5 @@ class AudioMuseClient:
         )
         return self._track_rows(data, count)
 
-    async def list_anchors(self) -> list[dict[str, str | int]]:
-        data = await self._get("/api/anchors")
-        anchors = data.get("anchors") or []
-        return [{"id": a["id"], "name": a.get("name") or f"Anchor {a['id']}"} for a in anchors]
-
-    async def search_tracks(self, query: str, limit: int = 20) -> list[dict[str, str | None]]:
-        data = await self._get(
-            "/api/search_tracks",
-            params={"search_query": query, "end": limit},
-        )
-        if not isinstance(data, list):
-            raise ValueError("Unexpected response from /api/search_tracks")
-        results: list[dict[str, str | None]] = []
-        for track in data:
-            if not isinstance(track, dict) or not track.get("item_id"):
-                continue
-            results.append(
-                {
-                    "item_id": str(track["item_id"]),
-                    "title": track.get("title") or "Unknown",
-                    "artist": track.get("author") or "Unknown",
-                    "album": (track.get("album") or "").strip() or None,
-                }
-            )
-        return results
-
-    async def get_track(self, item_id: str) -> dict[str, str | None] | None:
-        data = await self._get("/api/track", params={"item_id": item_id})
-        if not isinstance(data, dict) or not data.get("item_id"):
-            return None
-        return {
-            "item_id": str(data["item_id"]),
-            "title": data.get("title") or "Unknown",
-            "artist": data.get("author") or "Unknown",
-            "album": (data.get("album") or "").strip() or None,
-        }
-
 
 audiomuse_client = AudioMuseClient()

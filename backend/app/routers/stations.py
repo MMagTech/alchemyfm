@@ -12,7 +12,7 @@ from app.config import settings
 from app.database import Station, get_db
 from app.schemas import StationDetail, StationSummary
 from app.services.stream_urls import public_stream_url
-from app.services.icecast import _normalize_mount, fetch_all_mount_stats, fetch_mount_listeners
+from app.services.icecast import _normalize_mount, fetch_all_mount_stats
 from app.services.station_artwork import artwork_path
 from app.services.navidrome import attach_artist_bio, attach_operator_heart
 from app.services.stations import station_to_detail, station_to_summary

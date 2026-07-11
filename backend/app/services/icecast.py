@@ -145,18 +145,6 @@ def fetch_all_mount_stats() -> dict[str, IcecastMountStats]:
     return stats
 
 
-def fetch_mount_listeners(mount: str) -> int:
-    mount = _normalize_mount(mount)
-    parsed = fetch_all_mount_stats().get(mount)
-    return parsed.listeners if parsed else 0
-
-
-def mount_on_air(mount: str) -> bool:
-    """True when Icecast reports an active source on this mount."""
-    mount = _normalize_mount(mount)
-    return mount in fetch_all_mount_stats()
-
-
 def fetch_mount_now_playing(
     mount: str,
     mount_stats: dict[str, IcecastMountStats] | None = None,

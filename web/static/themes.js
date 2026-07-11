@@ -42,10 +42,6 @@ const RadioThemes = {
     return /^\/admin(?:\.html|-login\.html|\/)/.test(location.pathname);
   },
 
-  isListenerPage() {
-    return Boolean(document.getElementById('theme-select'));
-  },
-
   themeIds() {
     return this.themes.map((t) => t.id);
   },

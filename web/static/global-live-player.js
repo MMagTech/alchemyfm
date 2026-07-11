@@ -1145,12 +1145,6 @@ const GlobalLivePlayer = {
     );
   },
 
-  isPlayingOtherThan(slug) {
-    if (!this.isBrowsingOtherStation(slug)) return false;
-    const audio = this.getAudio();
-    return Boolean(audio?.dataset?.wantLive === '1' && !audio.paused);
-  },
-
   slugFromStationUrl(url) {
     try {
       const parsed = new URL(url, location.origin);

@@ -50,5 +50,3 @@ VALID_THEMES: frozenset[str] = frozenset({
 
 })
 
-DEFAULT_THEME = "violet"
-

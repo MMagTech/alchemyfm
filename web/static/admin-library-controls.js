@@ -520,38 +520,6 @@ const AdminLibraryControls = {
     });
   },
 
-  async fetchHearted(itemId, { force = false } = {}) {
-    if (!itemId || !this._admin) return false;
-
-    if (this._heartInFlight.has(itemId)) {
-      return this._heartInFlight.get(itemId);
-    }
-
-    if (!force && this._heartState.has(itemId)) {
-      return this._heartState.get(itemId);
-    }
-
-    try {
-      const res = await this.adminFetch(
-        `/api/admin/navidrome/songs/${encodeURIComponent(itemId)}`
-      );
-      if (res.status === 401) {
-        this.handleAuthFailure();
-        return this._heartState.get(itemId) ?? false;
-      }
-      if (!res.ok) return this._heartState.get(itemId) ?? false;
-      const data = await res.json();
-      const hearted = Boolean(data.hearted);
-      if (!this._heartInFlight.has(itemId)) {
-        this._heartState.set(itemId, hearted);
-        this.persistHeartCache();
-      }
-      return hearted;
-    } catch {
-      return this._heartState.get(itemId) ?? false;
-    }
-  },
-
   syncHeartButton(btn, itemId, hearted = null) {
     if (!btn) return;
     if (!itemId) {

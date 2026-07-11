@@ -43,7 +43,13 @@ pytest -v
 | `.../test_preview.py` | Postgres | Mocked AudioMuse | All programming types, preview route, regressions |
 | `.../test_persistence.py` | Postgres | None | Save/load, pool, auditions, errors |
 | `backend/tests/test_audiomuse_client.py` | None | Mocked HTTP | Refill source parsing |
-| `backend/tests/test_stations_api.py` | SQLite | None | Health + stations API |
+| `backend/tests/test_stations_api.py` | SQLite | None | Health + public stations API |
+| `backend/tests/test_admin_stations_api.py` | SQLite | Mocked bootstrap | Admin CRUD, bootstrap, refresh, rebuild, artwork |
+| `backend/tests/test_internal_api.py` | SQLite | None | Liquidsoap track-started callback + IP guard |
+| `backend/tests/test_listen_proxy.py` | SQLite | None | HEAD listen probe + listen.m3u |
+| `backend/tests/test_admin_navidrome_api.py` | SQLite | Mocked Navidrome | Operator heart POST (heart on/off); retired GET prefetch stays gone |
+| `backend/tests/test_retired_routes.py` | SQLite | None | Removed AudioMuse admin proxy returns 404 |
+| `.../tests/test_deploy.py` | None | Mocked Alchemy FM HTTP | Plugin deploy payload + admin API contract |
 
 ## Adding tests for a new feature
 
@@ -51,6 +57,21 @@ pytest -v
 2. Add a test in the appropriate file proving the happy path produces results (tracks in preview, rows in DB, expected HTTP status).
 3. Add an error-path test when user input or API failure is possible.
 4. Run `pytest` locally before opening a PR — CI must pass.
+
+## Integration contracts (dead-code safety net)
+
+These tests guard paths that are **not used by the web UI** but are required for production:
+
+| Test file | Protects |
+|-----------|----------|
+| `test_admin_stations_api.py` | Channel Designer deploy: create/update/delete, bootstrap, refresh, rebuild M3U, artwork |
+| `test_internal_api.py` | Liquidsoap `track-started` callback + `/internal` IP guard |
+| `test_listen_proxy.py` | Safari/iOS `HEAD /listen` probe (no upstream Icecast connect) |
+| `test_deploy.py` | Plugin `AlchemyFmClient` → admin API URL contract |
+
+Removing any of those routes or changing plugin deploy URLs should fail CI. Tier-1 dead code (unused helpers, legacy CSS) is still not covered — that is intentional.
+
+Backend tests pin admin credentials in `backend/tests/conftest.py` so a developer `.env` does not affect CI or local pytest.
 
 ## CI
 

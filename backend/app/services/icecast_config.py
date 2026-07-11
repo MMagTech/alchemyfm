@@ -14,10 +14,6 @@ def icecast_config_paths() -> list[Path]:
     return paths
 
 
-def icecast_config_path() -> Path:
-    return icecast_config_paths()[0]
-
-
 def write_icecast_config(max_listeners: int, source_slots: int = 10) -> Path:
     password = settings.icecast_source_password.replace("&", "&amp;")
     sources = max(2, source_slots)

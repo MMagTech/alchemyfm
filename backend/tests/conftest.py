@@ -6,6 +6,7 @@ import os
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,25 +15,38 @@ from sqlalchemy.orm import Session
 _test_db_path = Path(tempfile.gettempdir()) / "alchemyfm_pytest.db"
 
 # Configure test environment before importing the app.
-os.environ["DATABASE_URL"] = f"sqlite:///{_test_db_path}"
+os.environ["DATABASE_URL"] = f"sqlite:///{_test_db_path.as_posix()}"
 os.environ["DATA_DIR"] = str(Path(tempfile.gettempdir()) / "alchemyfm-pytest-data")
 os.environ["ADMIN_PASSWORD"] = "test-admin-secret"
 os.environ["KNOWLEDGE_FEATURE"] = "false"
 os.environ["ICECAST_DOCKER_RESTART"] = "false"
 os.environ["RESTRICT_INTERNAL_ROUTES"] = "true"
+os.environ["LIQUIDSOAP_CALLBACK_SECRET"] = "test-callback-secret"
 
 from app.database import Base, SessionLocal, Station, engine, init_db  # noqa: E402
+from app.config import settings  # noqa: E402
 from app.main import app  # noqa: E402
+
+# Repo-root .env is loaded at import time — override for deterministic tests.
+settings.admin_username = "admin"
+settings.admin_password = "test-admin-secret"
+settings.liquidsoap_callback_secret = "test-callback-secret"
+settings.restrict_internal_routes = True
+
+TEST_ADMIN_USERNAME = settings.admin_username
+TEST_ADMIN_PASSWORD = settings.admin_password
+TEST_CALLBACK_SECRET = settings.liquidsoap_callback_secret
 
 
 @pytest.fixture(scope="session", autouse=True)
 def _init_test_database() -> Generator[None, None, None]:
     if _test_db_path.exists():
-        _test_db_path.unlink()
+        try:
+            _test_db_path.unlink()
+        except PermissionError:
+            pass
     init_db()
     yield
-    if _test_db_path.exists():
-        _test_db_path.unlink()
 
 
 @pytest.fixture(autouse=True)
@@ -78,3 +92,51 @@ def sample_station(db_session: Session) -> Station:
     db_session.commit()
     db_session.refresh(station)
     return station
+
+
+@pytest.fixture
+def admin_auth() -> tuple[str, str]:
+    return ("admin", settings.admin_password)
+
+
+@pytest.fixture
+def admin_client(client: TestClient) -> TestClient:
+    """Authenticated admin session (cookie) for /api/admin/* routes."""
+    resp = client.post(
+        "/api/admin/login",
+        json={"username": TEST_ADMIN_USERNAME, "password": TEST_ADMIN_PASSWORD},
+    )
+    assert resp.status_code == 200, resp.text
+    return client
+
+
+@pytest.fixture
+def internal_client(client: TestClient) -> Generator[TestClient, None, None]:
+    """Bypass IP guard — TestClient reports host ``testclient``, not a RFC1918 address."""
+    from app.auth import require_internal_client
+
+    app.dependency_overrides[require_internal_client] = lambda: None
+    yield client
+    app.dependency_overrides.pop(require_internal_client, None)
+
+
+@pytest.fixture
+def bootstrap_mocks():
+    """Mock AudioMuse/Navidrome during queue bootstrap and refresh."""
+    from app.schemas import TrackInfo, TrackRef
+
+    batch = [TrackRef(item_id="boot-1", title="Bootstrap Track", artist="Test Artist")]
+    enriched = [
+        TrackInfo(
+            item_id="boot-1",
+            title="Bootstrap Track",
+            artist="Test Artist",
+            duration_sec=180,
+        )
+    ]
+    with (
+        patch("app.services.queue.fetch_bootstrap_batch", new=AsyncMock(return_value=batch)),
+        patch("app.services.navidrome.navidrome_client.enrich_tracks", new=AsyncMock(return_value=enriched)),
+        patch("app.services.queue.extend_queue", new=AsyncMock(return_value=None)),
+    ):
+        yield batch
