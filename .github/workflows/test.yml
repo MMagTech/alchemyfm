@@ -39,6 +39,9 @@ jobs:
       - name: Syntax check plugin
         run: python3 -m py_compile audiomuse-plugins/alchemy_fm_bridge/__init__.py
 
+      - name: Verify plugin zip matches catalog and source
+        run: python scripts/verify_plugin_release.py
+
       - name: Run plugin tests
         env:
           TEST_DATABASE_URL: postgresql://postgres:test@localhost:5432/postgres
@@ -84,7 +87,10 @@ jobs:
 
       - name: Build zip and update plugin catalog
         run: |
-          python scripts/release_plugin.py "CI release: deploy bootstrap fix, deploy route tests, and automated plugin packaging."
+          python scripts/release_plugin.py "Automated plugin release from CI after tests passed."
+
+      - name: Verify release artifacts before commit
+        run: python scripts/verify_plugin_release.py
 
       - name: Commit plugin release artifacts
         env:
@@ -103,9 +109,10 @@ jobs:
           git commit -m "Release Channel Designer plugin ${VERSION}."
           if [ -n "${RELEASE_BOT_TOKEN}" ]; then
             git push "https://x-access-token:${RELEASE_BOT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:master
-          else
-            git push || {
-              echo "::warning::Could not push plugin release commit — add a RELEASE_BOT_TOKEN secret with bypass permission for protected master, or commit the release artifacts manually."
-              exit 0
-            }
+            exit 0
           fi
+          if git push; then
+            exit 0
+          fi
+          echo "::error::Plugin release commit was created locally in CI but could not push to master. The catalog/zip on GitHub are OUT OF SYNC with source. Add a RELEASE_BOT_TOKEN secret (contents write + bypass protected branch) or run: python scripts/release_plugin.py && git add audiomuse-plugins/alchemy_fm_bridge.zip audiomuse-plugins/alchemy_fm_bridge/plugin.json && git commit && git push"
+          exit 1

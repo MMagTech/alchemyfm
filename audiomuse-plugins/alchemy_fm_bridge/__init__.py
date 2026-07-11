@@ -26,7 +26,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.26"
+PLUGIN_VERSION = "3.2.27"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -109,6 +109,39 @@ class ChannelDesignerError(Exception):
         self.status = status
 
 
+def _decode_json_body(body: str, *, context: str) -> Any:
+    if not body:
+        return None
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError as exc:
+        preview = re.sub(r"\s+", " ", body[:240]).strip()
+        raise ChannelDesignerError(
+            f"{context} returned non-JSON (often an HTML login or error page). "
+            "Check plugin settings: Alchemy FM URL/password, leave AudioMuse API URL blank "
+            "unless the worker needs it, and set audiomuse_api_token if AudioMuse API auth is on. "
+            f"Response preview: {preview or '(empty)'}"
+        ) from exc
+
+
+def _plugin_error_page(title: str, message: str) -> str:
+    settings_href = html.escape(url_for("alchemy_fm_bridge.settings"))
+    body = (
+        f"{_page_styles()}"
+        '<div class="afm-shell">'
+        f'<section class="afm-section"><h2 class="afm-section-title">{html.escape(title)}</h2>'
+        f'<p class="afm-flash afm-flash-error">{html.escape(message)}</p>'
+        "<p class='hint'>If this started right after saving settings, double-check "
+        "<strong>Alchemy FM URL</strong> (e.g. <code>http://192.168.1.10:9246</code>), "
+        "<strong>username</strong> (<code>mmagtech</code>, not <code>admin</code> if that is your admin user), "
+        "and password. Only fill <strong>AudioMuse API URL</strong> for living-channel cron — "
+        "leave it blank for normal designer use.</p>"
+        f"<p><a href='{settings_href}'>Open plugin settings</a></p>"
+        "</section></div>"
+    )
+    return render_page(body, title=title)
+
+
 def _agent_debug_log(message: str, data: dict[str, Any], hypothesis_id: str) -> None:
     # region agent log
     try:
@@ -167,7 +200,7 @@ class AlchemyFmClient:
                     {"method": method, "path": path, "status": getattr(resp, "status", None)},
                     "H1",
                 )
-                return json.loads(body) if body else None
+                return _decode_json_body(body, context=f"Alchemy FM {method} {path}")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
             _agent_debug_log(
@@ -332,7 +365,7 @@ class AlchemyFmClient:
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 raw = resp.read().decode("utf-8")
-                result = json.loads(raw) if raw else None
+                result = _decode_json_body(raw, context=f"Alchemy FM POST artwork station {station_id}")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
             raise ChannelDesignerError(
@@ -467,7 +500,8 @@ def audiomuse_get(path: str, *, params: dict[str, str] | None = None, timeout: f
     req = urllib.request.Request(url, headers=_audiomuse_headers(), method="GET")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            raw = resp.read().decode("utf-8")
+            return _decode_json_body(raw, context=f"AudioMuse GET {path} ({_audiomuse_base_url()})")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise ChannelDesignerError(
@@ -485,7 +519,8 @@ def audiomuse_post(path: str, payload: dict[str, Any], *, timeout: float = 120.0
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            raw = resp.read().decode("utf-8")
+            return _decode_json_body(raw, context=f"AudioMuse POST {path} ({_audiomuse_base_url()})")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         message = _audiomuse_http_error_message(detail, exc.code)
@@ -5161,8 +5196,15 @@ def _edit_toolbar_html(values: dict[str, Any], *, flash_html: str = "") -> str:
 
 def _stations_section_html(editing_slug: str | None = None, *, flash_html: str = "") -> str:
     try:
-        stations = _client().test_connection()
+        stations = _client().test_connection(skip_deploy_check=True)
     except ChannelDesignerError as exc:
+        return (
+            '<section class="afm-section">'
+            f'<p class="afm-empty">Could not load Alchemy FM stations: {html.escape(str(exc))}</p>'
+            "</section>"
+        )
+    except Exception as exc:
+        logger.exception("Could not render stations section")
         return (
             '<section class="afm-section">'
             f'<p class="afm-empty">Could not load Alchemy FM stations: {html.escape(str(exc))}</p>'
@@ -6900,6 +6942,19 @@ def chat_preview_api():
 
 @bp.route("/", methods=["GET", "POST"])
 def home():
+    try:
+        return _home_page()
+    except ChannelDesignerError as exc:
+        return _plugin_error_page("Channel Designer", str(exc))
+    except Exception as exc:
+        logger.exception("alchemy_fm_bridge home failed")
+        return _plugin_error_page(
+            "Channel Designer",
+            f"Unexpected error: {exc}. Check the AudioMuse container logs for the full traceback.",
+        )
+
+
+def _home_page():
     flashes = _FlashQueue()
     scroll_anchor = ""
     preview_tracks: list[dict[str, Any]] = []

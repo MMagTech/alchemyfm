@@ -7,6 +7,15 @@ import pytest
 from bridge_loader import bridge
 
 
+class TestDecodeJsonBody:
+    def test_invalid_json_raises_channel_designer_error(self):
+        with pytest.raises(bridge.ChannelDesignerError, match="non-JSON"):
+            bridge._decode_json_body("<html>login</html>", context="Test API")
+
+    def test_empty_body_returns_none(self):
+        assert bridge._decode_json_body("", context="Test API") is None
+
+
 class TestTrackRowsFromResults:
     def test_bare_list(self):
         rows = bridge._track_rows_from_results(

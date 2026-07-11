@@ -47,6 +47,23 @@ If the catalog still shows an old version, wait 5 minutes (GitHub CDN cache) and
 
 Plugin updates do **not** require pulling new Alchemy FM Docker images — only refresh and apply in AudioMuse.
 
+### Releasing a plugin version (maintainers)
+
+AudioMuse installs the **zip**, not the git source. The catalog version label must match the code inside the zip.
+
+After editing `audiomuse-plugins/alchemy_fm_bridge/__init__.py`:
+
+```bash
+python scripts/release_plugin.py "Short changelog for this release."
+python scripts/verify_plugin_release.py
+git add audiomuse-plugins/alchemy_fm_bridge/__init__.py \
+  audiomuse-plugins/alchemy_fm_bridge/plugin.json \
+  audiomuse-plugins/alchemy_fm_bridge.zip
+git commit -m "Release Channel Designer plugin X.Y.Z."
+```
+
+CI runs `verify_plugin_release.py` on every PR/push and **fails** if catalog version, checksum, or zip contents drift. The release job on `master` rebuilds the zip if needed; set **`RELEASE_BOT_TOKEN`** (repo secret with push + bypass on protected `master`) so the bot can push release commits when you only merge source changes.
+
 ### Workflow
 
 **Full step-by-step guide (what is universal vs per-station):** [docs/CHANNEL_DESIGNER_HELP.md](../docs/CHANNEL_DESIGNER_HELP.md)

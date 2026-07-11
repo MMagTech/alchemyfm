@@ -136,6 +136,14 @@ def main() -> int:
         latest["changelog"] = changelog
         save_plugin_json(data)
         print(f"Refreshed catalog checksum for plugin {current_version} ({checksum}).")
+        from verify_plugin_release import verify_plugin_release
+
+        errors = verify_plugin_release()
+        if errors:
+            print("Release script finished but verification failed:", file=sys.stderr)
+            for err in errors:
+                print(f"  - {err}", file=sys.stderr)
+            return 1
         return 0
 
     if latest and latest.get("version") == current_version:
@@ -159,6 +167,15 @@ def main() -> int:
     save_plugin_json(data)
 
     print(f"Released plugin {current_version} (checksum {checksum})")
+
+    from verify_plugin_release import verify_plugin_release
+
+    errors = verify_plugin_release()
+    if errors:
+        print("Release script finished but verification failed:", file=sys.stderr)
+        for err in errors:
+            print(f"  - {err}", file=sys.stderr)
+        return 1
     return 0
 
 
