@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.9"
+PLUGIN_VERSION = "3.2.10"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -2396,6 +2396,38 @@ html:not(.dark-mode) .afm-shell .afm-filter-feedback {
   border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.12));
   white-space: nowrap;
 }
+.afm-sort-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.afm-sort-btn:hover,
+.afm-sort-btn:focus-visible {
+  color: var(--text, inherit);
+  outline: none;
+}
+.afm-sort-btn::after {
+  content: '↕';
+  opacity: 0.35;
+  font-size: 0.72em;
+  line-height: 1;
+}
+.afm-sort-btn[aria-sort='ascending']::after {
+  content: '▲';
+  opacity: 0.9;
+}
+.afm-sort-btn[aria-sort='descending']::after {
+  content: '▼';
+  opacity: 0.9;
+}
 .afm-table th.afm-actions-col,
 .afm-table td.afm-actions-cell {
   padding-right: 1rem;
@@ -3300,6 +3332,14 @@ def _search_tracks(query: str) -> list[dict[str, Any]]:
     return [t for t in data if isinstance(t, dict) and t.get("item_id")] if isinstance(data, list) else []
 
 
+def _sortable_th(label: str, key: str, *, sort_type: str = "text") -> str:
+    return (
+        f'<th scope="col"><button type="button" class="afm-sort-btn" '
+        f'data-sort-key="{html.escape(key)}" data-sort-type="{sort_type}" '
+        f'aria-sort="none">{html.escape(label)}</button></th>'
+    )
+
+
 def _preview_table_html(tracks: list[dict[str, Any]]) -> str:
     if not tracks:
         return "<p class='hint'>No tracks matched this programming yet. Run a preview.</p>"
@@ -3309,8 +3349,21 @@ def _preview_table_html(tracks: list[dict[str, Any]]) -> str:
         energy = track.get("energy")
         tempo_s = f"{float(tempo):.0f}" if tempo is not None else "—"
         energy_s = f"{float(energy):.2f}" if energy is not None else "—"
+        title_sort = str(track.get("title") or "").strip().lower()
+        author_sort = str(track.get("author") or "").strip().lower()
+        genre_sort = str(track.get("top_genre") or "").strip().lower()
+        mood_sort = str(track.get("mood") or "").strip().lower()
+        tempo_sort = f"{float(tempo):.4f}" if tempo is not None else ""
+        energy_sort = f"{float(energy):.6f}" if energy is not None else ""
         rows.append(
-            "<tr>"
+            "<tr"
+            f' data-sort-title="{html.escape(title_sort)}"'
+            f' data-sort-artist="{html.escape(author_sort)}"'
+            f' data-sort-genre="{html.escape(genre_sort)}"'
+            f' data-sort-tempo="{html.escape(tempo_sort)}"'
+            f' data-sort-energy="{html.escape(energy_sort)}"'
+            f' data-sort-mood="{html.escape(mood_sort)}"'
+            ">"
             f"<td>{html.escape(track['title'])}</td>"
             f"<td>{html.escape(track['author'])}</td>"
             f"<td>{html.escape(str(track.get('top_genre') or '—'))}</td>"
@@ -3320,11 +3373,17 @@ def _preview_table_html(tracks: list[dict[str, Any]]) -> str:
             "</tr>"
         )
     return (
-        f"<p><strong>{len(tracks)}</strong> tracks in preview (from your AudioMuse library analysis).</p>"
-        '<div class="afm-table-wrap"><table class="afm-table">'
+        f"<p><strong>{len(tracks)}</strong> tracks in preview (from your AudioMuse library analysis). "
+        "Click a column header to sort.</p>"
+        '<div class="afm-table-wrap"><table class="afm-table afm-sortable-table">'
         "<thead><tr>"
-        "<th>Title</th><th>Artist</th><th>Genre</th><th>BPM</th><th>Energy</th><th>Mood</th>"
-        "</tr></thead><tbody>"
+        + _sortable_th("Title", "title")
+        + _sortable_th("Artist", "artist")
+        + _sortable_th("Genre", "genre")
+        + _sortable_th("BPM", "tempo", sort_type="number")
+        + _sortable_th("Energy", "energy", sort_type="number")
+        + _sortable_th("Mood", "mood")
+        + "</tr></thead><tbody>"
         + "".join(rows)
         + "</tbody></table></div>"
     )
@@ -5071,6 +5130,58 @@ def _page_script(
     if ((input.value || '').trim().length >= 2) {{
       runSearch(input.value);
     }}
+  }})();
+
+  (function initPreviewTableSort() {{
+    const table = document.querySelector('#preview-results .afm-sortable-table');
+    if (!table) return;
+    const tbody = table.querySelector('tbody');
+    if (!tbody) return;
+    const headers = table.querySelectorAll('.afm-sort-btn');
+    let activeKey = null;
+    let activeDir = 1;
+
+    function sortRows(key, type, dir) {{
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      const mult = dir;
+      rows.sort((a, b) => {{
+        const av = a.getAttribute('data-sort-' + key) ?? '';
+        const bv = b.getAttribute('data-sort-' + key) ?? '';
+        if (type === 'number') {{
+          const an = av === '' ? NaN : parseFloat(av);
+          const bn = bv === '' ? NaN : parseFloat(bv);
+          const aMissing = Number.isNaN(an);
+          const bMissing = Number.isNaN(bn);
+          if (aMissing && bMissing) return 0;
+          if (aMissing) return 1;
+          if (bMissing) return -1;
+          return (an - bn) * mult;
+        }}
+        return av.localeCompare(bv, undefined, {{ sensitivity: 'base' }}) * mult;
+      }});
+      rows.forEach((row) => tbody.appendChild(row));
+    }}
+
+    headers.forEach((btn) => {{
+      btn.addEventListener('click', () => {{
+        const key = btn.getAttribute('data-sort-key');
+        const type = btn.getAttribute('data-sort-type') || 'text';
+        if (!key) return;
+        let dir = 1;
+        if (activeKey === key) {{
+          dir = activeDir === 1 ? -1 : 1;
+        }}
+        activeKey = key;
+        activeDir = dir;
+        headers.forEach((header) => {{
+          header.setAttribute(
+            'aria-sort',
+            header === btn ? (dir === 1 ? 'ascending' : 'descending') : 'none'
+          );
+        }});
+        sortRows(key, type, dir);
+      }});
+    }});
   }})();
 }})();
 </script>
