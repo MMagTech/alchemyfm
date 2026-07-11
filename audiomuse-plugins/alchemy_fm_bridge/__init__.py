@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.0"
+PLUGIN_VERSION = "3.2.1"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1850,6 +1850,22 @@ class _FlashQueue:
         return "".join(self._by_anchor.get(anchor, []))
 
 
+def _action_loading_html(
+    element_id: str,
+    *,
+    title: str,
+    detail: str,
+) -> str:
+    return (
+        f'<div id="{html.escape(element_id)}" class="afm-action-loading" hidden role="status" aria-live="polite">'
+        '<span class="afm-action-loading-spinner" aria-hidden="true"></span>'
+        '<span class="afm-action-loading-copy">'
+        f'<strong class="afm-action-loading-title">{html.escape(title)}</strong>'
+        f'<span class="afm-action-loading-detail">{html.escape(detail)}</span>'
+        "</span></div>"
+    )
+
+
 def _panel_heading(title: str, note: str = "") -> str:
     note_html = f'<p class="afm-panel-note">{html.escape(note)}</p>' if note else ""
     return (
@@ -1947,6 +1963,13 @@ html:not(.dark-mode) .afm-shell .afm-flash-error {
   color: #991b1b;
   background: color-mix(in srgb, var(--color-danger, #dc2626) 10%, #ffffff);
   border-color: color-mix(in srgb, var(--color-danger, #dc2626) 32%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-action-loading {
+  background: color-mix(in srgb, var(--accent, #6366f1) 10%, #ffffff);
+  border-color: color-mix(in srgb, var(--accent, #6366f1) 38%, #e5e7eb);
+}
+html:not(.dark-mode) .afm-shell .afm-action-loading-detail {
+  color: var(--color-text-muted, #6b7280);
 }
 html:not(.dark-mode) .afm-shell .afm-badge-live {
   color: #15803d;
@@ -2058,6 +2081,72 @@ html:not(.dark-mode) .afm-shell .afm-filter-feedback {
   background: color-mix(in srgb, #ef4444 14%, transparent);
   border: 1px solid color-mix(in srgb, #ef4444 45%, transparent);
   color: var(--text, #fef2f2);
+}
+.afm-action-loading {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  margin: 0 0 1rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent, #6366f1) 50%, transparent);
+  background: color-mix(in srgb, var(--accent, #6366f1) 16%, transparent);
+  color: var(--text, inherit);
+  line-height: 1.45;
+}
+.afm-action-loading[hidden] { display: none !important; }
+.afm-action-loading-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+.afm-action-loading-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.afm-action-loading-detail {
+  font-size: 0.86rem;
+  color: var(--muted, #94a3b8);
+}
+.afm-action-loading-spinner {
+  flex: 0 0 auto;
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-top: 0.1rem;
+  border: 2px solid color-mix(in srgb, var(--accent, #6366f1) 35%, transparent);
+  border-top-color: var(--accent, #6366f1);
+  border-radius: 50%;
+  animation: afm-spin 0.75s linear infinite;
+}
+@keyframes afm-spin {
+  to { transform: rotate(360deg); }
+}
+.afm-btn.is-loading {
+  pointer-events: none;
+  opacity: 0.82;
+}
+.afm-btn.is-loading::before {
+  content: "";
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: afm-spin 0.75s linear infinite;
+}
+.afm-panel.is-working,
+.afm-collapsible-helper.is-working {
+  border-color: color-mix(in srgb, var(--accent, #6366f1) 55%, transparent);
+  animation: afm-panel-pulse 1.6s ease-in-out infinite;
+}
+@keyframes afm-panel-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #6366f1) 22%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #6366f1) 34%, transparent);
+  }
 }
 .afm-section { margin: 0 0 1.75rem; min-width: 0; }
 .afm-section-head {
@@ -3447,9 +3536,16 @@ def _chat_designer_fields_html(values: dict[str, Any], *, flash_html: str = "") 
         + f"<textarea name='chat_prompt' rows='3' class='afm-text-input' "
         + f"placeholder='e.g. upbeat 80s synthpop for a morning commute'>{html.escape(str(values.get('chat_prompt', '')))}</textarea>"
         + "</div>"
+        + _action_loading_html(
+            "afm-chat-loading",
+            title="Generating playlist preview…",
+            detail="AudioMuse chat is running — often 30–90 seconds. Stay on this page.",
+        )
         + '<div class="afm-form-actions afm-form-actions-inline">'
         + "<button type='submit' name='action' value='chat_preview' formnovalidate "
-        + "class='afm-btn afm-btn-secondary'>Generate Playlist Preview</button>"
+        + 'class="afm-btn afm-btn-secondary" data-afm-loading="afm-chat-loading" '
+        + 'data-afm-loading-panel="chat-designer" data-loading-label="Generating…">'
+        "Generate Playlist Preview</button>"
         + "</div>"
         + f"<input type='hidden' name='design_notes' value='{html.escape(str(values.get('design_notes', '')))}'>"
         + "</div></details>"
@@ -3638,8 +3734,15 @@ def _preview_step_html(*, show_results_jump: bool = False, flash_html: str = "")
         )
         + _preview_explainer_html()
         + flash_html
+        + _action_loading_html(
+            "afm-preview-loading",
+            title="Running preview…",
+            detail="Querying AudioMuse for tracks that match your programming.",
+        )
         + "<div class='afm-form-actions afm-form-actions-inline'>"
-        + "<button type='submit' name='action' value='preview' class='afm-btn afm-btn-primary'>"
+        + "<button type='submit' name='action' value='preview' class='afm-btn afm-btn-primary' "
+        + 'data-afm-loading="afm-preview-loading" data-afm-loading-panel="step-preview" '
+        + 'data-loading-label="Previewing…">'
         "Preview Programming</button>"
         + results_jump
         + "</div></section>"
@@ -3685,6 +3788,11 @@ def _deploy_actions_fields_html(values: dict[str, Any], *, flash_html: str = "")
         )
         + _deploy_explainer_html()
         + flash_html
+        + _action_loading_html(
+            "afm-deploy-loading",
+            title="Deploying to Alchemy FM…",
+            detail="Creating or updating your station and queue.",
+        )
         + "<div class='afm-check-group'>"
         + "<label class='afm-check-label'><input type='checkbox' name='enabled'"
         + f"{' checked' if values.get('enabled', True) else ''}> Start On Air After Push</label>"
@@ -3693,7 +3801,9 @@ def _deploy_actions_fields_html(values: dict[str, Any], *, flash_html: str = "")
         + "</div>"
         + f"<input type='hidden' name='saved_anchor_id' value='{html.escape(str(values.get('saved_anchor_id', '')))}'>"
         + "<div class='afm-form-actions'>"
-        + f"<button type='submit' name='action' value='push' class='afm-btn afm-btn-primary'>{html.escape(deploy_label)}</button>"
+        + f"<button type='submit' name='action' value='push' class='afm-btn afm-btn-primary' "
+        + f'data-afm-loading="afm-deploy-loading" data-afm-loading-panel="step-deploy" '
+        + f'data-loading-label="Deploying…">{html.escape(deploy_label)}</button>'
         + "<button type='submit' name='action' value='test' formnovalidate class='afm-btn afm-btn-secondary'>Test Connection</button>"
         + "</div></section>"
     )
@@ -3805,7 +3915,8 @@ def _edit_toolbar_html(values: dict[str, Any], *, flash_html: str = "") -> str:
         '<button type="submit" form="afm-designer-form" name="action" value="new_channel" formnovalidate '
         'class="afm-btn afm-btn-secondary">New Channel</button>'
         '<button type="submit" form="afm-designer-form" name="action" value="push" '
-        'class="afm-btn afm-btn-primary">Save Changes</button>'
+        'class="afm-btn afm-btn-primary" data-afm-loading="afm-deploy-loading" '
+        'data-afm-loading-panel="step-deploy" data-loading-label="Saving…">Save Changes</button>'
         "</div></div>"
     )
 
@@ -4232,6 +4343,40 @@ def _page_script(
     window.requestAnimationFrame(() => {{
       const searchInput = document.getElementById('bootstrap_playlist_search');
       if (searchInput) searchInput.focus({{ preventScroll: true }});
+    }});
+  }}
+
+  const designerForm = document.getElementById('afm-designer-form');
+  if (designerForm) {{
+    designerForm.addEventListener('submit', (event) => {{
+      const submitter = event.submitter;
+      if (!submitter || submitter.disabled) return;
+      const loadingId = submitter.getAttribute('data-afm-loading');
+      if (!loadingId) return;
+
+      const loading = document.getElementById(loadingId);
+      const panelId = submitter.getAttribute('data-afm-loading-panel');
+      const panel = panelId ? document.getElementById(panelId) : null;
+
+      if (panel) {{
+        if (panel.tagName === 'DETAILS') panel.open = true;
+        panel.classList.add('is-working');
+        window.requestAnimationFrame(() => {{
+          panel.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+        }});
+      }}
+      if (loading) loading.hidden = false;
+
+      const loadingLabel = submitter.getAttribute('data-loading-label') || 'Working…';
+      submitter.dataset.originalLabel = (submitter.textContent || '').trim();
+      submitter.textContent = loadingLabel;
+      submitter.classList.add('is-loading');
+      submitter.disabled = true;
+
+      designerForm.querySelectorAll('button[type="submit"]').forEach((btn) => {{
+        if (btn !== submitter) btn.disabled = true;
+      }});
+      designerForm.setAttribute('aria-busy', 'true');
     }});
   }}
 }})();
