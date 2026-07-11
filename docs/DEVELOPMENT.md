@@ -63,7 +63,7 @@ Liquidsoap and Icecast will not run in this mode — useful for API/UI work with
 |--------|---------|
 | `scripts/test_on_air_restart.py` | Manual check for on-air / stream epoch behavior |
 
-There is no automated test suite yet. Validate changes by running the stack and exercising admin + a station listen flow.
+There is an automated test suite — see [docs/TESTING.md](TESTING.md). Run `pytest` locally before opening a PR; CI runs on every pull request.
 
 ## Making changes
 
@@ -112,7 +112,9 @@ See [audiomuse-plugins/README.md](../audiomuse-plugins/README.md) for install an
 
 ## CI
 
-Pushes to `master` build and publish Docker images to GHCR (`.github/workflows/docker-publish.yml`). Changes under `audiomuse-plugins/`, `docs/`, or markdown-only files skip the Docker workflow — plugin updates ship via GitHub raw URLs inside AudioMuse. Use **workflow_dispatch** on the publish workflow to rebuild images manually. There is no lint/test workflow yet — run manual checks before opening a PR.
+Pushes to `master` build and publish Docker images to GHCR (`.github/workflows/docker-publish.yml`). Changes under `audiomuse-plugins/`, `docs/`, or markdown-only files skip the Docker workflow — plugin updates ship via GitHub raw URLs inside AudioMuse. Use **workflow_dispatch** on the publish workflow to rebuild images manually.
+
+**Tests:** [`.github/workflows/test.yml`](../.github/workflows/test.yml) runs plugin + backend pytest on every PR. See [docs/TESTING.md](TESTING.md).
 
 ## Contributing
 

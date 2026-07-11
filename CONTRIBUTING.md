@@ -22,7 +22,8 @@ Thanks for your interest in helping. This project is radio automation (AudioMuse
 - [ ] Change matches existing code style in the touched files
 - [ ] No secrets or personal paths in the diff
 - [ ] README or `docs/` updated if behavior, config, or deployment changed
-- [ ] Tested manually (describe how in the PR)
+- [ ] Tests added or updated for behavior changes (`pytest` — see [docs/TESTING.md](docs/TESTING.md))
+- [ ] Tested manually (describe how in the PR) when automation does not cover the change
 
 ## What we welcome
 

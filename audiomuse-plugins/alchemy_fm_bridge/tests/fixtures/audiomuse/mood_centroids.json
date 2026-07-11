@@ -1,0 +1,6 @@
+{
+  "energetic": [
+    {"index": 0, "top_tags": ["rock", "guitar"], "n_songs": 42},
+    {"index": 1, "top_tags": ["dance", "upbeat"], "n_songs": 18}
+  ]
+}
