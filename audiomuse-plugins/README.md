@@ -64,7 +64,7 @@ git commit -m "Release Channel Designer plugin X.Y.Z."
 
 CI runs `verify_plugin_release.py` on every PR/push and **fails** if catalog version, checksum, or zip contents drift. The release job on `master` rebuilds the zip if needed; set **`RELEASE_BOT_TOKEN`** (repo secret with push + bypass on protected `master`) so the bot can push release commits when you only merge source changes.
 
-The catalog keeps **only the two newest versions** (current + previous). Version **3.0.0** starts a fresh release line after the 3.2.x fixes.
+The catalog keeps **only the two newest versions** (current + previous). When resetting the version line, **remove older higher semver entries** — AudioMuse picks the max version number, so leaving `3.2.27` alongside `3.0.0` would still show 3.2.27 in the catalog UI.
 
 ### Workflow
 
