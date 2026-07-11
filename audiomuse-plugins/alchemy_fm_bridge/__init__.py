@@ -26,7 +26,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.2"
+PLUGIN_VERSION = "3.0.3"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -182,11 +182,17 @@ def _agent_debug_log(message: str, data: dict[str, Any], hypothesis_id: str) -> 
     # endregion agent log
 
 
+ALCHEMY_SESSION_COOKIE = "admin_session"
+
+
 class AlchemyFmClient:
     def __init__(self, base_url: str, username: str, password: str, timeout: float = 30.0) -> None:
         self.base_url = base_url.rstrip("/")
+        self.username = username.strip()
+        self.password = password
         self.timeout = timeout
-        token = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
+        self._session_cookie: str | None = None
+        token = base64.b64encode(f"{self.username}:{self.password}".encode()).decode("ascii")
         self.headers = {
             "Authorization": f"Basic {token}",
             "Accept": "application/json",
@@ -195,15 +201,60 @@ class AlchemyFmClient:
             "Accept-Language": "en-US,en;q=0.9",
         }
 
+    def _auth_headers(self, *, json_body: bool = True) -> dict[str, str]:
+        headers = dict(self.headers)
+        if not json_body:
+            headers.pop("Content-Type", None)
+        if self._session_cookie:
+            headers["Cookie"] = self._session_cookie
+        return headers
+
+    def _establish_session(self) -> None:
+        url = f"{self.base_url}/api/admin/login"
+        body = json.dumps({"username": self.username, "password": self.password}).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": ALCHEMY_FM_USER_AGENT,
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                set_cookie = resp.headers.get("Set-Cookie") or ""
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise ChannelDesignerError(
+                _friendly_http_error(exc.code, detail), status=exc.code
+            ) from exc
+        except urllib.error.URLError as exc:
+            raise ChannelDesignerError(
+                f"Could not reach Alchemy FM at {self.base_url}: {exc.reason}"
+            ) from exc
+        prefix = f"{ALCHEMY_SESSION_COOKIE}="
+        for segment in set_cookie.split(","):
+            segment = segment.strip()
+            if segment.startswith(prefix):
+                self._session_cookie = segment.split(";", 1)[0]
+                return
+        raise ChannelDesignerError(
+            "Alchemy FM login succeeded but returned no admin session cookie."
+        )
+
     def _request(
         self,
         method: str,
         path: str,
         payload: dict[str, Any] | None = None,
+        *,
+        _auth_retried: bool = False,
     ) -> Any:
         url = f"{self.base_url}{path}"
         data = json.dumps(payload).encode("utf-8") if payload is not None else None
-        req = urllib.request.Request(url, data=data, headers=self.headers, method=method)
+        req = urllib.request.Request(url, data=data, headers=self._auth_headers(), method=method)
         _agent_debug_log(
             "alchemy-request-start",
             {"method": method, "base_url": self.base_url, "path": path, "has_payload": payload is not None},
@@ -225,6 +276,14 @@ class AlchemyFmClient:
                 {"method": method, "path": path, "status": exc.code, "detail_preview": detail[:300]},
                 "H1,H4",
             )
+            if exc.code == 401 and not _auth_retried:
+                try:
+                    self._establish_session()
+                except ChannelDesignerError:
+                    raise ChannelDesignerError(
+                        _friendly_http_error(exc.code, detail), status=exc.code
+                    ) from exc
+                return self._request(method, path, payload, _auth_retried=True)
             raise ChannelDesignerError(
                 _friendly_http_error(exc.code, detail), status=exc.code
             ) from exc
@@ -237,6 +296,10 @@ class AlchemyFmClient:
             raise ChannelDesignerError(
                 f"Could not reach Alchemy FM at {self.base_url}: {exc.reason}"
             ) from exc
+
+    def verify_credentials(self) -> None:
+        """Confirm admin login — establishes session cookie when Basic auth is blocked."""
+        self._request("GET", "/api/admin/me")
 
     def _verify_deploy_ready_legacy_backend(self, *, strict: bool = True) -> str | None:
         """Backend predates /api/admin/deploy-check — probe AudioMuse from plugin."""
@@ -318,6 +381,7 @@ class AlchemyFmClient:
         return stations
 
     def test_connection(self, *, skip_deploy_check: bool = False) -> list[dict[str, Any]]:
+        self.verify_credentials()
         if not skip_deploy_check:
             self.verify_deploy_ready()
         return self._list_stations()
@@ -404,47 +468,64 @@ class AlchemyFmClient:
         payload: dict[str, Any],
         *,
         slug: str | None = None,
+        station_id: int | None = None,
         bootstrap: bool = True,
     ) -> tuple[dict[str, Any], str, str | None]:
         target_slug = (slug or payload.get("slug") or "").strip().lower()
         _agent_debug_log(
             "push-station-start",
-            {"slug": target_slug, "bootstrap": bootstrap, "source_type": payload.get("source_type")},
+            {
+                "slug": target_slug,
+                "station_id": station_id,
+                "bootstrap": bootstrap,
+                "source_type": payload.get("source_type"),
+            },
             "H5",
         )
-        try:
-            existing = self.find_station_by_slug(target_slug) if target_slug else None
-        except ChannelDesignerError as exc:
-            raise ChannelDesignerError(
-                f"Deploy failed while listing stations on Alchemy FM.\n{exc}"
-            ) from exc
-        if existing:
-            station_id = int(existing["id"])
-            update_fields = {
-                key: value
-                for key, value in payload.items()
-                if key not in ("slug", "bootstrap_queue")
-            }
+        update_fields = {
+            key: value
+            for key, value in payload.items()
+            if key not in ("slug", "bootstrap_queue")
+        }
+        if station_id:
             try:
-                station = self.update_station(station_id, update_fields)
+                station = self.update_station(int(station_id), update_fields)
             except ChannelDesignerError as exc:
                 raise ChannelDesignerError(
-                    f"Deploy failed while updating station '{target_slug}'.\n{exc}"
+                    f"Deploy failed while updating station id {station_id}.\n{exc}"
                 ) from exc
             action = "updated"
+            target_slug = str(station.get("slug") or target_slug).strip().lower()
         else:
-            create_payload = {
-                key: value for key, value in payload.items() if key != "bootstrap_queue"
-            }
-            create_payload["bootstrap_queue"] = False
             try:
-                station = self.create_station(create_payload)
+                existing = self.find_station_by_slug(target_slug) if target_slug else None
             except ChannelDesignerError as exc:
                 raise ChannelDesignerError(
-                    f"Deploy failed while creating station '{target_slug}'.\n{exc}"
+                    f"Deploy failed while listing stations on Alchemy FM.\n{exc}"
                 ) from exc
-            station_id = int(station["id"])
-            action = "created"
+            if existing:
+                station_id = int(existing["id"])
+                try:
+                    station = self.update_station(station_id, update_fields)
+                except ChannelDesignerError as exc:
+                    raise ChannelDesignerError(
+                        f"Deploy failed while updating station '{target_slug}'.\n{exc}"
+                    ) from exc
+                action = "updated"
+            else:
+                create_payload = {
+                    key: value for key, value in payload.items() if key != "bootstrap_queue"
+                }
+                create_payload["bootstrap_queue"] = False
+                try:
+                    station = self.create_station(create_payload)
+                except ChannelDesignerError as exc:
+                    raise ChannelDesignerError(
+                        f"Deploy failed while creating station '{target_slug}'.\n{exc}"
+                    ) from exc
+                station_id = int(station["id"])
+                action = "created"
+                target_slug = str(station.get("slug") or target_slug).strip().lower()
         _agent_debug_log(
             "push-station-saved",
             {"slug": target_slug, "station_id": station_id, "action": action},
@@ -4960,6 +5041,13 @@ def _audition_history_html(slug: str | None = None) -> str:
     return body + "</tbody></table></div>"
 
 
+def _alchemy_station_id_hidden(values: dict[str, Any]) -> str:
+    station_id = int(values.get("edit_station_id") or values.get("alchemy_station_id") or 0)
+    if not station_id:
+        return ""
+    return f"<input type='hidden' name='alchemy_station_id' value='{station_id}'>"
+
+
 def _station_identity_fields_html(values: dict[str, Any]) -> str:
     editing_slug = (values.get("editing_slug") or "").strip()
     draft_slug = (values.get("draft_slug") or "").strip()
@@ -4980,6 +5068,7 @@ def _station_identity_fields_html(values: dict[str, Any]) -> str:
             "What listeners see on Alchemy FM — name, URL mount, and homepage description. Does not affect track selection.",
         )
         + _station_identity_explainer_html()
+        + _alchemy_station_id_hidden(values)
         + "<div class='afm-field'>"
         + _field_label("Channel Name", mandatory=True)
         + f"<input name='name' value='{html.escape(str(values.get('name', '')))}'>"
@@ -5122,6 +5211,7 @@ def _deploy_actions_fields_html(values: dict[str, Any], *, flash_html: str = "")
         + _deploy_explainer_html()
         + _deploy_readiness_html(readiness)
         + _deploy_status_html(values, flash_html=flash_html)
+        + _alchemy_station_id_hidden(values)
         + _action_loading_html(
             "afm-deploy-loading",
             title="Deploying to Alchemy FM…",
@@ -7340,6 +7430,12 @@ def _home_page():
                             profile["bootstrap"] = None
                         payload = channel_profile_to_alchemy_payload(profile, preview_tracks)
                         slug = payload["slug"]
+                        editing = (request.form.get("editing_slug") or "").strip()
+                        alchemy_station_id = int(
+                            request.form.get("alchemy_station_id")
+                            or request.form.get("edit_station_id")
+                            or 0
+                        ) or None
                         item_ids = [t["item_id"] for t in preview_tracks]
                         _record_audition(slug, item_ids)
                         if (profile.get("living") or {}).get("enabled"):
@@ -7347,8 +7443,10 @@ def _home_page():
                         station, push_action, bootstrap_warning = client.push_station(
                             payload,
                             slug=slug,
+                            station_id=alchemy_station_id if editing else None,
                             bootstrap=bool(payload.get("bootstrap_queue")),
                         )
+                        deploy_slug = str(station.get("slug") or slug).strip()
                         _save_channel(
                             profile,
                             preview_ids=item_ids,
@@ -7374,20 +7472,21 @@ def _home_page():
                             flashes.add(bootstrap_warning, "warn", anchor="global")
                         scroll_anchor = "step-deploy"
                         values = _form_values_from_profile(profile)
-                        values["editing_slug"] = slug
+                        values["editing_slug"] = deploy_slug
                         values["deploy_last_error"] = ""
                         if station:
                             values["edit_station_id"] = int(station.get("id") or 0)
+                            values["alchemy_station_id"] = int(station.get("id") or 0)
                             values["edit_on_air"] = bool(station.get("enabled"))
                             values["edit_queued"] = station.get("queued_count", "?")
                         logger.info(
                             "alchemy_fm_bridge deployed slug=%s action=%s type=%s",
-                            slug,
+                            deploy_slug,
                             push_action,
                             profile["programming"]["type"],
                         )
                         return redirect(
-                            url_for("alchemy_fm_bridge.home", edit=slug, deploy_ok=1)
+                            url_for("alchemy_fm_bridge.home", edit=deploy_slug, deploy_ok=1)
                             + "#step-deploy"
                         )
                 except ChannelDesignerError as exc:
