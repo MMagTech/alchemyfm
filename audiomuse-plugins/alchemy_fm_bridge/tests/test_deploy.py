@@ -82,9 +82,13 @@ def test_push_station_create_and_bootstrap():
 
     assert action == "created"
     assert station["id"] == 42
-    assert ("POST", "/api/admin/stations", payload) in [
-        (method, path, body) for method, path, body in client.calls
+    post_create = [
+        (method, path, body)
+        for method, path, body in client.calls
+        if method == "POST" and path == "/api/admin/stations"
     ]
+    assert post_create
+    assert post_create[0][2]["bootstrap_queue"] is False
     assert ("POST", "/api/admin/stations/42/bootstrap", None) in client.calls
 
 

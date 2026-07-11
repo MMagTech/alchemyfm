@@ -49,7 +49,9 @@ pytest -v
 | `backend/tests/test_listen_proxy.py` | SQLite | None | HEAD listen probe + listen.m3u |
 | `backend/tests/test_admin_navidrome_api.py` | SQLite | Mocked Navidrome | Operator heart POST (heart on/off); retired GET prefetch stays gone |
 | `backend/tests/test_retired_routes.py` | SQLite | None | Removed AudioMuse admin proxy returns 404 |
-| `.../tests/test_deploy.py` | None | Mocked Alchemy FM HTTP | Plugin deploy payload + admin API contract |
+| `.../test_deploy.py` | None | Mocked Alchemy FM HTTP | Plugin deploy payload + `AlchemyFmClient` admin API contract |
+| `.../test_deploy_route.py` | Postgres | Mocked AudioMuse + Alchemy | **Step 6 form POST `action=push`** — full deploy handler path |
+| `backend/tests/test_plugin_deploy_contract.py` | SQLite | Mocked bootstrap | **Plugin payload → backend create + bootstrap** for all programming types |
 
 ## Adding tests for a new feature
 
@@ -68,6 +70,8 @@ These tests guard paths that are **not used by the web UI** but are required for
 | `test_internal_api.py` | Liquidsoap `track-started` callback + `/internal` IP guard |
 | `test_listen_proxy.py` | Safari/iOS `HEAD /listen` probe (no upstream Icecast connect) |
 | `test_deploy.py` | Plugin `AlchemyFmClient` → admin API URL contract |
+| `test_deploy_route.py` | Plugin Step 6 deploy button (`action=push`) through form handler |
+| `test_plugin_deploy_contract.py` | Real `channel_profile_to_alchemy_payload` accepted by backend + bootstrap |
 
 Removing any of those routes or changing plugin deploy URLs should fail CI. Tier-1 dead code (unused helpers, legacy CSS) is still not covered — that is intentional.
 

@@ -240,7 +240,14 @@ class AlchemyFmClient:
             station = self.update_station(station_id, update_fields)
             action = "updated"
         else:
-            station = self.create_station(payload)
+            # Create without inline bootstrap — Alchemy FM runs bootstrap on POST create
+            # when bootstrap_queue is true, and push_station always calls /bootstrap next.
+            # Skipping inline bootstrap avoids duplicate work and opaque 500s on create.
+            create_payload = {
+                key: value for key, value in payload.items() if key != "bootstrap_queue"
+            }
+            create_payload["bootstrap_queue"] = False
+            station = self.create_station(create_payload)
             station_id = int(station["id"])
             action = "created"
         if bootstrap and payload.get("bootstrap_queue", True):
