@@ -7,18 +7,18 @@
     {
       "version": "3.2.9",
       "min_core_version": "2.5.0",
-      "changelog": "Fix bootstrap Verify: load Navidrome playlists via AudioMuse mediaserver (not missing /api/playlist). Cleaner API error messages. Includes live playlist search as you type.",
+      "changelog": "Bootstrap: playlist search as you type; fix Verify via AudioMuse mediaserver (not missing /api/playlist). Cleaner API error messages.",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": "abf8dff8aead5a5003d6a9dcd7bdcaea"
+      "checksum": "313714ad55af2eed3dc2099b1f0d210d"
     },
     {
       "version": "3.2.8",
       "min_core_version": "2.5.0",
-      "changelog": "Bootstrap opener: Navidrome playlist search as you type (no Search button). Results update live; click to fill Playlist ID.",
+      "changelog": "Fix Preview Results Genre and Mood columns: parse AudioMuse mood_vector string format and compute top_genre like the core app.",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": "813474451eab15f5cabfe6c328f72bbf"
+      "checksum": "6d8d7127e27af671ba658b1ef12381c8"
     },
     {
       "version": "3.2.7",
