@@ -132,9 +132,10 @@ def test_push_station_create_and_bootstrap():
         [{"item_id": "clap-1", "title": "One", "author": "Artist"}],
     )
 
-    station, action = client.push_station(payload, bootstrap=True)
+    station, action, bootstrap_warning = client.push_station(payload, bootstrap=True)
 
     assert action == "created"
+    assert bootstrap_warning is None
     assert station["id"] == 42
     post_create = [
         (method, path, body)
@@ -164,15 +165,42 @@ def test_push_station_update_existing():
     with patch.object(client, "_request", side_effect=fake_request):
         payload = bridge.channel_profile_to_alchemy_payload(_sample_profile(), [])
         payload["description"] = "Updated description"
-        station, action = client.push_station(payload, bootstrap=True)
+        station, action, bootstrap_warning = client.push_station(payload, bootstrap=True)
 
     assert action == "updated"
+    assert bootstrap_warning is None
     assert station["id"] == 7
     put_calls = [(method, path, body) for method, path, body in client.calls if method == "PUT"]
     assert put_calls
     assert put_calls[0][1] == "/api/admin/stations/7"
     assert put_calls[0][2]["description"] == "Updated description"
     assert "slug" not in put_calls[0][2]
+
+
+def test_push_station_bootstrap_failure_still_returns_station():
+    client = _RecordingClient()
+
+    def fake_request(method, path, payload=None):
+        client.calls.append((method, path, payload))
+        if method == "GET" and path == "/api/admin/deploy-check":
+            return {"ok": True, "audiomuse": {"ok": True}, "navidrome": {"ok": True}}
+        if method == "GET" and path == "/api/admin/stations":
+            return []
+        if method == "POST" and path == "/api/admin/stations":
+            return {"id": 42, "slug": "late-night-rock", "name": "Late Night Rock"}
+        if method == "POST" and path.endswith("/bootstrap"):
+            raise bridge.ChannelDesignerError("AudioMuse rejected the API token (HTTP 401)")
+        raise AssertionError(f"Unexpected request: {method} {path}")
+
+    with patch.object(client, "_request", side_effect=fake_request):
+        payload = bridge.channel_profile_to_alchemy_payload(_sample_profile(), [])
+        station, action, bootstrap_warning = client.push_station(payload, bootstrap=True)
+
+    assert action == "created"
+    assert station["id"] == 42
+    assert bootstrap_warning is not None
+    assert "saved on Alchemy FM" in bootstrap_warning
+    assert "401" in bootstrap_warning
 
 
 def test_operator_client_actions_hit_admin_routes():

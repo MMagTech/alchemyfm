@@ -102,8 +102,9 @@ def test_plugin_push_station_sequence(admin_client, bootstrap_mocks):
         raise AssertionError(f"Unexpected request: {method} {path}")
 
     with patch.object(client, "_request", side_effect=fake_request):
-        station, action = client.push_station(payload, bootstrap=True)
+        station, action, bootstrap_warning = client.push_station(payload, bootstrap=True)
     assert action == "created"
+    assert bootstrap_warning is None
     assert station["queued_count"] >= 1
     create_calls = [c for c in calls if c[0] == "POST" and c[1] == "/api/admin/stations"]
     assert create_calls

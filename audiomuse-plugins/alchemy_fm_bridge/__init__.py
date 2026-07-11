@@ -26,7 +26,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.1"
+PLUGIN_VERSION = "3.0.2"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -62,10 +62,19 @@ def _friendly_http_error(status: int, body: str) -> str:
     try:
         parsed = json.loads(body)
         if isinstance(parsed, dict):
-            if parsed.get("detail"):
-                return str(parsed["detail"])
-            if parsed.get("error"):
-                return str(parsed["error"])
+            detail = parsed.get("detail") or parsed.get("error")
+            if detail:
+                detail_text = str(detail)
+                if status == 401 and detail_text.lower() in (
+                    "authentication required",
+                    "unauthorized",
+                ):
+                    return (
+                        "Alchemy FM rejected admin login (HTTP 401). "
+                        "Re-open plugin Settings and re-enter ADMIN_USERNAME / ADMIN_PASSWORD "
+                        "from your Alchemy FM .env (use the LAN URL, e.g. http://192.168.x.x:9246)."
+                    )
+                return detail_text
     except json.JSONDecodeError:
         pass
     if "<html" in lower:
@@ -396,7 +405,7 @@ class AlchemyFmClient:
         *,
         slug: str | None = None,
         bootstrap: bool = True,
-    ) -> tuple[dict[str, Any], str]:
+    ) -> tuple[dict[str, Any], str, str | None]:
         target_slug = (slug or payload.get("slug") or "").strip().lower()
         _agent_debug_log(
             "push-station-start",
@@ -441,22 +450,30 @@ class AlchemyFmClient:
             {"slug": target_slug, "station_id": station_id, "action": action},
             "H5",
         )
+        bootstrap_warning: str | None = None
         if bootstrap and payload.get("bootstrap_queue", True):
             try:
                 station = self.bootstrap_station(station_id)
             except ChannelDesignerError as exc:
-                raise ChannelDesignerError(
-                    "Station was saved on Alchemy FM, but bootstrap failed while importing "
-                    "programming tracks into the play queue. Test connection does not run "
-                    "this step — it only checks admin login and lists stations.\n"
+                bootstrap_warning = (
+                    f"Station '{target_slug}' was saved on Alchemy FM (id {station_id}), "
+                    "but the play queue could not be filled. Preview runs inside AudioMuse; "
+                    "bootstrap runs from the Alchemy FM container and needs AUDIOMUSE_URL + "
+                    "AUDIOMUSE_API_TOKEN in Alchemy FM .env.\n"
                     f"{exc}"
-                ) from exc
-            _agent_debug_log(
-                "push-station-bootstrapped",
-                {"slug": target_slug, "station_id": station_id, "queued_count": station.get("queued_count")},
-                "H5",
-            )
-        return station, action
+                )
+                _agent_debug_log(
+                    "push-station-bootstrap-failed",
+                    {"slug": target_slug, "station_id": station_id, "error": str(exc)[:300]},
+                    "H5",
+                )
+            else:
+                _agent_debug_log(
+                    "push-station-bootstrapped",
+                    {"slug": target_slug, "station_id": station_id, "queued_count": station.get("queued_count")},
+                    "H5",
+                )
+        return station, action, bootstrap_warning
 
 
 def _audiomuse_base_url() -> str:
@@ -3954,21 +3971,16 @@ def _deploy_readiness(values: dict[str, Any]) -> dict[str, Any]:
     track_count = 0
     unfiltered_count = 0
     if not blockers:
-        if loaded and saved_preview_count:
-            saved_profile, preview_ids = loaded
-            fallback_ids = saved_profile.get("last_unfiltered_preview_ids") or preview_ids
-            unfiltered = _preview_tracks_from_ids(fallback_ids)
+        preview_tracks = _preview_tracks_for_values(values)
+        track_count = len(preview_tracks)
+        try:
+            unfiltered = _deploy_unfiltered_tracks(merged, slug or "")
             unfiltered_count = len(unfiltered)
-            preview_tracks = apply_track_filters(unfiltered, merged)
-            track_count = len(preview_tracks)
-        else:
-            try:
-                unfiltered = _deploy_unfiltered_tracks(merged, slug)
-                unfiltered_count = len(unfiltered)
-                preview_tracks = apply_track_filters(unfiltered, merged)
-                track_count = len(preview_tracks)
-            except ChannelDesignerError as exc:
+        except ChannelDesignerError as exc:
+            if track_count == 0:
                 blockers.append(str(exc))
+            else:
+                unfiltered_count = track_count
         if track_count == 0 and not blockers:
             if _filters_active(merged.get("filters") or {}) and unfiltered_count > 0:
                 blockers.append(
@@ -4011,6 +4023,30 @@ def _deploy_readiness(values: dict[str, Any]) -> dict[str, Any]:
         "warnings": warnings,
         "track_count": track_count,
     }
+
+
+def _preview_tracks_for_values(values: dict[str, Any]) -> list[dict[str, Any]]:
+    """Tracks for preview table / deploy readiness — same source, same count."""
+    slug = _channel_slug_from_values(values)
+    profile = _profile_from_values(values)
+    programming = profile.get("programming") or {}
+    if _programming_incomplete(programming):
+        return []
+    merged = _merge_saved_programming_if_needed(profile, slug) if slug else profile
+    loaded = _load_saved_channel(slug) if slug else None
+    if loaded:
+        saved_profile, preview_ids = loaded
+        fallback_ids = saved_profile.get("last_unfiltered_preview_ids") or preview_ids
+        if fallback_ids:
+            unfiltered = _preview_tracks_from_ids(fallback_ids)
+            tracks = apply_track_filters(unfiltered, merged)
+            if tracks:
+                return tracks
+    try:
+        unfiltered = _deploy_unfiltered_tracks(merged, slug or "")
+        return apply_track_filters(unfiltered, merged)
+    except ChannelDesignerError:
+        return []
 
 
 def _deploy_readiness_html(readiness: dict[str, Any]) -> str:
@@ -7024,6 +7060,14 @@ def _home_page():
                                 "error",
                                 anchor="bootstrap-opener",
                             )
+                if request.args.get("deploy_ok"):
+                    scroll_anchor = "step-deploy"
+                    instant_scroll = True
+                    flashes.add(
+                        "Channel deployed on Alchemy FM — see Your Stations above and preview results below.",
+                        "ok",
+                        anchor="step-deploy",
+                    )
             except ChannelDesignerError as exc:
                 flashes.add(str(exc), "error")
         elif draft_slug:
@@ -7300,7 +7344,7 @@ def _home_page():
                         _record_audition(slug, item_ids)
                         if (profile.get("living") or {}).get("enabled"):
                             _add_to_pool(slug, item_ids, source="preview")
-                        station, push_action = client.push_station(
+                        station, push_action, bootstrap_warning = client.push_station(
                             payload,
                             slug=slug,
                             bootstrap=bool(payload.get("bootstrap_queue")),
@@ -7314,12 +7358,20 @@ def _home_page():
                         )
                         if deploy_warning:
                             flashes.add(deploy_warning, "warn", anchor="step-deploy")
+                        queued_note = (
+                            f", {station.get('queued_count')} queued"
+                            if station.get("queued_count") is not None
+                            else ""
+                        )
                         flashes.add(
                             f"Channel '{station.get('name')}' {push_action} on Alchemy FM "
-                            f"(id {station.get('id')}) with live {profile['programming']['type']} programming.",
+                            f"(id {station.get('id')}{queued_note}) — see Your Stations above.",
                             "ok",
                             anchor="step-deploy",
                         )
+                        if bootstrap_warning:
+                            flashes.add(bootstrap_warning, "warn", anchor="step-deploy")
+                            flashes.add(bootstrap_warning, "warn", anchor="global")
                         scroll_anchor = "step-deploy"
                         values = _form_values_from_profile(profile)
                         values["editing_slug"] = slug
@@ -7333,6 +7385,10 @@ def _home_page():
                             slug,
                             push_action,
                             profile["programming"]["type"],
+                        )
+                        return redirect(
+                            url_for("alchemy_fm_bridge.home", edit=slug, deploy_ok=1)
+                            + "#step-deploy"
                         )
                 except ChannelDesignerError as exc:
                     slug = (
@@ -7466,6 +7522,8 @@ def _home_page():
         scroll_anchor = "bootstrap-opener"
     if scroll_anchor in ("step-deploy", "preview-results", "step-programming"):
         instant_scroll = True
+    if not preview_tracks:
+        preview_tracks = _preview_tracks_for_values(values)
     has_preview_tracks = len(preview_tracks) > 0
     preview_block = _preview_results_html(
         preview_tracks,

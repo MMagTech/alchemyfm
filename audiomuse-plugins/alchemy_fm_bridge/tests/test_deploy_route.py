@@ -136,6 +136,7 @@ class TestDeployRoute:
             alchemy.push_station.return_value = (
                 {"id": 1, "name": "Saved Preview FM", "slug": slug, "enabled": True, "queued_count": 3},
                 "created",
+                None,
             )
             with patch.object(bridge, "preview_programming") as preview_mock:
                 preview_mock.side_effect = AssertionError("deploy should use saved preview, not re-query")
@@ -153,3 +154,23 @@ class TestDeployRoute:
         body = resp.get_data(as_text=True)
         assert "created on Alchemy FM" in body
         alchemy.push_station.assert_called_once()
+
+    def test_push_deploy_partial_success_when_bootstrap_fails(self, client, audiomuse_mocks, pg_db):
+        mock_client = patch.object(bridge, "_client")
+        with mock_client as client_factory:
+            alchemy = client_factory.return_value
+            alchemy.verify_deploy_ready.return_value = None
+            alchemy.push_station.return_value = (
+                {"id": 9, "name": "Deploy Route FM", "slug": "deploy-route-fm", "queued_count": 0},
+                "created",
+                "Station 'deploy-route-fm' was saved on Alchemy FM (id 9), but the play queue could not be filled.",
+            )
+            resp = client.post("/", data=_push_form())
+
+        assert resp.status_code == 302
+        assert "deploy_ok=1" in resp.headers.get("Location", "")
+        follow = client.get(resp.headers["Location"])
+        body = follow.get_data(as_text=True)
+        assert "created on Alchemy FM" in body
+        assert "play queue could not be filled" in body
+        assert "Deploy failed — fix this before trying again" not in body
