@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.8"
+PLUGIN_VERSION = "3.2.9"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -72,6 +72,28 @@ def _friendly_http_error(status: int, body: str) -> str:
     text = re.sub(r"<[^>]+>", " ", body)
     text = re.sub(r"\s+", " ", text).strip()
     return text[:500] or f"HTTP {status}"
+
+
+def _audiomuse_http_error_message(detail: str, status: int) -> str:
+    if status == 404:
+        return f"AudioMuse API route not found (HTTP 404). Update AudioMuse core or the Channel Designer plugin."
+    try:
+        parsed = json.loads(detail)
+        if isinstance(parsed, dict):
+            if parsed.get("error"):
+                return str(parsed["error"])
+            if parsed.get("message"):
+                return str(parsed["message"])
+    except json.JSONDecodeError:
+        pass
+    if "<html" in detail.lower():
+        title_match = re.search(r"<title>([^<]+)</title>", detail, re.I)
+        if title_match:
+            return f"AudioMuse API HTTP {status}: {title_match.group(1).strip()}"
+        return f"AudioMuse API HTTP {status} (HTML error page)."
+    text = re.sub(r"<[^>]+>", " ", detail)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:500] or f"AudioMuse API HTTP {status}"
 
 
 class ChannelDesignerError(Exception):
@@ -278,7 +300,10 @@ def audiomuse_get(path: str, *, params: dict[str, str] | None = None, timeout: f
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
-        raise ChannelDesignerError(detail or f"AudioMuse API HTTP {exc.code}", status=exc.code) from exc
+        raise ChannelDesignerError(
+            _audiomuse_http_error_message(detail, exc.code),
+            status=exc.code,
+        ) from exc
     except urllib.error.URLError as exc:
         raise ChannelDesignerError(f"Could not reach AudioMuse API: {exc.reason}") from exc
 
@@ -293,7 +318,7 @@ def audiomuse_post(path: str, payload: dict[str, Any], *, timeout: float = 120.0
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
-        message = detail
+        message = _audiomuse_http_error_message(detail, exc.code)
         try:
             parsed = json.loads(detail)
             if isinstance(parsed, dict) and parsed.get("error"):
@@ -1070,27 +1095,43 @@ def _apply_bootstrap_check(values: dict[str, Any], profile: dict[str, Any]) -> d
     return check
 
 
+def _mediaserver_playlist_track_ids(playlist_id: str) -> list[str]:
+    """Load Navidrome/Jellyfin playlist track IDs via AudioMuse mediaserver (in-process)."""
+    try:
+        from tasks.mediaserver import get_playlist_track_ids
+    except ImportError as exc:
+        raise ChannelDesignerError(
+            "Bootstrap verify needs AudioMuse mediaserver access. Run the plugin inside AudioMuse "
+            "(not a standalone zip test server)."
+        ) from exc
+    try:
+        raw = get_playlist_track_ids(playlist_id) or []
+    except Exception as exc:
+        raise ChannelDesignerError(f"Navidrome playlist lookup failed: {exc}") from exc
+    return [str(item_id) for item_id in raw if item_id]
+
+
 def _playlist_track_ids(playlist_id: str, *, limit: int) -> list[str]:
     playlist_id = playlist_id.strip()
     if not playlist_id:
         return []
-    try:
-        data = audiomuse_get("/api/playlist", params={"playlist_id": playlist_id})
-    except ChannelDesignerError as exc:
-        raise ChannelDesignerError(f"Could not load Navidrome playlist: {exc}") from exc
-    tracks = data.get("tracks") if isinstance(data, dict) else data
-    if not isinstance(tracks, list):
+    ids = _mediaserver_playlist_track_ids(playlist_id)
+    if not ids:
         return []
-    ids: list[str] = []
-    for row in tracks:
-        if not isinstance(row, dict):
-            continue
-        item_id = row.get("item_id") or row.get("id")
-        if item_id:
-            ids.append(str(item_id))
-        if len(ids) >= limit:
-            break
-    return ids
+    if limit and len(ids) > limit:
+        ids = ids[:limit]
+    try:
+        scores = get_score_data_by_ids(ids)
+    except Exception:
+        scores = []
+    known = {str(row.get("item_id")) for row in scores if row.get("item_id")}
+    analyzed = [item_id for item_id in ids if item_id in known]
+    if not analyzed:
+        raise ChannelDesignerError(
+            f"Playlist resolved to {len(ids)} track(s) on the media server, but none are in the "
+            "AudioMuse analysis database. Run library analysis first."
+        )
+    return analyzed
 
 
 def _resolve_navidrome_bootstrap(bootstrap: dict[str, Any]) -> list[str]:
@@ -3115,7 +3156,8 @@ html:not(.dark-mode) .afm-shell .afm-bootstrap-menu {
   cursor: pointer;
 }
 .afm-bootstrap-pick:hover,
-.afm-bootstrap-pick:focus-visible {
+.afm-bootstrap-pick:focus-visible,
+.afm-bootstrap-pick.is-active {
   background: color-mix(in srgb, var(--accent, #6366f1) 16%, transparent);
   outline: none;
 }
@@ -3487,7 +3529,7 @@ def _bootstrap_explainer_html() -> str:
         "<p><strong>What this controls:</strong> A one-time <strong>cold-start opener</strong> — a Navidrome "
         "playlist that plays first when you deploy. After the opener, <strong>Step 2 programming</strong> "
         "takes over for all ongoing playback.</p>"
-        "<p><strong>Search:</strong> Matches <strong>playlist title only</strong> (not tracks inside). "
+        "<p><strong>Search:</strong> Type a playlist name — results appear as you type (title match only). "
         "Pick a result or paste a playlist id from Navidrome.</p>"
         "<p><strong>Verify:</strong> Confirms AudioMuse can resolve the playlist. Deploy blocks if verification fails.</p>"
         "<p><strong>Opener Track Limit:</strong> Max tracks to import from the opener (rest of queue comes from programming).</p>"
@@ -3677,6 +3719,7 @@ def _bootstrap_fields_html(values: dict[str, Any], *, flash_html: str = "") -> s
     search_query = str(values.get("bootstrap_playlist_search", ""))
     results_html = _bootstrap_playlist_results_html(playlist_results, query=search_query)
     feedback = _bootstrap_feedback_html(values.get("bootstrap_check"))
+    playlist_search_url = html.escape(url_for("alchemy_fm_bridge.search_playlists_api"))
     return (
         "<section class='afm-panel afm-bootstrap-panel afm-step-panel' id='bootstrap-opener'>"
         + _step_panel_heading(
@@ -3688,19 +3731,19 @@ def _bootstrap_fields_html(values: dict[str, Any], *, flash_html: str = "") -> s
         + _bootstrap_explainer_html()
         + flash_html
         + "<div class='afm-check-group'>"
-        + "<label class='afm-check-label'><input type='checkbox' name='bootstrap_enabled'"
+        + "<label class='afm-check-label'><input type='checkbox' name='bootstrap_enabled' id='bootstrap_enabled'"
         + f"{' checked' if bootstrap_enabled else ''}> Use Navidrome Playlist Opener</label>"
         + "</div>"
-        + "<div class='afm-field afm-bootstrap-search-field'>"
+        + f"<div class='afm-field afm-bootstrap-search-field' id='afm-bootstrap-playlist-picker' "
+        + f"data-playlist-search-url='{playlist_search_url}'>"
         + _field_label("Search Navidrome Playlists")
-        + "<div class='afm-seed-search-row'>"
         + f"<input name='bootstrap_playlist_search' id='bootstrap_playlist_search' "
-        + "class='afm-text-input afm-seed-search-input' "
-        + f"placeholder='Playlist name…' value='{html.escape(search_query)}' autocomplete='off'>"
-        + "<button type='submit' name='action' value='search_bootstrap_playlist' formnovalidate "
-        + "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Search</button>"
+        + "class='afm-text-input' "
+        + f"placeholder='Playlist name…' value='{html.escape(search_query)}' autocomplete='off' "
+        + "aria-expanded='false' aria-controls='afm-bootstrap-playlist-results'>"
+        + f"<div id='afm-bootstrap-playlist-results' aria-live='polite'>{results_html}</div>"
+        + "<p class='hint'>Playlists from Navidrome appear as you type. Click one to fill Playlist ID below.</p>"
         + "</div>"
-        + f"{results_html}</div>"
         + "<div class='afm-field'>"
         + _field_label("Playlist ID")
         + "<div class='afm-seed-search-row'>"
@@ -4881,6 +4924,154 @@ def _page_script(
       if (!picker.contains(event.target)) closeMenu();
     }});
   }})();
+
+  (function initBootstrapPlaylistTypeahead() {{
+    const picker = document.getElementById('afm-bootstrap-playlist-picker');
+    const input = document.getElementById('bootstrap_playlist_search');
+    const results = document.getElementById('afm-bootstrap-playlist-results');
+    const playlistIdField = document.getElementById('bootstrap_playlist_id');
+    const bootstrapEnabled = document.getElementById('bootstrap_enabled');
+    if (!picker || !input || !results) return;
+
+    const apiUrl = picker.getAttribute('data-playlist-search-url') || '';
+    let debounceTimer = null;
+    let activeIndex = -1;
+    let currentPlaylists = [];
+
+    function escapeHtml(text) {{
+      return String(text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }}
+
+    function clearResults() {{
+      results.innerHTML = '';
+      input.setAttribute('aria-expanded', 'false');
+      activeIndex = -1;
+      currentPlaylists = [];
+    }}
+
+    function pickPlaylist(playlist) {{
+      if (!playlist || !playlist.id) return;
+      if (playlistIdField) playlistIdField.value = playlist.id;
+      if (bootstrapEnabled) bootstrapEnabled.checked = true;
+      clearResults();
+      if (playlistIdField) playlistIdField.focus();
+    }}
+
+    function setActive(index) {{
+      const buttons = results.querySelectorAll('.afm-bootstrap-pick');
+      buttons.forEach((btn, idx) => {{
+        btn.classList.toggle('is-active', idx === index);
+      }});
+      activeIndex = index;
+      const active = buttons[index];
+      if (active) active.scrollIntoView({{ block: 'nearest' }});
+    }}
+
+    function renderResults(playlists, query) {{
+      currentPlaylists = playlists;
+      if (!playlists.length) {{
+        if (query.length >= 2) {{
+          results.innerHTML = (
+            '<p class="afm-bootstrap-results-empty">No Navidrome playlists with '
+            + '<strong>' + escapeHtml(query) + '</strong> in the title. '
+            + 'Try a shorter name or paste a playlist id below.</p>'
+          );
+          input.setAttribute('aria-expanded', 'true');
+        }} else {{
+          clearResults();
+        }}
+        return;
+      }}
+      const countLabel = playlists.length + ' playlist' + (playlists.length === 1 ? '' : 's');
+      const items = playlists.map((pl, idx) => {{
+        const name = pl.name || pl.id || 'Playlist';
+        const count = pl.count != null ? ' · ' + pl.count + ' tracks' : '';
+        return (
+          '<li role="presentation">'
+          + '<button type="button" class="afm-bootstrap-pick" role="option" data-index="' + idx + '">'
+          + escapeHtml(name) + escapeHtml(count)
+          + '</button></li>'
+        );
+      }}).join('');
+      results.innerHTML = (
+        '<div class="afm-bootstrap-results">'
+        + '<p class="afm-bootstrap-results-label">' + escapeHtml(countLabel) + ' — pick one</p>'
+        + '<ul class="afm-bootstrap-menu" role="listbox">' + items + '</ul></div>'
+      );
+      input.setAttribute('aria-expanded', 'true');
+      results.querySelectorAll('.afm-bootstrap-pick').forEach((btn) => {{
+        btn.addEventListener('mousedown', (event) => {{
+          event.preventDefault();
+          const idx = parseInt(btn.getAttribute('data-index') || '-1', 10);
+          if (idx >= 0 && currentPlaylists[idx]) pickPlaylist(currentPlaylists[idx]);
+        }});
+        btn.addEventListener('mouseenter', () => {{
+          setActive(parseInt(btn.getAttribute('data-index') || '-1', 10));
+        }});
+      }});
+      setActive(0);
+    }}
+
+    async function fetchPlaylists(query) {{
+      if (!apiUrl) return [];
+      const resp = await fetch(apiUrl + '?q=' + encodeURIComponent(query), {{
+        headers: {{ Accept: 'application/json' }},
+      }});
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      return Array.isArray(data.playlists) ? data.playlists : [];
+    }}
+
+    async function runSearch(query) {{
+      const trimmed = query.trim();
+      if (trimmed.length < 2) {{
+        clearResults();
+        return;
+      }}
+      try {{
+        const playlists = await fetchPlaylists(trimmed);
+        renderResults(playlists, trimmed);
+      }} catch (err) {{
+        clearResults();
+      }}
+    }}
+
+    input.addEventListener('input', () => {{
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => runSearch(input.value), 280);
+    }});
+
+    input.addEventListener('keydown', (event) => {{
+      const buttons = results.querySelectorAll('.afm-bootstrap-pick');
+      if (!buttons.length) return;
+      if (event.key === 'ArrowDown') {{
+        event.preventDefault();
+        setActive(Math.min(activeIndex + 1, buttons.length - 1));
+      }} else if (event.key === 'ArrowUp') {{
+        event.preventDefault();
+        setActive(Math.max(activeIndex - 1, 0));
+      }} else if (event.key === 'Enter') {{
+        if (activeIndex >= 0 && currentPlaylists[activeIndex]) {{
+          event.preventDefault();
+          pickPlaylist(currentPlaylists[activeIndex]);
+        }}
+      }} else if (event.key === 'Escape') {{
+        clearResults();
+      }}
+    }});
+
+    document.addEventListener('click', (event) => {{
+      if (!picker.contains(event.target)) clearResults();
+    }});
+
+    if ((input.value || '').trim().length >= 2) {{
+      runSearch(input.value);
+    }}
+  }})();
 }})();
 </script>
 """
@@ -4893,6 +5084,12 @@ _FILTER_REAPPLY_ACTIONS = frozenset({"apply_filters"})
 def search_artists_api():
     query = (request.args.get("q") or request.args.get("query") or "").strip()
     return jsonify({"artists": _search_artists(query)})
+
+
+@bp.route("/api/search-playlists")
+def search_playlists_api():
+    query = (request.args.get("q") or request.args.get("query") or "").strip()
+    return jsonify({"playlists": _search_playlists(query)})
 
 
 @bp.route("/api/chat-preview", methods=["POST"])
