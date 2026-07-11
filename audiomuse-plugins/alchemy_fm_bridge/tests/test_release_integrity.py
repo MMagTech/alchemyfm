@@ -9,9 +9,13 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from verify_plugin_release import verify_plugin_release  # noqa: E402
+from release_plugin import normalized_source_bytes  # noqa: E402
 
 
 class TestPluginReleaseIntegrity:
+    def test_source_comparison_normalizes_windows_newlines(self):
+        assert normalized_source_bytes(b"a\r\nb\rc\n") == b"a\nb\nc\n"
+
     def test_committed_zip_matches_catalog_and_source(self):
         errors = verify_plugin_release()
         assert not errors, "Plugin release out of sync:\n" + "\n".join(f"  - {e}" for e in errors)

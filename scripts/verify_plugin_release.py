@@ -22,6 +22,7 @@ from release_plugin import (  # noqa: E402
     latest_catalog_entry,
     load_plugin_json,
     md5_file,
+    normalized_source_bytes,
     read_plugin_version,
 )
 
@@ -46,14 +47,14 @@ def verify_plugin_release() -> list[str]:
         ]
 
     source_version = read_plugin_version()
-    source_bytes = INIT_PY.read_bytes()
+    source_bytes = normalized_source_bytes(INIT_PY.read_bytes())
     bundled = init_bytes_in_zip()
 
     if bundled is None:
         errors.append("alchemy_fm_bridge.zip does not contain __init__.py")
     else:
         zip_version = version_in_init_bytes(bundled)
-        if bundled != source_bytes:
+        if normalized_source_bytes(bundled) != source_bytes:
             errors.append(
                 "alchemy_fm_bridge.zip is stale: bundled __init__.py does not match source. "
                 "Run python scripts/release_plugin.py and commit the zip."

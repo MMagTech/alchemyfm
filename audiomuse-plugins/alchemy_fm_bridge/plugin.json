@@ -7,10 +7,10 @@
     {
       "version": "3.0.0",
       "min_core_version": "2.5.0",
-      "changelog": "v3.0.0: fix fresh-page None.strip crash; catalog keeps 2 versions only.",
+      "changelog": "v3.0.0: fix fresh-page crash and cross-platform release verification.",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": "dc2eedc0c178ecc42c4a0ad5162c06b1"
+      "checksum": "c5b9e63350dbf53a873a250b3f1c2cc6"
     },
     {
       "version": "3.2.27",

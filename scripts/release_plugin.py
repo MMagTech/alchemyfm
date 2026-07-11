@@ -60,10 +60,15 @@ def bump_patch(version: str) -> str:
     return f"{major}.{minor}.{patch + 1}"
 
 
+def normalized_source_bytes(data: bytes) -> bytes:
+    """Normalize source newlines so release artifacts are OS-independent."""
+    return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
 def build_zip() -> None:
     ZIP_PATH.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(ZIP_PATH, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.write(INIT_PY, arcname="__init__.py")
+        archive.writestr("__init__.py", normalized_source_bytes(INIT_PY.read_bytes()))
 
 
 def init_bytes_in_zip() -> bytes | None:
@@ -103,9 +108,9 @@ def trim_catalog_versions(data: dict) -> None:
 
 def catalog_is_current() -> bool:
     """True when committed zip already bundles the current __init__.py at PLUGIN_VERSION."""
-    source_bytes = INIT_PY.read_bytes()
+    source_bytes = normalized_source_bytes(INIT_PY.read_bytes())
     bundled = init_bytes_in_zip()
-    if bundled != source_bytes:
+    if bundled is None or normalized_source_bytes(bundled) != source_bytes:
         return False
     data = load_plugin_json()
     latest = latest_catalog_entry(data)
@@ -131,8 +136,9 @@ def main() -> int:
         return 0
 
     build_zip()
-    source_bytes = INIT_PY.read_bytes()
-    if init_bytes_in_zip() != source_bytes:
+    source_bytes = normalized_source_bytes(INIT_PY.read_bytes())
+    bundled = init_bytes_in_zip()
+    if bundled is None or normalized_source_bytes(bundled) != source_bytes:
         build_zip()
 
     checksum = md5_file(ZIP_PATH)
@@ -140,7 +146,13 @@ def main() -> int:
     latest = latest_catalog_entry(data)
     current_version = read_plugin_version()
 
-    if latest and latest.get("version") == current_version and init_bytes_in_zip() == source_bytes:
+    bundled = init_bytes_in_zip()
+    if (
+        latest
+        and latest.get("version") == current_version
+        and bundled is not None
+        and normalized_source_bytes(bundled) == source_bytes
+    ):
         # Same version — refresh checksum/metadata only (e.g. rebuilt zip on Linux CI).
         latest["checksum"] = checksum
         latest["changelog"] = changelog
