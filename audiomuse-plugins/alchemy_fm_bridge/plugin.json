@@ -5,20 +5,20 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy \u2014 preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "3.0.1",
+      "min_core_version": "2.5.0",
+      "changelog": "Fix preview/deploy auth: reuse browser session, clearer 401 errors, reject Alchemy URL in AudioMuse API URL field.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "279c243abbed21a3044d7ca7f97e3ed7"
+    },
+    {
       "version": "3.0.0",
       "min_core_version": "2.5.0",
       "changelog": "v3.0.0: fix fresh-page crash and cross-platform release verification.",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
       "checksum": "c5b9e63350dbf53a873a250b3f1c2cc6"
-    },
-    {
-      "version": "3.2.27",
-      "min_core_version": "2.5.0",
-      "changelog": "Fix plugin home crash: safe JSON parsing and error page instead of 9999.",
-      "imageUrl": "",
-      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": "3693d2801cbc3d918ea1c93def41d112"
     }
   ]
 }

@@ -22,6 +22,13 @@ class TestProgrammingDetailFromValues:
         assert "not set" in detail.lower()
 
 
+class TestAudiomuseHttpErrors:
+    def test_401_message_explains_preview_vs_test(self):
+        message = bridge._audiomuse_http_error_message('{"error":"Unauthorized"}', 401)
+        assert "Preview and deploy" in message
+        assert "Test Connection" in message or "Test Alchemy" in message
+
+
 class TestTrackRowsFromResults:
     def test_bare_list(self):
         rows = bridge._track_rows_from_results(

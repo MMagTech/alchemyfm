@@ -26,7 +26,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.0"
+PLUGIN_VERSION = "3.0.1"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -78,9 +78,10 @@ def _friendly_http_error(status: int, body: str) -> str:
 def _audiomuse_http_error_message(detail: str, status: int) -> str:
     if status == 401:
         return (
-            "AudioMuse returned 401 Unauthorized. Set the API token in Channel Designer "
-            "plugin settings and in Alchemy FM .env (AUDIOMUSE_API_TOKEN) — bootstrap "
-            "runs inside Alchemy FM and needs the .env token."
+            "AudioMuse returned 401 Unauthorized. Preview and deploy call AudioMuse APIs "
+            "(CLAP, lyrics, mood clusters) — not Alchemy FM. Test Connection only checks Alchemy. "
+            "Fix: in plugin Settings set audiomuse_api_token (AudioMuse → Settings → API), "
+            "leave AudioMuse API URL blank unless the worker needs it, and do not put the Alchemy FM URL there."
         )
     if status == 404:
         return f"AudioMuse API route not found (HTTP 404). Update AudioMuse core or the Channel Designer plugin."
@@ -460,7 +461,14 @@ class AlchemyFmClient:
 
 def _audiomuse_base_url() -> str:
     custom = (get_setting("audiomuse_api_url") or "").strip().rstrip("/")
+    alchemy = (get_setting("alchemyfm_url") or "").strip().rstrip("/")
     if custom:
+        if alchemy and custom == alchemy:
+            raise ChannelDesignerError(
+                "Plugin settings mistake: AudioMuse API URL is set to your Alchemy FM URL. "
+                "Leave AudioMuse API URL blank for Channel Designer preview/deploy, or use "
+                "your AudioMuse URL (e.g. http://192.168.1.10:8387) for living-channel cron only."
+            )
         return custom
     try:
         from plugin.api import config as plugin_config
@@ -498,6 +506,17 @@ def _audiomuse_headers() -> dict[str, str]:
     token = _audiomuse_token()
     if token:
         headers["Authorization"] = f"Bearer {token}"
+        return headers
+    # Plugin routes run inside AudioMuse — reuse the logged-in admin session for API calls.
+    try:
+        from flask import has_request_context, request
+
+        if has_request_context():
+            cookie = request.headers.get("Cookie")
+            if cookie:
+                headers["Cookie"] = cookie
+    except Exception:
+        pass
     return headers
 
 
@@ -531,12 +550,13 @@ def audiomuse_post(path: str, payload: dict[str, Any], *, timeout: float = 120.0
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         message = _audiomuse_http_error_message(detail, exc.code)
-        try:
-            parsed = json.loads(detail)
-            if isinstance(parsed, dict) and parsed.get("error"):
-                message = str(parsed["error"])
-        except json.JSONDecodeError:
-            pass
+        if exc.code != 401:
+            try:
+                parsed = json.loads(detail)
+                if isinstance(parsed, dict) and parsed.get("error"):
+                    message = str(parsed["error"])
+            except json.JSONDecodeError:
+                pass
         raise ChannelDesignerError(message or f"AudioMuse API HTTP {exc.code}", status=exc.code) from exc
     except urllib.error.URLError as exc:
         raise ChannelDesignerError(f"Could not reach AudioMuse API: {exc.reason}") from exc
@@ -5084,7 +5104,7 @@ def _deploy_actions_fields_html(values: dict[str, Any], *, flash_html: str = "")
         + f'data-loading-label="Deploying…"{deploy_disabled}{deploy_blocked_attr}{title_attr}>'
         + html.escape(deploy_label)
         + "</button>"
-        + "<button type='submit' name='action' value='test' formnovalidate class='afm-btn afm-btn-secondary'>Test Connection</button>"
+        + "<button type='submit' name='action' value='test' formnovalidate class='afm-btn afm-btn-secondary'>Test Alchemy Connection</button>"
         + "</div></section>"
     )
 
@@ -7552,13 +7572,15 @@ def settings():
         "placeholder='Leave blank to keep current password'></div>"
         "<div><label>AudioMuse API token (optional)</label>"
         f"<input name='audiomuse_api_token' type='password' autocomplete='new-password' "
-        f"placeholder='Only if AudioMuse auth is enabled' value='{html.escape(audiomuse_api_token)}'></div>"
+        f"placeholder='Required if preview returns Unauthorized' value='{html.escape(audiomuse_api_token)}'>"
+        "<p class='hint'>Copy from AudioMuse Settings → API. Needed for Preview/Deploy when API auth is on "
+        "and the worker/cron cannot reuse your browser session.</p></div>"
         "<div><label>AudioMuse API URL (optional, for worker/cron)</label>"
-        f"<input name='audiomuse_api_url' placeholder='http://192.168.1.100:8387' "
+        f"<input name='audiomuse_api_url' placeholder='Leave blank for Channel Designer' "
         f"value='{html.escape(audiomuse_api_url)}'>"
-        "<p class='hint'>Living-channel cron and <code>on_song_analyzed</code> run on the worker and "
-        "need a URL the worker can reach (LAN IP, not <code>localhost</code>). Leave blank to use "
-        "AudioMuse control host/port from the environment.</p></div>"
+        "<p class='hint'><strong>Leave blank</strong> for preview and deploy in the browser. "
+        "Only set this for living-channel cron (<code>on_song_analyzed</code>) — use your AudioMuse LAN URL "
+        "(e.g. <code>http://192.168.1.10:8387</code>), <em>not</em> the Alchemy FM URL.</p></div>"
         "<button type='submit'>Save</button>"
         "</form>"
     )
