@@ -87,6 +87,8 @@ jobs:
           python scripts/release_plugin.py "CI release: deploy bootstrap fix, deploy route tests, and automated plugin packaging."
 
       - name: Commit plugin release artifacts
+        env:
+          RELEASE_BOT_TOKEN: ${{ secrets.RELEASE_BOT_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -97,5 +99,13 @@ jobs:
             echo "Plugin catalog already up to date."
             exit 0
           fi
-          git commit -m "Release Channel Designer plugin $(python -c "import re, pathlib; text=pathlib.Path('audiomuse-plugins/alchemy_fm_bridge/__init__.py').read_text(); print(re.search(r'PLUGIN_VERSION = \"([^\"]+)\"', text).group(1))")."
-          git push
+          VERSION="$(python -c "import re, pathlib; text=pathlib.Path('audiomuse-plugins/alchemy_fm_bridge/__init__.py').read_text(); print(re.search(r'PLUGIN_VERSION = \"([^\"]+)\"', text).group(1))")"
+          git commit -m "Release Channel Designer plugin ${VERSION}."
+          if [ -n "${RELEASE_BOT_TOKEN}" ]; then
+            git push "https://x-access-token:${RELEASE_BOT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:master
+          else
+            git push || {
+              echo "::warning::Could not push plugin release commit — add a RELEASE_BOT_TOKEN secret with bypass permission for protected master, or commit the release artifacts manually."
+              exit 0
+            }
+          fi

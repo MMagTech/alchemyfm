@@ -91,6 +91,8 @@ Workflows:
 
 Docker images are **not** rebuilt for plugin-only commits. The plugin catalog zip **is** updated automatically when `__init__.py` changes.
 
+To let CI push release commits to protected `master`, add a repo secret **`RELEASE_BOT_TOKEN`** (PAT or fine-grained token with contents write and bypass branch protection). Without it, the release job still validates packaging but may only warn if push is blocked.
+
 Local plugin release (same script as CI):
 
 ```bash

@@ -65,6 +65,16 @@ def build_zip() -> None:
         archive.write(INIT_PY, arcname="__init__.py")
 
 
+def init_bytes_in_zip() -> bytes | None:
+    if not ZIP_PATH.exists():
+        return None
+    with zipfile.ZipFile(ZIP_PATH, "r") as archive:
+        try:
+            return archive.read("__init__.py")
+        except KeyError:
+            return None
+
+
 def load_plugin_json() -> dict:
     return json.loads(PLUGIN_JSON.read_text(encoding="utf-8"))
 
@@ -81,6 +91,21 @@ def latest_catalog_entry(data: dict) -> dict | None:
     return first if isinstance(first, dict) else None
 
 
+def catalog_is_current() -> bool:
+    """True when committed zip already bundles the current __init__.py at PLUGIN_VERSION."""
+    source_bytes = INIT_PY.read_bytes()
+    bundled = init_bytes_in_zip()
+    if bundled != source_bytes:
+        return False
+    data = load_plugin_json()
+    latest = latest_catalog_entry(data)
+    if not latest:
+        return False
+    version = read_plugin_version()
+    checksum = md5_file(ZIP_PATH)
+    return latest.get("version") == version and latest.get("checksum") == checksum
+
+
 def main() -> int:
     changelog = (
         sys.argv[1].strip()
@@ -88,23 +113,36 @@ def main() -> int:
         else "Automated plugin release from CI after tests passed."
     )
 
+    if catalog_is_current():
+        print(
+            f"Plugin catalog already matches source "
+            f"(version {read_plugin_version()}, checksum {md5_file(ZIP_PATH)})."
+        )
+        return 0
+
     build_zip()
+    source_bytes = INIT_PY.read_bytes()
+    if init_bytes_in_zip() != source_bytes:
+        build_zip()
+
     checksum = md5_file(ZIP_PATH)
     data = load_plugin_json()
     latest = latest_catalog_entry(data)
+    current_version = read_plugin_version()
 
-    if latest and latest.get("checksum") == checksum:
-        print(f"Plugin catalog already matches zip (checksum {checksum}); nothing to release.")
+    if latest and latest.get("version") == current_version and init_bytes_in_zip() == source_bytes:
+        # Same version — refresh checksum/metadata only (e.g. rebuilt zip on Linux CI).
+        latest["checksum"] = checksum
+        latest["changelog"] = changelog
+        save_plugin_json(data)
+        print(f"Refreshed catalog checksum for plugin {current_version} ({checksum}).")
         return 0
 
-    current_version = read_plugin_version()
     if latest and latest.get("version") == current_version:
-        new_version = bump_patch(current_version)
-        write_plugin_version(new_version)
+        current_version = bump_patch(current_version)
+        write_plugin_version(current_version)
         build_zip()
         checksum = md5_file(ZIP_PATH)
-        current_version = new_version
-        print(f"Bumped PLUGIN_VERSION to {new_version}")
 
     entry = {
         "version": current_version,
