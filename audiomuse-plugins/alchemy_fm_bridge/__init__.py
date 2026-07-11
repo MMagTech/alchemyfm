@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.11"
+PLUGIN_VERSION = "3.2.12"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -2822,6 +2822,7 @@ html:not(.dark-mode) .afm-shell .afm-filter-feedback {
 .afm-collapsible-explainer-body {
   padding: 0.75rem 0.9rem 0.9rem;
 }
+#step-programming,
 #step-preview,
 #step-filters,
 #step-deploy,
@@ -3013,6 +3014,9 @@ html:not(.dark-mode) .afm-shell .afm-filter-feedback {
 .afm-programming-panel .afm-field:has(.afm-text-input) {
   width: 100%;
   max-width: none;
+}
+.afm-programming-panel .afm-type-field[hidden] {
+  display: none !important;
 }
 .afm-programming-panel input.afm-text-input {
   display: block;
@@ -3510,7 +3514,7 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
         )
 
     return (
-        "<section class='afm-panel afm-programming-panel afm-step-panel'>"
+        "<section class='afm-panel afm-programming-panel afm-step-panel' id='step-programming'>"
         + _step_panel_heading(
             "Step 2",
             "Programming",
@@ -3521,18 +3525,18 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
         + _field_label("Programming Type", mandatory=True)
         + f"<select name='programming_type' id='programming_type' class='afm-select'>"
         + f"{_select_options(PROGRAMMING_TYPES, ptype)}</select></div>"
-        + f"<div id='field-clap' class='afm-field'{hidden('clap_query')}>"
+        + f"<div id='field-clap' class='afm-field afm-type-field'{hidden('clap_query')}>"
         + _field_label("Sonic Vibe (Describe the Sound)", mandatory=True)
         + f"<input name='clap_query' class='afm-text-input' placeholder='e.g. late night rock' "
         + f"value='{html.escape(str(values.get('clap_query', '')))}'>"
         + "<p class='hint'>Matches how tracks <strong>sound</strong> — not lyrics. For theme or meaning, use "
         "<strong>Lyrics Theme</strong> instead of Sonic Vibe.</p></div>"
-        + f"<div id='field-lyrics' class='afm-field'{hidden('lyrics_query')}>"
+        + f"<div id='field-lyrics' class='afm-field afm-type-field'{hidden('lyrics_query')}>"
         + _field_label("Lyrics Theme", mandatory=True)
         + f"<input name='lyrics_query' class='afm-text-input' placeholder='e.g. songs about the open road' "
         + f"value='{html.escape(str(values.get('lyrics_query', '')))}'>"
         + "<p class='hint'>Semantic lyrics search — meaning and themes, not just keywords.</p></div>"
-        + f"<div id='field-mood' class='afm-field afm-field-grid'{hidden('mood_centroid')}>"
+        + f"<div id='field-mood' class='afm-field afm-field-grid afm-type-field'{hidden('mood_centroid')}>"
         + "<div>"
         + _field_label("Mood", mandatory=True)
         + "<select name='mood_name' class='afm-select'>"
@@ -3545,10 +3549,10 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
         + "</select></div>"
         + "<p class='hint' style='grid-column:1/-1;'>Each mood has sub-clusters from your library analysis — pick one that matches "
         + "the vibe (tags show the dominant traits in that cluster).</p></div>"
-        + f"<div id='field-anchor' class='afm-field'{hidden('alchemy_anchor')}>"
+        + f"<div id='field-anchor' class='afm-field afm-type-field'{hidden('alchemy_anchor')}>"
         + _field_label("Song Alchemy Anchor", mandatory=True)
         + f"<select name='anchor_id' class='afm-select'>{''.join(anchor_opts)}</select></div>"
-        + f"<div id='field-seed' class='afm-field afm-seed-field'{hidden('similar_seed')}>"
+        + f"<div id='field-seed' class='afm-field afm-seed-field afm-type-field'{hidden('similar_seed')}>"
         + _field_label("Search Seed Track")
         + "<div class='afm-seed-search-row'>"
         + f"<input name='seed_search' class='afm-text-input afm-seed-search-input' "
@@ -4089,6 +4093,7 @@ def _preview_step_html(*, show_results_jump: bool = False, flash_html: str = "")
         + "<div class='afm-form-actions afm-form-actions-inline'>"
         + "<button type='submit' name='action' value='preview' class='afm-btn afm-btn-primary' "
         + 'data-afm-loading="afm-preview-loading" data-afm-loading-panel="step-preview" '
+        + 'data-afm-loading-no-scroll="true" '
         + 'data-loading-label="Previewing…">'
         "Preview Programming</button>"
         + results_jump
@@ -4558,6 +4563,9 @@ def _page_script(
 <script type="application/json" id="mood-labels-data">{mood_labels_json}</script>
 <script>
 (function() {{
+  if ('scrollRestoration' in history) {{
+    history.scrollRestoration = 'manual';
+  }}
   const typeSelect = document.getElementById('programming_type');
   const moodDataEl = document.getElementById('mood-centroids-data');
   const moodLabelsEl = document.getElementById('mood-labels-data');
@@ -4575,7 +4583,9 @@ def _page_script(
     const t = typeSelect.value;
     Object.entries(sections).forEach(([key, el]) => {{
       if (!el) return;
-      el.hidden = key !== t;
+      const show = key === t;
+      el.hidden = !show;
+      el.style.display = show ? '' : 'none';
     }});
   }}
   function clusterLabel(meta, idx) {{
@@ -4664,6 +4674,7 @@ def _page_script(
         menu.hidden = true;
         wrap.classList.remove('is-open');
         syncAfmSelect(select);
+        if (select.id === 'programming_type') syncType();
       }});
       menu.appendChild(btn);
     }});
@@ -4716,6 +4727,7 @@ def _page_script(
   }}
 
   document.querySelectorAll('.afm-panel select.afm-select').forEach(enhanceAfmSelect);
+  syncType();
   document.addEventListener('click', (event) => {{
     if (!event.target.closest('.afm-select-wrap')) closeAllSelectMenus(null);
   }});
@@ -4746,9 +4758,14 @@ def _page_script(
     const instantTargets = ['preview-results', 'step-deploy'];
     const behavior = ({instant_scroll_flag} && instantTargets.includes(targetId)) ? 'instant' : 'smooth';
     const block = targetId === 'step-deploy' ? 'center' : 'start';
-    window.requestAnimationFrame(() => {{
+    const run = () => {{
       el.scrollIntoView({{ behavior: behavior, block: block }});
-    }});
+    }};
+    window.requestAnimationFrame(run);
+    if (targetId === 'preview-results') {{
+      window.setTimeout(run, 60);
+      window.setTimeout(run, 180);
+    }}
   }}
 
   function scrollToPreviewResults() {{
@@ -5302,6 +5319,26 @@ def home():
         if edit_slug:
             try:
                 values, preview_tracks, channel_name = _apply_loaded_channel(edit_slug)
+                if request.args.get("preview_ok"):
+                    scroll_anchor = "preview-results"
+                    values["scroll_to_preview"] = True
+                    instant_scroll = True
+                    flashes.add(
+                        f"Preview ready — {len(preview_tracks)} tracks from AudioMuse. "
+                        "Review below, then deploy to Alchemy FM.",
+                        "ok",
+                        anchor="preview-results",
+                    )
+                    loaded = _load_saved_channel(edit_slug)
+                    if loaded:
+                        profile, _ = loaded
+                        bootstrap_check = _apply_bootstrap_check(values, profile)
+                        if bootstrap_check and not bootstrap_check.get("ok"):
+                            flashes.add(
+                                f"Bootstrap warning: {bootstrap_check.get('error')}",
+                                "error",
+                                anchor="bootstrap-opener",
+                            )
             except ChannelDesignerError as exc:
                 flashes.add(str(exc), "error")
         elif draft_slug:
@@ -5540,20 +5577,11 @@ def home():
                             preview_ids=item_ids,
                             unfiltered_preview_ids=[t["item_id"] for t in unfiltered],
                         )
-                        values["scroll_to_preview"] = True
-                        scroll_anchor = "preview-results"
-                        flashes.add(
-                            f"Preview ready — {len(preview_tracks)} tracks from AudioMuse. "
-                            "Review below, then deploy to Alchemy FM.",
-                            "ok",
-                            anchor="preview-results",
+                        edit_slug = (request.form.get("editing_slug") or slug).strip()
+                        return redirect(
+                            url_for("alchemy_fm_bridge.home", edit=edit_slug, preview_ok=1)
+                            + "#preview-results"
                         )
-                        if bootstrap_check and not bootstrap_check.get("ok"):
-                            flashes.add(
-                                f"Bootstrap warning: {bootstrap_check.get('error')}",
-                                "error",
-                                anchor="bootstrap-opener",
-                            )
                     elif action == "push":
                         unfiltered = _merged_programming_tracks_unfiltered(profile, slug)
                         preview_tracks = apply_track_filters(unfiltered, profile)
@@ -5618,7 +5646,7 @@ def home():
                         return jsonify({"ok": False, "error": str(exc)}), 400
                     error_anchor = {
                         "chat_preview": "chat-designer",
-                        "preview": "step-preview",
+                        "preview": "step-programming",
                         "push": "step-deploy",
                     }.get(action, "step-preview")
                     if action == "chat_preview":
