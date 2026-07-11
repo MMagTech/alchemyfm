@@ -174,7 +174,12 @@ class TestDeployRoute:
                 },
             )
         body = resp.get_data(as_text=True)
-        assert "channel name is required" not in body.lower()
+        # A blank designer form legitimately shows a "Channel name is required
+        # before deploy" Step 6 readiness blocker, so assert on the specific
+        # stale-flash marker instead of the raw substring (which collides with
+        # that unrelated, always-present checklist item).
+        assert "Last deploy failed" not in body
+        assert 'id="afm-deploy-error-pinned"' not in body
 
     def test_push_deploy_partial_success_when_bootstrap_fails(self, client, audiomuse_mocks, pg_db):
         mock_client = patch.object(bridge, "_client")

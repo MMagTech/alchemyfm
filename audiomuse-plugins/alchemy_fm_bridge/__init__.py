@@ -12,7 +12,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from flask import Blueprint, jsonify, request, redirect, url_for, session
+from flask import Blueprint, jsonify, request, redirect, url_for
 
 from plugin.api import (
     get_db,
@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.5"
+PLUGIN_VERSION = "3.0.6"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1723,6 +1723,10 @@ def migrate(db) -> None:
         "last_error TEXT NOT NULL DEFAULT ''"
         ")"
     )
+    cur.execute(
+        "ALTER TABLE " + channels + " ADD COLUMN IF NOT EXISTS "
+        "pending_flash_json TEXT NOT NULL DEFAULT ''"
+    )
     pool = table("channel_pool")
     cur.execute(
         "CREATE TABLE IF NOT EXISTS "
@@ -2441,24 +2445,63 @@ class _FlashQueue:
             self._by_anchor.setdefault(anchor, []).extend(items)
 
 
-_AFMB_FLASH_SESSION_KEY = "afm_bridge_flashes"
+def _stash_flashes(slug: str, flashes: _FlashQueue) -> None:
+    """Persist flashes for the next GET of this channel across the post-action redirect.
 
-
-def _stash_flashes(flashes: _FlashQueue) -> None:
+    Not a Flask session: AudioMuse's host app doesn't reliably issue session
+    cookies for plugin routes, so a cookie-based stash silently loses messages
+    (including bootstrap-failure warnings) on some deployments. Keying by slug
+    in the channels table survives the redirect regardless of cookie support.
+    """
+    slug = (slug or "").strip()
     payload = flashes.to_payload()
-    if not payload:
+    if not slug or not payload:
         return
     try:
-        session[_AFMB_FLASH_SESSION_KEY] = payload
-        session.modified = True
+        db = get_db()
+        cur = db.cursor()
+        channels = table("channels")
+        cur.execute(
+            "INSERT INTO " + channels + " (name, slug, profile_json, pending_flash_json) "
+            "VALUES (%s, %s, '{}', %s) "
+            "ON CONFLICT (slug) DO UPDATE SET pending_flash_json = EXCLUDED.pending_flash_json",
+            (slug, slug, json.dumps(payload)),
+        )
+        db.commit()
+        cur.close()
     except Exception:
-        pass
+        logger.exception("alchemy_fm_bridge failed to stash flashes for slug=%s", slug)
 
 
-def _restore_stashed_flashes(flashes: _FlashQueue) -> None:
+def _restore_stashed_flashes(slug: str, flashes: _FlashQueue) -> None:
+    slug = (slug or "").strip()
+    if not slug:
+        return
     try:
-        payload = session.pop(_AFMB_FLASH_SESSION_KEY, None)
+        db = get_db()
+        cur = db.cursor()
+        channels = table("channels")
+        cur.execute(
+            "SELECT pending_flash_json FROM " + channels + " WHERE slug = %s",
+            (slug,),
+        )
+        row = cur.fetchone()
+        raw = row[0] if row else ""
+        if raw:
+            cur.execute(
+                "UPDATE " + channels + " SET pending_flash_json = '' WHERE slug = %s",
+                (slug,),
+            )
+            db.commit()
+        cur.close()
     except Exception:
+        logger.exception("alchemy_fm_bridge failed to restore flashes for slug=%s", slug)
+        return
+    if not raw:
+        return
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
         return
     if isinstance(payload, dict):
         flashes.load_payload(payload)
@@ -7056,7 +7099,6 @@ def home():
 
 def _home_page():
     flashes = _FlashQueue()
-    _restore_stashed_flashes(flashes)
     scroll_anchor = ""
     preview_tracks: list[dict[str, Any]] = []
     values: dict[str, Any] = {
@@ -7076,6 +7118,7 @@ def _home_page():
         edit_slug = (request.args.get("edit") or "").strip()
         draft_slug = (request.args.get("draft") or "").strip()
         if edit_slug:
+            _restore_stashed_flashes(edit_slug, flashes)
             try:
                 values, preview_tracks, channel_name = _apply_loaded_channel(edit_slug)
                 if request.args.get("preview_ok"):
@@ -7354,7 +7397,7 @@ def _home_page():
                         )
                         edit_slug = (request.form.get("editing_slug") or slug).strip()
                         values["preview_last_error"] = ""
-                        _stash_flashes(flashes)
+                        _stash_flashes(edit_slug, flashes)
                         return redirect(
                             url_for("alchemy_fm_bridge.home", edit=edit_slug, preview_ok=1)
                             + "#preview-results"
@@ -7445,7 +7488,7 @@ def _home_page():
                             push_action,
                             profile["programming"]["type"],
                         )
-                        _stash_flashes(flashes)
+                        _stash_flashes(deploy_slug, flashes)
                         return redirect(
                             url_for("alchemy_fm_bridge.home", edit=deploy_slug, deploy_ok=1)
                             + "#step-deploy"
