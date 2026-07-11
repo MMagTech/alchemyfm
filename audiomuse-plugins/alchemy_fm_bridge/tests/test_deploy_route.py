@@ -34,9 +34,10 @@ class TestDeployRoute:
     def test_push_deploy_success(self, client, audiomuse_mocks, pg_db):
         captured: dict[str, Any] = {}
 
-        def fake_push(payload, slug=None, bootstrap=True):
+        def fake_push(payload, slug=None, station_id=None, create_new=False, bootstrap=True):
             captured["payload"] = payload
             captured["bootstrap"] = bootstrap
+            captured["create_new"] = create_new
             return (
                 {
                     "id": 99,
@@ -46,6 +47,7 @@ class TestDeployRoute:
                     "queued_count": 5,
                 },
                 "created",
+                None,
             )
 
         mock_client = patch.object(bridge, "_client")
@@ -62,6 +64,7 @@ class TestDeployRoute:
         assert captured["payload"]["source_type"] == "clap_query"
         assert captured["payload"]["source_ref"] == "late night rock"
         assert captured["bootstrap"] is True
+        assert captured["create_new"] is True
 
         loaded = bridge._load_saved_channel("deploy-route-fm")
         assert loaded is not None
@@ -148,12 +151,30 @@ class TestDeployRoute:
                         clap_query="",
                         editing_slug=slug,
                     ),
+                    follow_redirects=True,
                 )
 
         assert resp.status_code == 200
         body = resp.get_data(as_text=True)
         assert "created on Alchemy FM" in body
         alchemy.push_station.assert_called_once()
+
+    def test_stale_deploy_error_not_shown_on_delete(self, client, audiomuse_mocks, pg_db):
+        client.post("/", data=_push_form(name="", slug=""))
+        mock_client = patch.object(bridge, "_client")
+        with mock_client as client_factory:
+            alchemy = client_factory.return_value
+            alchemy.delete_station.return_value = None
+            resp = client.post(
+                "/",
+                data={
+                    "action": "delete",
+                    "station_id": "1",
+                    "delete_slug": "some-other-station",
+                },
+            )
+        body = resp.get_data(as_text=True)
+        assert "channel name is required" not in body.lower()
 
     def test_push_deploy_partial_success_when_bootstrap_fails(self, client, audiomuse_mocks, pg_db):
         mock_client = patch.object(bridge, "_client")

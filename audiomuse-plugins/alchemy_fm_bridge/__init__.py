@@ -6,14 +6,13 @@ import base64
 import html
 import json
 import re
-import time
 import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
 
-from flask import Blueprint, jsonify, request, redirect, url_for
+from flask import Blueprint, jsonify, request, redirect, url_for, session
 
 from plugin.api import (
     get_db,
@@ -26,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.4"
+PLUGIN_VERSION = "3.0.5"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -162,29 +161,6 @@ def _plugin_error_page(title: str, message: str) -> str:
     return render_page(body, title=title)
 
 
-def _agent_debug_log(message: str, data: dict[str, Any], hypothesis_id: str) -> None:
-    # region agent log
-    try:
-        with open("debug-b5959d.log", "a", encoding="utf-8") as handle:
-            handle.write(
-                json.dumps(
-                    {
-                        "sessionId": "b5959d",
-                        "runId": "initial",
-                        "hypothesisId": hypothesis_id,
-                        "location": "audiomuse-plugins/alchemy_fm_bridge/__init__.py",
-                        "message": message,
-                        "data": data,
-                        "timestamp": int(time.time() * 1000),
-                    }
-                )
-                + "\n"
-            )
-    except Exception:
-        pass
-    # endregion agent log
-
-
 ALCHEMY_SESSION_COOKIE = "admin_session"
 
 
@@ -258,27 +234,12 @@ class AlchemyFmClient:
         url = f"{self.base_url}{path}"
         data = json.dumps(payload).encode("utf-8") if payload is not None else None
         req = urllib.request.Request(url, data=data, headers=self._auth_headers(), method=method)
-        _agent_debug_log(
-            "alchemy-request-start",
-            {"method": method, "base_url": self.base_url, "path": path, "has_payload": payload is not None},
-            "H1",
-        )
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 body = resp.read().decode("utf-8")
-                _agent_debug_log(
-                    "alchemy-request-success",
-                    {"method": method, "path": path, "status": getattr(resp, "status", None)},
-                    "H1",
-                )
                 return _decode_json_body(body, context=f"Alchemy FM {method} {path}")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
-            _agent_debug_log(
-                "alchemy-request-http-error",
-                {"method": method, "path": path, "status": exc.code, "detail_preview": detail[:300]},
-                "H1,H4",
-            )
             if exc.code == 401 and not _auth_retried:
                 try:
                     self._establish_session()
@@ -291,11 +252,6 @@ class AlchemyFmClient:
                 _friendly_http_error(exc.code, detail), status=exc.code
             ) from exc
         except urllib.error.URLError as exc:
-            _agent_debug_log(
-                "alchemy-request-url-error",
-                {"method": method, "path": path, "reason": str(exc.reason)},
-                "H1",
-            )
             raise ChannelDesignerError(
                 f"Could not reach Alchemy FM at {self.base_url}: {exc.reason}"
             ) from exc
@@ -306,20 +262,9 @@ class AlchemyFmClient:
 
     def _verify_deploy_ready_legacy_backend(self, *, strict: bool = True) -> str | None:
         """Backend predates /api/admin/deploy-check — probe AudioMuse from plugin."""
-        _agent_debug_log(
-            "deploy-check-missing-404",
-            {"base_url": self.base_url},
-            "H2",
-        )
         try:
             audiomuse_get("/api/mood_centroids", timeout=15)
-            _agent_debug_log("deploy-fallback-plugin-am-ok", {}, "H3")
         except ChannelDesignerError as exc:
-            _agent_debug_log(
-                "deploy-fallback-plugin-am-fail",
-                {"status": exc.status, "message": str(exc)[:200]},
-                "H3",
-            )
             if exc.status == 401:
                 message = (
                     "AudioMuse returned 401 Unauthorized.\n"
@@ -476,17 +421,6 @@ class AlchemyFmClient:
         bootstrap: bool = True,
     ) -> tuple[dict[str, Any], str, str | None]:
         target_slug = (slug or payload.get("slug") or "").strip().lower()
-        _agent_debug_log(
-            "push-station-start",
-            {
-                "slug": target_slug,
-                "station_id": station_id,
-                "create_new": create_new,
-                "bootstrap": bootstrap,
-                "source_type": payload.get("source_type"),
-            },
-            "H5",
-        )
         update_fields = {
             key: value
             for key, value in payload.items()
@@ -539,11 +473,6 @@ class AlchemyFmClient:
             else:
                 station, station_id, target_slug = _create_new_station()
                 action = "created"
-        _agent_debug_log(
-            "push-station-saved",
-            {"slug": target_slug, "station_id": station_id, "action": action},
-            "H5",
-        )
         bootstrap_warning: str | None = None
         if bootstrap and payload.get("bootstrap_queue", True):
             try:
@@ -555,17 +484,6 @@ class AlchemyFmClient:
                     "bootstrap runs from the Alchemy FM container and needs AUDIOMUSE_URL + "
                     "AUDIOMUSE_API_TOKEN in Alchemy FM .env.\n"
                     f"{exc}"
-                )
-                _agent_debug_log(
-                    "push-station-bootstrap-failed",
-                    {"slug": target_slug, "station_id": station_id, "error": str(exc)[:300]},
-                    "H5",
-                )
-            else:
-                _agent_debug_log(
-                    "push-station-bootstrapped",
-                    {"slug": target_slug, "station_id": station_id, "queued_count": station.get("queued_count")},
-                    "H5",
                 )
         return station, action, bootstrap_warning
 
@@ -1963,7 +1881,9 @@ def _channel_slug_from_values(values: dict[str, Any], form: Any | None = None) -
     if not slug and form is not None:
         slug = (form.get("editing_slug") or form.get("slug") or "").strip()
     if not slug and form is not None:
-        slug = _slugify(form.get("name") or "") or ""
+        name = (form.get("name") or "").strip()
+        if name:
+            slug = _slugify(name)
     return slug
 
 
@@ -2510,6 +2430,38 @@ class _FlashQueue:
 
     def html_for(self, anchor: str) -> str:
         return "".join(self._by_anchor.get(anchor, []))
+
+    def to_payload(self) -> dict[str, list[str]]:
+        return {anchor: list(items) for anchor, items in self._by_anchor.items() if items}
+
+    def load_payload(self, payload: dict[str, list[str]]) -> None:
+        for anchor, items in payload.items():
+            if anchor not in self._ANCHORS or not items:
+                continue
+            self._by_anchor.setdefault(anchor, []).extend(items)
+
+
+_AFMB_FLASH_SESSION_KEY = "afm_bridge_flashes"
+
+
+def _stash_flashes(flashes: _FlashQueue) -> None:
+    payload = flashes.to_payload()
+    if not payload:
+        return
+    try:
+        session[_AFMB_FLASH_SESSION_KEY] = payload
+        session.modified = True
+    except Exception:
+        pass
+
+
+def _restore_stashed_flashes(flashes: _FlashQueue) -> None:
+    try:
+        payload = session.pop(_AFMB_FLASH_SESSION_KEY, None)
+    except Exception:
+        return
+    if isinstance(payload, dict):
+        flashes.load_payload(payload)
 
 
 def _action_loading_html(
@@ -3951,11 +3903,6 @@ def _deploy_unfiltered_tracks(profile: dict[str, Any], slug: str) -> list[dict[s
             if fallback_ids:
                 tracks = _preview_tracks_from_ids(fallback_ids)
                 if tracks:
-                    _agent_debug_log(
-                        "deploy-used-saved-preview",
-                        {"slug": slug, "track_count": len(tracks), "reason": "programming-unchanged"},
-                        "H6",
-                    )
                     return tracks
     try:
         return _merged_programming_tracks_unfiltered(profile, slug)
@@ -3967,11 +3914,6 @@ def _deploy_unfiltered_tracks(profile: dict[str, Any], slug: str) -> list[dict[s
         if fallback_ids:
             tracks = _preview_tracks_from_ids(fallback_ids)
             if tracks:
-                _agent_debug_log(
-                    "deploy-used-saved-preview",
-                    {"slug": slug, "track_count": len(tracks), "reason": "live-preview-failed"},
-                    "H6",
-                )
                 return tracks
         raise
 
@@ -4204,11 +4146,6 @@ def _merge_saved_programming_if_needed(profile: dict[str, Any], slug: str) -> di
         return profile
     merged = dict(profile)
     merged["programming"] = saved_programming
-    _agent_debug_log(
-        "deploy-used-saved-programming",
-        {"slug": slug, "type": saved_programming.get("type")},
-        "H4,H6",
-    )
     return merged
 
 
@@ -5910,9 +5847,6 @@ def _page_script(
       deployStatus && deployStatus.querySelector('.afm-flash-error') ? deployStatus : null
     );
     if (!target) return false;
-    // #region agent log
-    fetch('http://127.0.0.1:7920/ingest/eeadc61f-7597-4521-a8a2-a7597a4d1eae',{{method:'POST',headers:{{'Content-Type':'application/json','X-Debug-Session-Id':'b5959d'}},body:JSON.stringify({{sessionId:'b5959d',location:'alchemy_fm_bridge:scrollToDeployFailure',message:'deploy error scroll',data:{{targetId:target.id}},timestamp:Date.now(),hypothesisId:'H5'}})}}).catch(()=>{{}});
-    // #endregion agent log
     target.scrollIntoView({{ behavior: 'instant', block: 'start' }});
     return true;
   }}
@@ -7122,6 +7056,7 @@ def home():
 
 def _home_page():
     flashes = _FlashQueue()
+    _restore_stashed_flashes(flashes)
     scroll_anchor = ""
     preview_tracks: list[dict[str, Any]] = []
     values: dict[str, Any] = {
@@ -7147,12 +7082,13 @@ def _home_page():
                     scroll_anchor = "preview-results"
                     values["scroll_to_preview"] = True
                     instant_scroll = True
-                    flashes.add(
-                        f"Preview ready — {len(preview_tracks)} tracks from AudioMuse. "
-                        "Review below, then deploy to Alchemy FM.",
-                        "ok",
-                        anchor="preview-results",
-                    )
+                    if not flashes.html_for("preview-results"):
+                        flashes.add(
+                            f"Preview ready — {len(preview_tracks)} tracks from AudioMuse. "
+                            "Review below, then deploy to Alchemy FM.",
+                            "ok",
+                            anchor="preview-results",
+                        )
                     loaded = _load_saved_channel(edit_slug)
                     if loaded:
                         profile, _ = loaded
@@ -7166,11 +7102,12 @@ def _home_page():
                 if request.args.get("deploy_ok"):
                     scroll_anchor = "step-deploy"
                     instant_scroll = True
-                    flashes.add(
-                        "Channel deployed on Alchemy FM — see Your Stations above and preview results below.",
-                        "ok",
-                        anchor="step-deploy",
-                    )
+                    if not flashes.html_for("step-deploy"):
+                        flashes.add(
+                            "Channel deployed on Alchemy FM — see Your Stations above and preview results below.",
+                            "ok",
+                            anchor="step-deploy",
+                        )
             except ChannelDesignerError as exc:
                 flashes.add(str(exc), "error")
         elif draft_slug:
@@ -7417,6 +7354,7 @@ def _home_page():
                         )
                         edit_slug = (request.form.get("editing_slug") or slug).strip()
                         values["preview_last_error"] = ""
+                        _stash_flashes(flashes)
                         return redirect(
                             url_for("alchemy_fm_bridge.home", edit=edit_slug, preview_ok=1)
                             + "#preview-results"
@@ -7507,6 +7445,7 @@ def _home_page():
                             push_action,
                             profile["programming"]["type"],
                         )
+                        _stash_flashes(flashes)
                         return redirect(
                             url_for("alchemy_fm_bridge.home", edit=deploy_slug, deploy_ok=1)
                             + "#step-deploy"
@@ -7520,11 +7459,6 @@ def _home_page():
                     _record_channel_error(slug, str(exc))
                     if action == "push":
                         values["deploy_last_error"] = str(exc)
-                        _agent_debug_log(
-                            "deploy-error-rendered",
-                            {"slug": slug, "message": str(exc)[:300], "kind": "ChannelDesignerError"},
-                            "H5",
-                        )
                     if action == "preview":
                         values["preview_last_error"] = str(exc)
                     if action == "chat_preview" and _is_chat_preview_ajax():
@@ -7555,11 +7489,6 @@ def _home_page():
                         logger.exception("alchemy_fm_bridge deploy failed slug=%s", slug)
                         _record_channel_error(slug, message)
                         values["deploy_last_error"] = message
-                        _agent_debug_log(
-                            "deploy-error-rendered",
-                            {"slug": slug, "message": message[:300], "kind": "Exception"},
-                            "H5",
-                        )
                         flashes.add(message, "error", anchor="step-deploy")
                         flashes.add(message, "error", anchor="global")
                         scroll_anchor = "step-deploy"
@@ -7692,12 +7621,6 @@ def _home_page():
     mood_labels = _audiomuse_mood_labels()
     deploy_error_message = (values.get("deploy_last_error") or "").strip()
     pinned_deploy_error = _pinned_deploy_error_html(deploy_error_message)
-    if deploy_error_message:
-        _agent_debug_log(
-            "deploy-error-page-render",
-            {"message_len": len(deploy_error_message), "has_pinned": bool(pinned_deploy_error)},
-            "H5",
-        )
     shell_class = "afm-shell has-deploy-error-pinned" if pinned_deploy_error else "afm-shell"
     body = (
         f"{_page_styles()}"

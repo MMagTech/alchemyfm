@@ -3,36 +3,11 @@
 from __future__ import annotations
 
 from typing import Any
-import json
-import time
 
 import httpx
 
 from app.config import settings
 from app.services.navidrome import navidrome_client
-
-
-def _agent_debug_log(message: str, data: dict[str, Any], hypothesis_id: str) -> None:
-    # region agent log
-    try:
-        with open("debug-b5959d.log", "a", encoding="utf-8") as handle:
-            handle.write(
-                json.dumps(
-                    {
-                        "sessionId": "b5959d",
-                        "runId": "initial",
-                        "hypothesisId": hypothesis_id,
-                        "location": "backend/app/services/deploy_check.py",
-                        "message": message,
-                        "data": data,
-                        "timestamp": int(time.time() * 1000),
-                    }
-                )
-                + "\n"
-            )
-    except Exception:
-        pass
-    # endregion agent log
 
 
 def _audiomuse_error(exc: Exception, url: str) -> str:
@@ -86,15 +61,6 @@ async def check_deploy_dependencies() -> dict[str, Any]:
     headers: dict[str, str] = {}
     if settings.audiomuse_api_token:
         headers["Authorization"] = f"Bearer {settings.audiomuse_api_token}"
-    _agent_debug_log(
-        "deploy-check-start",
-        {
-            "audiomuse_url": audiomuse_url,
-            "navidrome_url": navidrome_url,
-            "has_audiomuse_token": bool(settings.audiomuse_api_token),
-        },
-        "H2,H3",
-    )
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -119,15 +85,4 @@ async def check_deploy_dependencies() -> dict[str, Any]:
             result["ok"] = False
             result["navidrome"]["error"] = _navidrome_error(exc, navidrome_url)
 
-    _agent_debug_log(
-        "deploy-check-result",
-        {
-            "ok": result["ok"],
-            "audiomuse_ok": result["audiomuse"]["ok"],
-            "audiomuse_error": result["audiomuse"]["error"],
-            "navidrome_ok": result["navidrome"]["ok"],
-            "navidrome_error": result["navidrome"]["error"],
-        },
-        "H2,H3",
-    )
     return result
