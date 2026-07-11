@@ -139,6 +139,8 @@ def test_push_station_update_existing():
 
     def fake_request(method, path, payload=None):
         client.calls.append((method, path, payload))
+        if method == "GET" and path == "/api/admin/deploy-check":
+            return {"ok": True, "audiomuse": {"ok": True}, "navidrome": {"ok": True}}
         if method == "GET" and path == "/api/admin/stations":
             return [{"id": 7, "slug": "late-night-rock"}]
         if method == "PUT" and path == "/api/admin/stations/7":
