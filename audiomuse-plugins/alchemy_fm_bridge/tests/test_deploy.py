@@ -177,6 +177,25 @@ def test_push_station_update_existing():
     assert "slug" not in put_calls[0][2]
 
 
+def test_push_station_create_new_skips_station_list():
+    client = _RecordingClient()
+    with patch.object(
+        client,
+        "find_station_by_slug",
+        side_effect=AssertionError("new channel deploy should POST create without listing stations"),
+    ):
+        payload = bridge.channel_profile_to_alchemy_payload(_sample_profile(), [])
+        station, action, bootstrap_warning = client.push_station(
+            payload,
+            create_new=True,
+            bootstrap=False,
+        )
+
+    assert action == "created"
+    assert station["id"] == 42
+    assert bootstrap_warning is None
+
+
 def test_push_station_update_by_id_skips_station_list():
     client = _RecordingClient()
     with patch.object(

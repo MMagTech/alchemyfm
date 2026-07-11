@@ -26,7 +26,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.3"
+PLUGIN_VERSION = "3.0.4"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -77,8 +77,11 @@ def _friendly_http_error(status: int, body: str) -> str:
                 return detail_text
     except json.JSONDecodeError:
         pass
-    if "<html" in lower:
-        return f"Alchemy FM returned HTTP {status} (HTML error page — often Cloudflare or a reverse proxy)."
+    if status == 400 and "icecast mount" in body.lower():
+        return (
+            f"Alchemy FM rejected the station (HTTP 400): {body[:200]}\n"
+            "Pick a different Icecast mount in Step 1, or delete the existing station using that mount."
+        )
     text = re.sub(r"<[^>]+>", " ", body)
     text = re.sub(r"\s+", " ", text).strip()
     return text[:500] or f"HTTP {status}"
@@ -469,6 +472,7 @@ class AlchemyFmClient:
         *,
         slug: str | None = None,
         station_id: int | None = None,
+        create_new: bool = False,
         bootstrap: bool = True,
     ) -> tuple[dict[str, Any], str, str | None]:
         target_slug = (slug or payload.get("slug") or "").strip().lower()
@@ -477,6 +481,7 @@ class AlchemyFmClient:
             {
                 "slug": target_slug,
                 "station_id": station_id,
+                "create_new": create_new,
                 "bootstrap": bootstrap,
                 "source_type": payload.get("source_type"),
             },
@@ -487,6 +492,22 @@ class AlchemyFmClient:
             for key, value in payload.items()
             if key not in ("slug", "bootstrap_queue")
         }
+
+        def _create_new_station() -> tuple[dict[str, Any], int, str]:
+            create_payload = {
+                key: value for key, value in payload.items() if key != "bootstrap_queue"
+            }
+            create_payload["bootstrap_queue"] = False
+            try:
+                created = self.create_station(create_payload)
+            except ChannelDesignerError as exc:
+                raise ChannelDesignerError(
+                    f"Deploy failed while creating station '{target_slug}'.\n{exc}"
+                ) from exc
+            new_id = int(created["id"])
+            actual_slug = str(created.get("slug") or target_slug).strip().lower()
+            return created, new_id, actual_slug
+
         if station_id:
             try:
                 station = self.update_station(int(station_id), update_fields)
@@ -496,6 +517,9 @@ class AlchemyFmClient:
                 ) from exc
             action = "updated"
             target_slug = str(station.get("slug") or target_slug).strip().lower()
+        elif create_new:
+            station, station_id, target_slug = _create_new_station()
+            action = "created"
         else:
             try:
                 existing = self.find_station_by_slug(target_slug) if target_slug else None
@@ -513,19 +537,8 @@ class AlchemyFmClient:
                     ) from exc
                 action = "updated"
             else:
-                create_payload = {
-                    key: value for key, value in payload.items() if key != "bootstrap_queue"
-                }
-                create_payload["bootstrap_queue"] = False
-                try:
-                    station = self.create_station(create_payload)
-                except ChannelDesignerError as exc:
-                    raise ChannelDesignerError(
-                        f"Deploy failed while creating station '{target_slug}'.\n{exc}"
-                    ) from exc
-                station_id = int(station["id"])
+                station, station_id, target_slug = _create_new_station()
                 action = "created"
-                target_slug = str(station.get("slug") or target_slug).strip().lower()
         _agent_debug_log(
             "push-station-saved",
             {"slug": target_slug, "station_id": station_id, "action": action},
@@ -7410,6 +7423,7 @@ def _home_page():
                         )
                     elif action == "push":
                         client = _client()
+                        client.verify_credentials()
                         deploy_warning = client.verify_deploy_ready(strict=False)
                         unfiltered = _deploy_unfiltered_tracks(profile, slug)
                         preview_tracks = apply_track_filters(unfiltered, profile)
@@ -7436,6 +7450,7 @@ def _home_page():
                             or request.form.get("edit_station_id")
                             or 0
                         ) or None
+                        create_new = not editing and not alchemy_station_id
                         item_ids = [t["item_id"] for t in preview_tracks]
                         _record_audition(slug, item_ids)
                         if (profile.get("living") or {}).get("enabled"):
@@ -7444,9 +7459,16 @@ def _home_page():
                             payload,
                             slug=slug,
                             station_id=alchemy_station_id if editing else None,
+                            create_new=create_new,
                             bootstrap=bool(payload.get("bootstrap_queue")),
                         )
                         deploy_slug = str(station.get("slug") or slug).strip()
+                        slug_note = ""
+                        if push_action == "created" and deploy_slug.lower() != slug.strip().lower():
+                            slug_note = (
+                                f" Alchemy assigned slug '{deploy_slug}' "
+                                f"(requested '{slug}' was already in use)."
+                            )
                         _save_channel(
                             profile,
                             preview_ids=item_ids,
@@ -7463,7 +7485,7 @@ def _home_page():
                         )
                         flashes.add(
                             f"Channel '{station.get('name')}' {push_action} on Alchemy FM "
-                            f"(id {station.get('id')}{queued_note}) — see Your Stations above.",
+                            f"(id {station.get('id')}{queued_note}) — see Your Stations above.{slug_note}",
                             "ok",
                             anchor="step-deploy",
                         )
