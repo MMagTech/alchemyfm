@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.12"
+PLUGIN_VERSION = "3.2.13"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -3184,6 +3184,55 @@ html:not(.dark-mode) .afm-shell .afm-filter-feedback {
 }
 .afm-seed-results button:hover { background: color-mix(in srgb, var(--accent, #6366f1) 12%, transparent); }
 .afm-seed-results li:last-child button { border-bottom: none; }
+.afm-seed-search-field { position: relative; }
+.afm-seed-track-results { margin-top: 0.4rem; }
+.afm-seed-track-results-label {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted, #94a3b8);
+}
+.afm-seed-track-results-empty {
+  margin: 0.45rem 0 0;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--muted, #94a3b8);
+}
+.afm-seed-track-menu {
+  list-style: none;
+  margin: 0;
+  padding: 0.3rem;
+  max-height: 14rem;
+  overflow-y: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+  background: var(--bg, #0f172a);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+html:not(.dark-mode) .afm-shell .afm-seed-track-menu {
+  background: var(--bg-card, #ffffff);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.1);
+}
+.afm-seed-track-pick {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  padding: 0.5rem 0.65rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text, inherit);
+  font: inherit;
+  line-height: 1.35;
+  cursor: pointer;
+}
+.afm-seed-track-pick:hover,
+.afm-seed-track-pick:focus-visible,
+.afm-seed-track-pick.is-active {
+  background: color-mix(in srgb, var(--accent, #6366f1) 16%, transparent);
+  outline: none;
+}
 .afm-bootstrap-search-field { position: relative; }
 .afm-bootstrap-results { margin-top: 0.4rem; }
 .afm-bootstrap-results-label {
@@ -3479,7 +3528,7 @@ def _preview_results_html(
     )
 
 
-def _programming_fields_html(values: dict[str, Any]) -> str:
+def _programming_fields_html(values: dict[str, Any], *, track_search_url: str = "") -> str:
     ptype = values.get("programming_type", "clap_query")
     hidden = lambda key: "" if ptype == key else " hidden"
 
@@ -3487,23 +3536,6 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
         str(values.get("mood_name", "")),
         str(values.get("centroid_index", "")),
     )
-
-    seed_results = values.get("seed_search_results") or []
-    seed_results_html = ""
-    if seed_results:
-        items = []
-        for track in seed_results:
-            item_id = str(track.get("item_id"))
-            title = track.get("title") or "Unknown"
-            artist = track.get("author") or track.get("artist") or "Unknown"
-            items.append(
-                "<li>"
-                f'<button type="submit" name="pick_seed" value="{html.escape(item_id)}" '
-                'formnovalidate style="width:100%;text-align:left;padding:0.5rem;">'
-                f"{html.escape(title)} — {html.escape(artist)}"
-                "</button></li>"
-            )
-        seed_results_html = "<ul class='afm-seed-results'>" + "".join(items) + "</ul>"
 
     anchor_opts = ['<option value="">Choose anchor…</option>']
     for anchor in _anchors():
@@ -3554,14 +3586,16 @@ def _programming_fields_html(values: dict[str, Any]) -> str:
         + f"<select name='anchor_id' class='afm-select'>{''.join(anchor_opts)}</select></div>"
         + f"<div id='field-seed' class='afm-field afm-seed-field afm-type-field'{hidden('similar_seed')}>"
         + _field_label("Search Seed Track")
-        + "<div class='afm-seed-search-row'>"
-        + f"<input name='seed_search' class='afm-text-input afm-seed-search-input' "
+        + f"<div class='afm-seed-search-field' id='afm-seed-track-picker' "
+        + f"data-track-search-url='{html.escape(track_search_url)}'>"
+        + f"<input name='seed_search' id='seed_search' class='afm-text-input afm-seed-search-input' "
+        + "autocomplete='off' role='combobox' aria-expanded='false' "
+        + "aria-controls='afm-seed-track-results' "
         + f"placeholder='Title or artist…' value='{html.escape(str(values.get('seed_search', '')))}'>"
-        + "<button type='submit' name='action' value='search_seed' formnovalidate "
-        + "class='afm-btn afm-btn-secondary afm-seed-search-btn'>Search</button>"
+        + "<div id='afm-seed-track-results' class='afm-seed-track-results'></div>"
         + "</div>"
-        + "<p class='hint'>Search your library and pick a result, or enter a track item id below.</p>"
-        + f"{seed_results_html}"
+        + "<p class='hint'>Type a title or artist — matching library tracks appear as you type. "
+        + "Pick one or paste a track item id below.</p>"
         + "<div class='afm-seed-id-field'>"
         + _field_label("Track Item ID", mandatory=True)
         + f"<input name='seed_id' class='afm-text-input' placeholder='Filled when you pick a search result' "
@@ -3605,7 +3639,7 @@ def _programming_explainer_html() -> str:
         "<p><strong>Lyrics Theme:</strong> Search by meaning, story, or theme in lyrics.</p>"
         "<p><strong>Mood Cluster:</strong> Pick from your library analysis — mood + sub-cluster.</p>"
         "<p><strong>Song Alchemy Anchor:</strong> Reuse an existing anchor playlist as the vibe source.</p>"
-        "<p><strong>Similar to Seed Track:</strong> Build around sonic neighbors of one library track.</p>"
+        "<p><strong>Similar to Seed Track:</strong> Search by title or artist as you type, then pick one library track.</p>"
         "<p><strong>Preview Size:</strong> How many tracks to fetch per preview run (Step 3).</p>"
     )
 
@@ -5207,6 +5241,159 @@ def _page_script(
     }}
   }})();
 
+  (function initSeedTrackTypeahead() {{
+    const picker = document.getElementById('afm-seed-track-picker');
+    const input = document.getElementById('seed_search');
+    const results = document.getElementById('afm-seed-track-results');
+    const seedIdField = document.querySelector('input[name="seed_id"]');
+    const typeSelect = document.getElementById('programming_type');
+    if (!picker || !input || !results) return;
+
+    const apiUrl = picker.getAttribute('data-track-search-url') || '';
+    let debounceTimer = null;
+    let activeIndex = -1;
+    let currentTracks = [];
+
+    function escapeHtml(text) {{
+      return String(text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }}
+
+    function clearResults() {{
+      results.innerHTML = '';
+      input.setAttribute('aria-expanded', 'false');
+      activeIndex = -1;
+      currentTracks = [];
+    }}
+
+    function pickTrack(track) {{
+      if (!track || !track.item_id) return;
+      if (seedIdField) seedIdField.value = String(track.item_id);
+      const title = track.title || 'Unknown';
+      const artist = track.artist || 'Unknown';
+      input.value = title + ' — ' + artist;
+      if (typeSelect) {{
+        typeSelect.value = 'similar_seed';
+        typeSelect.dispatchEvent(new Event('change', {{ bubbles: true }}));
+      }}
+      clearResults();
+      if (seedIdField) seedIdField.focus({{ preventScroll: true }});
+    }}
+
+    function setActive(index) {{
+      const buttons = results.querySelectorAll('.afm-seed-track-pick');
+      buttons.forEach((btn, idx) => {{
+        btn.classList.toggle('is-active', idx === index);
+      }});
+      activeIndex = index;
+      const active = buttons[index];
+      if (active) active.scrollIntoView({{ block: 'nearest' }});
+    }}
+
+    function renderResults(tracks, query) {{
+      currentTracks = tracks;
+      if (!tracks.length) {{
+        if (query.length >= 2) {{
+          results.innerHTML = (
+            '<p class="afm-seed-track-results-empty">No library tracks matching '
+            + '<strong>' + escapeHtml(query) + '</strong>. Try a shorter query or paste an item id below.</p>'
+          );
+          input.setAttribute('aria-expanded', 'true');
+        }} else {{
+          clearResults();
+        }}
+        return;
+      }}
+      const countLabel = tracks.length + ' track' + (tracks.length === 1 ? '' : 's');
+      const items = tracks.map((track, idx) => {{
+        const title = track.title || 'Unknown';
+        const artist = track.artist || 'Unknown';
+        return (
+          '<li role="presentation">'
+          + '<button type="button" class="afm-seed-track-pick" role="option" data-index="' + idx + '">'
+          + escapeHtml(title) + ' — ' + escapeHtml(artist)
+          + '</button></li>'
+        );
+      }}).join('');
+      results.innerHTML = (
+        '<div class="afm-seed-track-results-panel">'
+        + '<p class="afm-seed-track-results-label">' + escapeHtml(countLabel) + ' — pick one</p>'
+        + '<ul class="afm-seed-track-menu" role="listbox">' + items + '</ul></div>'
+      );
+      input.setAttribute('aria-expanded', 'true');
+      results.querySelectorAll('.afm-seed-track-pick').forEach((btn) => {{
+        btn.addEventListener('mousedown', (event) => {{
+          event.preventDefault();
+          const idx = parseInt(btn.getAttribute('data-index') || '-1', 10);
+          if (idx >= 0 && currentTracks[idx]) pickTrack(currentTracks[idx]);
+        }});
+        btn.addEventListener('mouseenter', () => {{
+          setActive(parseInt(btn.getAttribute('data-index') || '-1', 10));
+        }});
+      }});
+      setActive(0);
+    }}
+
+    async function fetchTracks(query) {{
+      if (!apiUrl) return [];
+      const resp = await fetch(apiUrl + '?q=' + encodeURIComponent(query), {{
+        headers: {{ Accept: 'application/json' }},
+      }});
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      return Array.isArray(data.tracks) ? data.tracks : [];
+    }}
+
+    async function runSearch(query) {{
+      const trimmed = query.trim();
+      if (trimmed.length < 2) {{
+        clearResults();
+        return;
+      }}
+      try {{
+        const tracks = await fetchTracks(trimmed);
+        renderResults(tracks, trimmed);
+      }} catch (err) {{
+        clearResults();
+      }}
+    }}
+
+    input.addEventListener('input', () => {{
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => runSearch(input.value), 280);
+    }});
+
+    input.addEventListener('keydown', (event) => {{
+      const buttons = results.querySelectorAll('.afm-seed-track-pick');
+      if (!buttons.length) return;
+      if (event.key === 'ArrowDown') {{
+        event.preventDefault();
+        setActive(Math.min(activeIndex + 1, buttons.length - 1));
+      }} else if (event.key === 'ArrowUp') {{
+        event.preventDefault();
+        setActive(Math.max(activeIndex - 1, 0));
+      }} else if (event.key === 'Enter') {{
+        if (activeIndex >= 0 && currentTracks[activeIndex]) {{
+          event.preventDefault();
+          pickTrack(currentTracks[activeIndex]);
+        }}
+      }} else if (event.key === 'Escape') {{
+        clearResults();
+      }}
+    }});
+
+    document.addEventListener('click', (event) => {{
+      if (!picker.contains(event.target)) clearResults();
+    }});
+
+    if ((input.value || '').trim().length >= 2 && !(seedIdField && seedIdField.value)) {{
+      runSearch(input.value);
+    }}
+  }})();
+
   (function initPreviewTableSort() {{
     const table = document.querySelector('#preview-results .afm-sortable-table');
     if (!table) return;
@@ -5276,6 +5463,21 @@ def search_artists_api():
 def search_playlists_api():
     query = (request.args.get("q") or request.args.get("query") or "").strip()
     return jsonify({"playlists": _search_playlists(query)})
+
+
+@bp.route("/api/search-tracks")
+def search_tracks_api():
+    query = (request.args.get("q") or request.args.get("query") or "").strip()
+    tracks = []
+    for track in _search_tracks(query):
+        tracks.append(
+            {
+                "item_id": str(track.get("item_id") or ""),
+                "title": track.get("title") or "Unknown",
+                "artist": track.get("author") or track.get("artist") or "Unknown",
+            }
+        )
+    return jsonify({"tracks": tracks})
 
 
 @bp.route("/api/chat-preview", methods=["POST"])
@@ -5438,10 +5640,6 @@ def home():
             if pick_seed:
                 values["seed_id"] = pick_seed
                 values["programming_type"] = "similar_seed"
-                if request.form.get("seed_search"):
-                    values["seed_search_results"] = _search_tracks(request.form.get("seed_search") or "")
-            elif action == "search_seed":
-                values["seed_search_results"] = _search_tracks(request.form.get("seed_search") or "")
             elif action == "search_bootstrap_playlist":
                 values["bootstrap_playlist_search"] = request.form.get("bootstrap_playlist_search") or ""
                 values["bootstrap_playlist_results"] = _search_playlists(values["bootstrap_playlist_search"])
@@ -5744,6 +5942,7 @@ def home():
         + "</section>"
     )
     chat_preview_url = html.escape(url_for("alchemy_fm_bridge.chat_preview_api"))
+    track_search_url = html.escape(url_for("alchemy_fm_bridge.search_tracks_api"))
     designer_form = (
         f"{designer_section_open}"
         f"<form method='post' id='afm-designer-form' class='afm-designer-form' "
@@ -5752,7 +5951,7 @@ def home():
         f"{_chat_designer_fields_html(values, flash_html=flashes.html_for('chat-designer'))}"
         f"{_discover_channels_html(flash_html=flashes.html_for('discover'))}"
         f"{_station_identity_fields_html(values)}"
-        f"{_programming_fields_html(values)}"
+        f"{_programming_fields_html(values, track_search_url=track_search_url)}"
         f"{_preview_step_html(show_results_jump=has_preview_tracks, flash_html=flashes.html_for('step-preview'))}"
         f"{_filters_fields_html(values, show_results_jump=has_preview_tracks, flash_html=flashes.html_for('step-filters'))}"
         f"{_bootstrap_fields_html(values, flash_html=flashes.html_for('bootstrap-opener'))}"
