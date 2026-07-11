@@ -26,7 +26,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.23"
+PLUGIN_VERSION = "3.2.24"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -2516,6 +2516,39 @@ html:not(.dark-mode) .afm-shell .afm-filter-feedback {
   border: 1px solid color-mix(in srgb, #ef4444 45%, transparent);
   color: var(--text, #fef2f2);
 }
+.afm-deploy-readiness {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--border, rgba(255,255,255,0.2)) 80%, transparent);
+  line-height: 1.45;
+}
+.afm-deploy-readiness ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.2rem;
+}
+.afm-deploy-readiness li + li { margin-top: 0.25rem; }
+.afm-deploy-readiness-ok {
+  background: color-mix(in srgb, #22c55e 12%, transparent);
+  border-color: color-mix(in srgb, #22c55e 45%, transparent);
+}
+.afm-deploy-readiness-blocked {
+  background: color-mix(in srgb, #ef4444 14%, transparent);
+  border: 1px solid color-mix(in srgb, #ef4444 45%, transparent);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.afm-deploy-readiness-warn {
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  border: 1px solid color-mix(in srgb, #f59e0b 40%, transparent);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+}
+.afm-btn[disabled][data-deploy-blocked] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 .afm-deploy-error-pinned {
   position: fixed;
   top: 0;
@@ -3692,6 +3725,187 @@ def _deploy_unfiltered_tracks(profile: dict[str, Any], slug: str) -> list[dict[s
         raise
 
 
+def _profile_from_values(values: dict[str, Any]) -> dict[str, Any]:
+    """Build a channel profile dict from designer form values (no POST required)."""
+    ptype = (values.get("programming_type") or "clap_query").strip()
+    programming: dict[str, Any] = {
+        "type": ptype,
+        "limit": int(values.get("preview_limit") or PREVIEW_LIMIT_DEFAULT),
+    }
+    if ptype in ("clap_query", "lyrics_query"):
+        programming["query"] = (values.get("clap_query") or values.get("lyrics_query") or "").strip()
+    elif ptype == "mood_centroid":
+        programming["mood"] = (values.get("mood_name") or "").strip().lower()
+        programming["centroid_index"] = _parse_centroid_index(values.get("centroid_index"))
+    elif ptype == "alchemy_anchor":
+        programming["anchor_id"] = (values.get("anchor_id") or "").strip()
+    elif ptype == "similar_seed":
+        programming["seed_id"] = (values.get("seed_id") or "").strip()
+    slug = (
+        (values.get("editing_slug") or values.get("slug") or values.get("draft_slug") or "").strip()
+        or _slugify(values.get("name") or "")
+        or "draft-channel"
+    )
+    profile: dict[str, Any] = {
+        "programming": programming,
+        "refresh": {"mode": (values.get("refresh_mode") or "similar_to_last").strip()},
+        "filters": {
+            "tempo_min": _parse_optional_float(values.get("filter_tempo_min")),
+            "tempo_max": _parse_optional_float(values.get("filter_tempo_max")),
+            "energy_min": _parse_optional_float(values.get("filter_energy_min")),
+            "energy_max": _parse_optional_float(values.get("filter_energy_max")),
+            "year_min": _parse_optional_int(values.get("filter_year_min")),
+            "year_max": _parse_optional_int(values.get("filter_year_max")),
+            "genre_include": _parse_csv_list(values.get("filter_genre_include")),
+            "genre_exclude": _parse_csv_list(values.get("filter_genre_exclude")),
+            "mood_include": _parse_csv_list(values.get("filter_mood_include")),
+            "exclude_artists": _parse_csv_list(values.get("filter_exclude_artists")),
+        },
+        "living": {
+            "enabled": bool(values.get("living_enabled")),
+            "auto_add_on_analyze": bool(values.get("living_auto_add")),
+            "auto_refresh_alchemy": bool(values.get("living_auto_refresh")),
+        },
+        "station": {
+            "name": (values.get("name") or "").strip(),
+            "slug": slug,
+        },
+    }
+    if values.get("bootstrap_enabled"):
+        playlist_id = (values.get("bootstrap_playlist_id") or "").strip()
+        if playlist_id:
+            profile["bootstrap"] = {
+                "type": "navidrome_playlist",
+                "playlist_id": playlist_id,
+                "track_limit": int(values.get("bootstrap_track_limit") or BOOTSTRAP_TRACK_LIMIT_DEFAULT),
+            }
+    return profile
+
+
+def _deploy_readiness(values: dict[str, Any]) -> dict[str, Any]:
+    """Pre-deploy checks mirroring the push path — shown in Step 6 before Deploy."""
+    blockers: list[str] = []
+    warnings: list[str] = []
+    slug = _channel_slug_from_values(values)
+    profile = _profile_from_values(values)
+    if not (profile.get("station") or {}).get("name", "").strip():
+        blockers.append("Step 1: Channel name is required before deploy.")
+
+    programming = profile.get("programming") or {}
+    merged = _merge_saved_programming_if_needed(profile, slug) if slug else profile
+    if _programming_incomplete(programming):
+        loaded = _load_saved_channel(slug) if slug else None
+        if not loaded or _programming_changed(merged, loaded[0]):
+            blockers.append(
+                "Step 2: Programming is incomplete in the form. Fill the active programming fields "
+                "or run Step 3 Preview (which saves programming)."
+            )
+
+    saved_preview_count = 0
+    loaded = _load_saved_channel(slug) if slug else None
+    if loaded:
+        saved_profile, preview_ids = loaded
+        saved_preview_count = len(
+            saved_profile.get("last_unfiltered_preview_ids") or preview_ids or []
+        )
+
+    track_count = 0
+    unfiltered_count = 0
+    if not blockers:
+        if loaded and saved_preview_count:
+            saved_profile, preview_ids = loaded
+            fallback_ids = saved_profile.get("last_unfiltered_preview_ids") or preview_ids
+            unfiltered = _preview_tracks_from_ids(fallback_ids)
+            unfiltered_count = len(unfiltered)
+            preview_tracks = apply_track_filters(unfiltered, merged)
+            track_count = len(preview_tracks)
+        else:
+            try:
+                unfiltered = _deploy_unfiltered_tracks(merged, slug)
+                unfiltered_count = len(unfiltered)
+                preview_tracks = apply_track_filters(unfiltered, merged)
+                track_count = len(preview_tracks)
+            except ChannelDesignerError as exc:
+                blockers.append(str(exc))
+        if track_count == 0 and not blockers:
+            if _filters_active(merged.get("filters") or {}) and unfiltered_count > 0:
+                blockers.append(
+                    f"Step 4 filters removed all {unfiltered_count} track(s). Broaden filters or clear them, "
+                    "then run Step 3 Preview again."
+                )
+            elif saved_preview_count == 0:
+                blockers.append(
+                    "No tracks to deploy. Run Step 3 Preview Programming first (shows track list below)."
+                )
+            else:
+                blockers.append(
+                    "No tracks to deploy after applying current programming and filters. "
+                    "Run Step 3 Preview again."
+                )
+        elif unfiltered_count > track_count and _filters_active(merged.get("filters") or {}):
+            warnings.append(
+                f"Step 4 filters will deploy {track_count} of {unfiltered_count} programming track(s)."
+            )
+
+    bootstrap_check = values.get("bootstrap_check")
+    if values.get("bootstrap_enabled") and (values.get("bootstrap_playlist_id") or "").strip():
+        if isinstance(bootstrap_check, dict) and not bootstrap_check.get("ok"):
+            err = bootstrap_check.get("error") or "Bootstrap playlist could not be verified."
+            warnings.append(
+                f"Optional bootstrap opener: {err} Deploy will continue without the opener playlist."
+            )
+        elif not bootstrap_check:
+            warnings.append(
+                "Optional bootstrap opener: pick a Navidrome playlist and wait for the green verify check, "
+                "or uncheck Use Navidrome Playlist Opener."
+            )
+
+    if saved_preview_count > 0 and track_count > 0:
+        warnings.append(f"Ready to deploy {track_count} track(s) (last preview saved {saved_preview_count}).")
+
+    return {
+        "ok": not blockers,
+        "blockers": blockers,
+        "warnings": warnings,
+        "track_count": track_count,
+    }
+
+
+def _deploy_readiness_html(readiness: dict[str, Any]) -> str:
+    blockers = readiness.get("blockers") or []
+    warnings = readiness.get("warnings") or []
+    if not blockers and not warnings:
+        count = int(readiness.get("track_count") or 0)
+        if count > 0:
+            return (
+                '<div id="afm-deploy-readiness" class="afm-deploy-readiness afm-deploy-readiness-ok" role="status">'
+                f"<strong>Ready to deploy</strong>"
+                f"<p>{count} track(s) will be sent to Alchemy FM.</p>"
+                "</div>"
+            )
+        return (
+            '<div id="afm-deploy-readiness" class="afm-deploy-readiness afm-deploy-readiness-warn" role="status">'
+            "<strong>Before you deploy</strong>"
+            "<p>Run Step 3 Preview Programming to load tracks into this channel.</p>"
+            "</div>"
+        )
+    parts: list[str] = ['<div id="afm-deploy-readiness" class="afm-deploy-readiness" role="status">']
+    if blockers:
+        parts.append('<div class="afm-deploy-readiness-blocked">')
+        parts.append("<strong>Deploy blocked</strong><ul>")
+        for msg in blockers:
+            parts.append(f"<li>{html.escape(msg)}</li>")
+        parts.append("</ul></div>")
+    if warnings:
+        parts.append('<div class="afm-deploy-readiness-warn">')
+        parts.append("<strong>Notes</strong><ul>")
+        for msg in warnings:
+            parts.append(f"<li>{html.escape(msg)}</li>")
+        parts.append("</ul></div>")
+    parts.append("</div>")
+    return "".join(parts)
+
+
 def _programming_incomplete(programming: dict[str, Any]) -> bool:
     ptype = programming.get("type", "clap_query")
     if ptype in ("clap_query", "lyrics_query"):
@@ -4630,6 +4844,12 @@ def _deploy_status_html(values: dict[str, Any], *, flash_html: str = "") -> str:
 def _deploy_actions_fields_html(values: dict[str, Any], *, flash_html: str = "") -> str:
     editing_slug = (values.get("editing_slug") or "").strip()
     deploy_label = "Save Changes to Alchemy FM" if editing_slug else "Deploy to Alchemy FM"
+    readiness = _deploy_readiness(values)
+    deploy_blocked = not readiness.get("ok")
+    deploy_disabled = " disabled" if deploy_blocked else ""
+    deploy_blocked_attr = ' data-deploy-blocked="true"' if deploy_blocked else ""
+    blocker_title = html.escape(readiness["blockers"][0]) if readiness.get("blockers") else ""
+    title_attr = f' title="{blocker_title}"' if blocker_title else ""
     return (
         "<section class='afm-panel afm-step-panel afm-deploy-panel' id='step-deploy'>"
         + _step_panel_heading(
@@ -4638,6 +4858,7 @@ def _deploy_actions_fields_html(values: dict[str, Any], *, flash_html: str = "")
             "Creates or updates the station and optionally fills the play queue. Encoding and themes are in Alchemy FM Admin.",
         )
         + _deploy_explainer_html()
+        + _deploy_readiness_html(readiness)
         + _deploy_status_html(values, flash_html=flash_html)
         + _action_loading_html(
             "afm-deploy-loading",
@@ -4654,7 +4875,9 @@ def _deploy_actions_fields_html(values: dict[str, Any], *, flash_html: str = "")
         + "<div class='afm-form-actions'>"
         + f"<button type='submit' name='action' value='push' class='afm-btn afm-btn-primary' formnovalidate "
         + f'data-afm-loading="afm-deploy-loading" data-afm-loading-panel="step-deploy" '
-        + f'data-loading-label="Deploying…">{html.escape(deploy_label)}</button>'
+        + f'data-loading-label="Deploying…"{deploy_disabled}{deploy_blocked_attr}{title_attr}>'
+        + html.escape(deploy_label)
+        + "</button>"
         + "<button type='submit' name='action' value='test' formnovalidate class='afm-btn afm-btn-secondary'>Test Connection</button>"
         + "</div></section>"
     )
@@ -5455,6 +5678,16 @@ def _page_script(
     designerForm.addEventListener('submit', (event) => {{
       const submitter = event.submitter;
       if (!submitter || submitter.disabled) return;
+      if (
+        submitter.getAttribute('data-deploy-blocked') === 'true'
+        && submitter.name === 'action'
+        && submitter.value === 'push'
+      ) {{
+        event.preventDefault();
+        const readiness = document.getElementById('afm-deploy-readiness');
+        if (readiness) readiness.scrollIntoView({{ behavior: 'instant', block: 'start' }});
+        return;
+      }}
       Object.values(sections).forEach((el) => {{
         if (!el) return;
         el.querySelectorAll('input, select, textarea').forEach((input) => {{
@@ -6716,9 +6949,14 @@ def home():
                         _apply_filter_feedback(values, profile, unfiltered, preview_tracks)
                         bootstrap_check = _apply_bootstrap_check(values, profile)
                         if bootstrap_check and not bootstrap_check.get("ok"):
-                            raise ChannelDesignerError(
-                                bootstrap_check.get("error") or "Bootstrap playlist could not be verified."
+                            err = bootstrap_check.get("error") or "Bootstrap playlist could not be verified."
+                            flashes.add(
+                                f"Optional bootstrap opener skipped: {err}",
+                                "warn",
+                                anchor="step-deploy",
                             )
+                            profile = dict(profile)
+                            profile["bootstrap"] = None
                         payload = channel_profile_to_alchemy_payload(profile, preview_tracks)
                         slug = payload["slug"]
                         item_ids = [t["item_id"] for t in preview_tracks]
