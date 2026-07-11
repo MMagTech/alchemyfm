@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.2.8"
+PLUGIN_VERSION = "3.2.9"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -72,6 +72,28 @@ def _friendly_http_error(status: int, body: str) -> str:
     text = re.sub(r"<[^>]+>", " ", body)
     text = re.sub(r"\s+", " ", text).strip()
     return text[:500] or f"HTTP {status}"
+
+
+def _audiomuse_http_error_message(detail: str, status: int) -> str:
+    if status == 404:
+        return f"AudioMuse API route not found (HTTP 404). Update AudioMuse core or the Channel Designer plugin."
+    try:
+        parsed = json.loads(detail)
+        if isinstance(parsed, dict):
+            if parsed.get("error"):
+                return str(parsed["error"])
+            if parsed.get("message"):
+                return str(parsed["message"])
+    except json.JSONDecodeError:
+        pass
+    if "<html" in detail.lower():
+        title_match = re.search(r"<title>([^<]+)</title>", detail, re.I)
+        if title_match:
+            return f"AudioMuse API HTTP {status}: {title_match.group(1).strip()}"
+        return f"AudioMuse API HTTP {status} (HTML error page)."
+    text = re.sub(r"<[^>]+>", " ", detail)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:500] or f"AudioMuse API HTTP {status}"
 
 
 class ChannelDesignerError(Exception):
@@ -278,7 +300,10 @@ def audiomuse_get(path: str, *, params: dict[str, str] | None = None, timeout: f
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
-        raise ChannelDesignerError(detail or f"AudioMuse API HTTP {exc.code}", status=exc.code) from exc
+        raise ChannelDesignerError(
+            _audiomuse_http_error_message(detail, exc.code),
+            status=exc.code,
+        ) from exc
     except urllib.error.URLError as exc:
         raise ChannelDesignerError(f"Could not reach AudioMuse API: {exc.reason}") from exc
 
@@ -293,7 +318,7 @@ def audiomuse_post(path: str, payload: dict[str, Any], *, timeout: float = 120.0
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
-        message = detail
+        message = _audiomuse_http_error_message(detail, exc.code)
         try:
             parsed = json.loads(detail)
             if isinstance(parsed, dict) and parsed.get("error"):
@@ -984,27 +1009,43 @@ def _apply_bootstrap_check(values: dict[str, Any], profile: dict[str, Any]) -> d
     return check
 
 
+def _mediaserver_playlist_track_ids(playlist_id: str) -> list[str]:
+    """Load Navidrome/Jellyfin playlist track IDs via AudioMuse mediaserver (in-process)."""
+    try:
+        from tasks.mediaserver import get_playlist_track_ids
+    except ImportError as exc:
+        raise ChannelDesignerError(
+            "Bootstrap verify needs AudioMuse mediaserver access. Run the plugin inside AudioMuse "
+            "(not a standalone zip test server)."
+        ) from exc
+    try:
+        raw = get_playlist_track_ids(playlist_id) or []
+    except Exception as exc:
+        raise ChannelDesignerError(f"Navidrome playlist lookup failed: {exc}") from exc
+    return [str(item_id) for item_id in raw if item_id]
+
+
 def _playlist_track_ids(playlist_id: str, *, limit: int) -> list[str]:
     playlist_id = playlist_id.strip()
     if not playlist_id:
         return []
-    try:
-        data = audiomuse_get("/api/playlist", params={"playlist_id": playlist_id})
-    except ChannelDesignerError as exc:
-        raise ChannelDesignerError(f"Could not load Navidrome playlist: {exc}") from exc
-    tracks = data.get("tracks") if isinstance(data, dict) else data
-    if not isinstance(tracks, list):
+    ids = _mediaserver_playlist_track_ids(playlist_id)
+    if not ids:
         return []
-    ids: list[str] = []
-    for row in tracks:
-        if not isinstance(row, dict):
-            continue
-        item_id = row.get("item_id") or row.get("id")
-        if item_id:
-            ids.append(str(item_id))
-        if len(ids) >= limit:
-            break
-    return ids
+    if limit and len(ids) > limit:
+        ids = ids[:limit]
+    try:
+        scores = get_score_data_by_ids(ids)
+    except Exception:
+        scores = []
+    known = {str(row.get("item_id")) for row in scores if row.get("item_id")}
+    analyzed = [item_id for item_id in ids if item_id in known]
+    if not analyzed:
+        raise ChannelDesignerError(
+            f"Playlist resolved to {len(ids)} track(s) on the media server, but none are in the "
+            "AudioMuse analysis database. Run library analysis first."
+        )
+    return analyzed
 
 
 def _resolve_navidrome_bootstrap(bootstrap: dict[str, Any]) -> list[str]:
