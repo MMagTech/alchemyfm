@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.8"
+PLUGIN_VERSION = "3.0.9"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -5964,12 +5964,24 @@ def _page_script(
     submitter.dataset.originalLabel = (submitter.textContent || '').trim();
     submitter.textContent = loadingLabel;
     submitter.classList.add('is-loading');
-    submitter.disabled = true;
+
+    // Disabling the submitter synchronously here — inside the 'submit' handler,
+    // before the browser has actually constructed the outgoing form data — was
+    // the real bug: per spec, disabled controls (including the submitter
+    // itself) are excluded from "constructing the form data set", so the
+    // browser silently dropped the submitter's own name/value from the very
+    // submission it had just triggered, while every other field went through
+    // fine. Defer the disable one tick so the browser reads the form first.
+    window.setTimeout(() => {{
+      submitter.disabled = true;
+      if (designerForm) {{
+        designerForm.querySelectorAll('button[type="submit"]').forEach((btn) => {{
+          if (btn !== submitter) btn.disabled = true;
+        }});
+      }}
+    }}, 0);
 
     if (designerForm) {{
-      designerForm.querySelectorAll('button[type="submit"]').forEach((btn) => {{
-        if (btn !== submitter) btn.disabled = true;
-      }});
       designerForm.setAttribute('aria-busy', 'true');
     }}
     if (afmShell) afmShell.classList.add('is-busy');

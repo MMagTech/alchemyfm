@@ -5,20 +5,20 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy \u2014 preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "3.0.9",
+      "min_core_version": "2.5.0",
+      "changelog": "Fix the actual root cause of silent deploy/preview failures: showAfmActionLoading() disabled the submit button synchronously inside the form's own 'submit' event handler, before the browser had constructed the outgoing form data. Per spec, disabled controls (including the submitter itself) are excluded from constructing the form data set, so the browser silently dropped the clicked button's own name/value from the submission it had just triggered, while every other field went through fine. Deferred the disable by one tick via setTimeout so the browser reads the form first. (The action/afm_action rename in 3.0.8 fixed a real but separate HTMLFormElement.action shadowing bug; this is the fix for the actual reported failure.)",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "c95fd1697101a62945ce73f203c42b9e"
+    },
+    {
       "version": "3.0.8",
       "min_core_version": "2.5.0",
       "changelog": "Fix the real cause of silent deploy/preview failures: every action button was named 'action', which collides with HTMLFormElement's own reserved .action property (HTMLFormElement uses [OverrideBuiltins], so a control named 'action' shadows the form's built-in property). Some browsers then silently omit that control's name/value from native form submission entirely, even though event.submitter correctly identifies the clicked button. Renamed the dispatch field to afm_action everywhere (buttons, hidden inputs, JS checks, server-side reads).",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
       "checksum": "a0f1022dcd08bf7a2c59777728c68d4a"
-    },
-    {
-      "version": "3.0.7",
-      "min_core_version": "2.5.0",
-      "changelog": "Fix silent deploy/preview failure: implicit Enter-key form submission (from a typeahead pick or any text field) activated no button, so action= was omitted entirely and the server silently no-op'd with no error. Typeahead Enter handlers now always preventDefault, and a form-wide guard blocks implicit Enter-submission from plain text fields. Added a server-side fallback message for defense in depth.",
-      "imageUrl": "",
-      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": "9135dfc0b8820c9a12611b7b20e759ab"
     }
   ]
 }
