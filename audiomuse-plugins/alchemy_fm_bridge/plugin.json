@@ -5,20 +5,20 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy \u2014 preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "3.0.11",
+      "min_core_version": "2.5.0",
+      "changelog": "Fix chat_preview AJAX regression: the 3.0.8 action->afm_action rename updated every button but missed runChatPreviewAjax()'s manually-constructed FormData, which still hardcoded the old field name (formData.set('action', 'chat_preview')). Chat Preview has been silently broken since 3.0.8. Fixed, and added regression tests since this path had zero prior coverage.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "d818580050385355aef9cc47e8e0d965"
+    },
+    {
       "version": "3.0.10",
       "min_core_version": "2.5.0",
       "changelog": "Make the Step 2 'Current: ...' status and incompleteness warning update live as you interact with the form, instead of only refreshing on the next full page load. Switching programming type, picking a seed track or anchor, typing a CLAP/lyrics query, or choosing a mood/cluster now updates the status immediately client-side, mirroring the server's _programming_detail_from_values/_programming_incomplete logic.",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
       "checksum": "163f3c098e9931ff4409d0d0bd63fbf4"
-    },
-    {
-      "version": "3.0.9",
-      "min_core_version": "2.5.0",
-      "changelog": "Fix the actual root cause of silent deploy/preview failures: showAfmActionLoading() disabled the submit button synchronously inside the form's own 'submit' event handler, before the browser had constructed the outgoing form data. Per spec, disabled controls (including the submitter itself) are excluded from constructing the form data set, so the browser silently dropped the clicked button's own name/value from the submission it had just triggered, while every other field went through fine. Deferred the disable by one tick via setTimeout so the browser reads the form first. (The action/afm_action rename in 3.0.8 fixed a real but separate HTMLFormElement.action shadowing bug; this is the fix for the actual reported failure.)",
-      "imageUrl": "",
-      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": "c95fd1697101a62945ce73f203c42b9e"
     }
   ]
 }

@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.10"
+PLUGIN_VERSION = "3.0.11"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -6120,7 +6120,7 @@ def _page_script(
     }}
     showAfmActionLoading(submitter);
     const formData = new FormData(designerForm);
-    formData.set('action', 'chat_preview');
+    formData.set('afm_action', 'chat_preview');
     formData.set('afm_ajax', 'chat_preview');
     const chatPreviewUrl = (
       designerForm.getAttribute('data-chat-preview-url')

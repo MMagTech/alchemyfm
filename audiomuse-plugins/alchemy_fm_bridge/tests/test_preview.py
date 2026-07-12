@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 from bridge_loader import bridge, requires_postgres
@@ -178,3 +180,57 @@ class TestPreviewRoute:
         )
         body = resp.get_data(as_text=True)
         assert "stale-1" not in body or "No preview yet" in body
+
+
+@requires_postgres
+class TestChatPreviewAjax:
+    """Regression coverage for the JS AJAX path in runChatPreviewAjax().
+
+    That JS builds its own FormData and sets the dispatch field explicitly
+    (formData.set('afm_action', 'chat_preview')) rather than relying on a
+    submit button's name/value — the 3.0.8 action -> afm_action rename
+    updated every button but missed this one manually-constructed request,
+    silently breaking chat preview with zero test coverage to catch it.
+    """
+
+    def test_chat_preview_ajax_returns_json(self, client, pg_db):
+        fake_response = {
+            "response": {
+                "query_results": [
+                    {"item_id": "chat-1", "title": "Track One", "author": "Artist A"},
+                    {"item_id": "chat-2", "title": "Track Two", "author": "Artist B"},
+                ]
+            }
+        }
+        with patch.object(bridge, "audiomuse_post", return_value=fake_response) as mock_post:
+            resp = client.post(
+                "/",
+                data={
+                    "afm_action": "chat_preview",
+                    "afm_ajax": "chat_preview",
+                    "chat_prompt": "upbeat 90s alt rock for a road trip",
+                },
+                headers={"X-AFM-Chat-Preview": "1"},
+            )
+        assert resp.status_code == 200
+        assert resp.content_type.startswith("application/json")
+        data = resp.get_json()
+        assert data["ok"] is True
+        assert data["track_count"] == 2
+        mock_post.assert_called_once()
+        assert mock_post.call_args[0][0] == "/chat/api/chatPlaylist"
+
+    def test_chat_preview_ajax_wrong_dispatch_field_is_not_mistaken_for_success(self, client, pg_db):
+        """Reproduces the exact 3.0.8 regression: JS sending the pre-rename
+        field name ('action' instead of 'afm_action') must not look like a
+        successful chat preview -- it should clearly not be JSON."""
+        resp = client.post(
+            "/",
+            data={
+                "action": "chat_preview",  # old, wrong field name
+                "afm_ajax": "chat_preview",
+                "chat_prompt": "upbeat 90s alt rock for a road trip",
+            },
+            headers={"X-AFM-Chat-Preview": "1"},
+        )
+        assert not resp.content_type.startswith("application/json")
