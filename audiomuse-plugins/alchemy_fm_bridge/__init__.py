@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.9"
+PLUGIN_VERSION = "3.0.10"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -5701,15 +5701,119 @@ def _page_script(
       clusterSelect.appendChild(fallback);
     }}
   }}
+
+  const AFM_PROGRAMMING_LABELS = {{
+    clap_query: 'Sonic Vibe (CLAP)',
+    lyrics_query: 'Lyrics Theme',
+    mood_centroid: 'Mood Cluster',
+    alchemy_anchor: 'Song Alchemy Anchor',
+    similar_seed: 'Similar to Seed Track',
+  }};
+
+  function afmEscapeHtml(text) {{
+    return String(text || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }}
+
+  // Mirrors _programming_detail_from_values()/_programming_incomplete() so
+  // "Current: ..." reflects what's actually selected right now instead of
+  // only refreshing on the next full page load (which made a completed
+  // Step 2 keep showing a stale "not set" / "incomplete" state after
+  // switching programming type or picking a seed/anchor client-side).
+  function updateStep2Status() {{
+    const statusEl = document.getElementById('afm-step2-status');
+    if (!statusEl) return;
+    const currentEl = statusEl.querySelector('.afm-step2-current');
+    if (!currentEl) return;
+
+    const ptype = typeSelect ? typeSelect.value : 'clap_query';
+    const label = AFM_PROGRAMMING_LABELS[ptype] || ptype;
+    let detail = label;
+    let incomplete = true;
+
+    if (ptype === 'clap_query' || ptype === 'lyrics_query') {{
+      const field = document.querySelector('input[name="' + ptype + '"]');
+      const query = field ? (field.value || '').trim() : '';
+      if (query.length < 3) {{
+        detail = label + ' — not set (need at least 3 characters)';
+      }} else {{
+        detail = label + ': ' + query.slice(0, 80);
+        incomplete = false;
+      }}
+    }} else if (ptype === 'mood_centroid') {{
+      const mood = moodSelect ? (moodSelect.value || '').trim() : '';
+      const clusterSelect = document.getElementById('centroid_index');
+      const cluster = clusterSelect ? clusterSelect.value : '';
+      if (!mood || cluster === '') {{
+        detail = label + ' — choose mood and cluster';
+      }} else {{
+        detail = label + ': ' + mood.charAt(0).toUpperCase() + mood.slice(1) + ' / cluster ' + cluster;
+        incomplete = false;
+      }}
+    }} else if (ptype === 'alchemy_anchor') {{
+      const anchorIdField = document.getElementById('anchor_id');
+      const anchorId = anchorIdField ? (anchorIdField.value || '').trim() : '';
+      if (anchorId) {{
+        const nameEl = document.getElementById('afm-anchor-selected-name');
+        const name = nameEl && nameEl.textContent.trim() ? nameEl.textContent.trim() : anchorId;
+        detail = label + ': ' + name + ' (id ' + anchorId + ')';
+        incomplete = false;
+      }} else {{
+        const searchField = document.getElementById('anchor_search');
+        const search = searchField ? (searchField.value || '').trim() : '';
+        detail = search
+          ? label + ' — click a search result for “' + search.slice(0, 40) + '” (not selected yet)'
+          : label + ': pick an anchor from search';
+      }}
+    }} else if (ptype === 'similar_seed') {{
+      const seedField = document.querySelector('input[name="seed_id"]');
+      const seed = seedField ? (seedField.value || '').trim() : '';
+      detail = label + ': ' + (seed || 'pick a seed track from search');
+      incomplete = !seed;
+    }}
+
+    currentEl.innerHTML = '<strong>Current:</strong> ' + afmEscapeHtml(detail);
+
+    let warnEl = statusEl.querySelector('.afm-step2-live-warn');
+    if (!warnEl) {{
+      const existing = statusEl.querySelector('.afm-step2-warn');
+      if (existing && existing.textContent.trim().indexOf('Step 2 is incomplete') === 0) {{
+        warnEl = existing;
+        warnEl.classList.add('afm-step2-live-warn');
+      }}
+    }}
+    if (incomplete) {{
+      if (!warnEl) {{
+        warnEl = document.createElement('p');
+        warnEl.className = 'afm-flash afm-flash-error afm-step2-warn afm-step2-live-warn';
+        statusEl.appendChild(warnEl);
+      }}
+      warnEl.textContent = 'Step 2 is incomplete. Fill in the active programming type, then run Step 3 Preview.';
+    }} else if (warnEl) {{
+      warnEl.remove();
+    }}
+  }}
+
   if (typeSelect) {{
-    typeSelect.addEventListener('change', syncType);
+    typeSelect.addEventListener('change', () => {{ syncType(); updateStep2Status(); }});
     syncType();
   }}
+  ['clap_query', 'lyrics_query', 'seed_id'].forEach((fieldName) => {{
+    const field = document.querySelector('input[name="' + fieldName + '"]');
+    if (field) field.addEventListener('input', updateStep2Status);
+  }});
+  const anchorIdFieldTop = document.getElementById('anchor_id');
+  if (anchorIdFieldTop) anchorIdFieldTop.addEventListener('input', updateStep2Status);
   const moodSelect = document.querySelector('select[name="mood_name"]');
   if (moodSelect) {{
-    moodSelect.addEventListener('change', fillClusters);
+    moodSelect.addEventListener('change', () => {{ fillClusters(); updateStep2Status(); }});
     fillClusters();
   }}
+  const clusterSelectTop = document.getElementById('centroid_index');
+  if (clusterSelectTop) clusterSelectTop.addEventListener('change', updateStep2Status);
+  updateStep2Status();
 
   function closeAllSelectMenus(exceptMenu) {{
     document.querySelectorAll('.afm-select-wrap.is-open').forEach((wrap) => {{
@@ -6762,6 +6866,7 @@ def _page_script(
       ) {{
         clearSelected();
       }}
+      if (typeof updateStep2Status === 'function') updateStep2Status();
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => runSearch(input.value), 280);
     }});
@@ -6793,6 +6898,7 @@ def _page_script(
         input.value = '';
         clearResults();
         input.focus({{ preventScroll: true }});
+        if (typeof updateStep2Status === 'function') updateStep2Status();
       }});
     }}
 
