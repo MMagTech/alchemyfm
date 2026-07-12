@@ -10,7 +10,7 @@ from bridge_loader import bridge, requires_postgres
 
 def _push_form(**overrides: Any) -> dict[str, Any]:
     data = {
-        "action": "push",
+        "afm_action": "push",
         "name": "Deploy Route FM",
         "slug": "deploy-route-fm",
         "description": "Route integration test",
@@ -168,7 +168,7 @@ class TestDeployRoute:
             resp = client.post(
                 "/",
                 data={
-                    "action": "delete",
+                    "afm_action": "delete",
                     "station_id": "1",
                     "delete_slug": "some-other-station",
                 },

@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.7"
+PLUGIN_VERSION = "3.0.8"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -4767,7 +4767,7 @@ def _filters_fields_html(
         + "<p class='hint afm-filters-workflow-hint'><strong>Filters fine-tune your last preview</strong> — "
         "they trim tracks already in Preview Results; they do not fetch new ones.</p>"
         + '<div class="afm-form-actions afm-form-actions-inline">'
-        + "<button type='submit' name='action' value='apply_filters' formnovalidate "
+        + "<button type='submit' name='afm_action' value='apply_filters' formnovalidate "
         + "class='afm-btn afm-btn-secondary'>Apply Filters to Preview</button>"
         + results_jump
         + "</div>"
@@ -4886,7 +4886,7 @@ def _chat_designer_fields_html(values: dict[str, Any], *, flash_html: str = "") 
         )
         + '<p id="afm-chat-error" class="afm-flash afm-flash-error" hidden role="alert"></p>'
         + '<div class="afm-form-actions afm-form-actions-inline">'
-        + "<button type='submit' name='action' value='chat_preview' formnovalidate "
+        + "<button type='submit' name='afm_action' value='chat_preview' formnovalidate "
         + 'class="afm-btn afm-btn-secondary" data-afm-loading="afm-chat-loading" '
         + 'data-afm-loading-panel="chat-designer" data-afm-loading-no-scroll="true" '
         + 'data-afm-ajax-preview="true" data-loading-label="Generating…">'
@@ -4953,7 +4953,7 @@ def _discover_channels_html(*, flash_html: str = "") -> str:
         '<div class="afm-collapsible-body">'
         f"{flash_html}"
         '<div class="afm-form-actions afm-form-actions-inline" style="margin-bottom:0.75rem;">'
-        '<button type="submit" name="action" value="start_clustering" formnovalidate '
+        '<button type="submit" name="afm_action" value="start_clustering" formnovalidate '
         'class="afm-btn afm-btn-secondary">Run Clustering</button>'
         "</div>"
         f"{task_note}{table}"
@@ -5128,7 +5128,7 @@ def _preview_step_html(
             detail="Querying AudioMuse for tracks that match your programming.",
         )
         + "<div class='afm-form-actions afm-form-actions-inline'>"
-        + "<button type='submit' name='action' value='preview' formnovalidate class='afm-btn afm-btn-primary' "
+        + "<button type='submit' name='afm_action' value='preview' formnovalidate class='afm-btn afm-btn-primary' "
         + 'data-afm-loading="afm-preview-loading" data-afm-loading-panel="step-preview" '
         + 'data-afm-loading-no-scroll="true" '
         + 'data-loading-label="Previewing…">'
@@ -5218,12 +5218,12 @@ def _deploy_actions_fields_html(values: dict[str, Any], *, flash_html: str = "")
         + "</div>"
         + f"<input type='hidden' name='saved_anchor_id' value='{html.escape(str(values.get('saved_anchor_id', '')))}'>"
         + "<div class='afm-form-actions'>"
-        + f"<button type='submit' name='action' value='push' class='afm-btn afm-btn-primary' formnovalidate "
+        + f"<button type='submit' name='afm_action' value='push' class='afm-btn afm-btn-primary' formnovalidate "
         + f'data-afm-loading="afm-deploy-loading" data-afm-loading-panel="step-deploy" '
         + f'data-loading-label="Deploying…"{deploy_disabled}{deploy_blocked_attr}{title_attr}>'
         + html.escape(deploy_label)
         + "</button>"
-        + "<button type='submit' name='action' value='test' formnovalidate class='afm-btn afm-btn-secondary'>Test Alchemy Connection</button>"
+        + "<button type='submit' name='afm_action' value='test' formnovalidate class='afm-btn afm-btn-secondary'>Test Alchemy Connection</button>"
         + "</div></section>"
     )
 
@@ -5296,22 +5296,22 @@ def _edit_toolbar_html(values: dict[str, Any], *, flash_html: str = "") -> str:
             f'<form method="post" style="margin:0;display:inline;">'
             f'<input type="hidden" name="editing_slug" value="{html.escape(editing_slug)}">'
             f'<input type="hidden" name="op_station_id" value="{int(station_id)}">'
-            '<button type="submit" name="action" value="op_refresh_queue" formnovalidate '
+            '<button type="submit" name="afm_action" value="op_refresh_queue" formnovalidate '
             'class="afm-btn afm-btn-secondary">Refresh Queue</button>'
-            '<button type="submit" name="action" value="op_bootstrap" formnovalidate '
+            '<button type="submit" name="afm_action" value="op_bootstrap" formnovalidate '
             'class="afm-btn afm-btn-secondary">Rebuild Pool</button>'
-            '<button type="submit" name="action" value="op_rebuild_m3u" formnovalidate '
+            '<button type="submit" name="afm_action" value="op_rebuild_m3u" formnovalidate '
             'class="afm-btn afm-btn-secondary">Rebuild M3U</button>'
-            f'<button type="submit" name="action" value="op_toggle_enabled" formnovalidate '
+            f'<button type="submit" name="afm_action" value="op_toggle_enabled" formnovalidate '
             f'class="afm-btn afm-btn-secondary">{html.escape(on_label)}</button>'
             "</form>"
             f'<form method="post" enctype="multipart/form-data" style="margin:0;display:inline;">'
             f'<input type="hidden" name="editing_slug" value="{html.escape(editing_slug)}">'
             f'<input type="hidden" name="op_station_id" value="{int(station_id)}">'
             '<input type="file" name="artwork_file" accept="image/*" style="max-width:10rem;">'
-            '<button type="submit" name="action" value="op_upload_artwork" formnovalidate '
+            '<button type="submit" name="afm_action" value="op_upload_artwork" formnovalidate '
             'class="afm-btn afm-btn-secondary">Upload Art</button>'
-            '<button type="submit" name="action" value="op_delete_artwork" formnovalidate '
+            '<button type="submit" name="afm_action" value="op_delete_artwork" formnovalidate '
             'class="afm-btn afm-btn-secondary">Remove Art</button>'
             "</form>"
         )
@@ -5331,9 +5331,9 @@ def _edit_toolbar_html(values: dict[str, Any], *, flash_html: str = "") -> str:
         '<div class="afm-edit-actions">'
         f"{op_buttons}"
         f'<a href="{html.escape(url_for("alchemy_fm_bridge.home"))}" class="afm-btn afm-btn-secondary">← All Stations</a>'
-        '<button type="submit" form="afm-designer-form" name="action" value="new_channel" formnovalidate '
+        '<button type="submit" form="afm-designer-form" name="afm_action" value="new_channel" formnovalidate '
         'class="afm-btn afm-btn-secondary">New Channel</button>'
-        '<button type="submit" form="afm-designer-form" name="action" value="push" '
+        '<button type="submit" form="afm-designer-form" name="afm_action" value="push" '
         'class="afm-btn afm-btn-primary" data-afm-loading="afm-deploy-loading" '
         'data-afm-loading-panel="step-deploy" data-loading-label="Saving…">Save Changes</button>'
         "</div></div>"
@@ -5418,7 +5418,7 @@ def _stations_section_html(editing_slug: str | None = None, *, flash_html: str =
                 f'<td class="afm-actions-cell"><div class="afm-row-actions">'
                 f'<a href="{edit_href}" class="{edit_btn_class}">{html.escape(edit_label)}</a>'
                 f'<form method="post" style="margin:0;" onsubmit="return confirm({json.dumps(confirm_msg)});">'
-                f'<input type="hidden" name="action" value="delete">'
+                f'<input type="hidden" name="afm_action" value="delete">'
                 f'<input type="hidden" name="station_id" value="{station_id}">'
                 f'<input type="hidden" name="delete_slug" value="{html.escape(slug)}">'
                 '<button type="submit" class="afm-btn afm-btn-danger">Delete</button>'
@@ -6060,7 +6060,7 @@ def _page_script(
       if (!submitter || submitter.disabled) return;
       if (
         submitter.getAttribute('data-deploy-blocked') === 'true'
-        && submitter.name === 'action'
+        && submitter.name === 'afm_action'
         && submitter.value === 'push'
       ) {{
         event.preventDefault();
@@ -6076,7 +6076,7 @@ def _page_script(
       }});
       if (
         submitter.getAttribute('data-afm-ajax-preview') === 'true'
-        && submitter.name === 'action'
+        && submitter.name === 'afm_action'
         && submitter.value === 'chat_preview'
       ) {{
         event.preventDefault();
@@ -7210,7 +7210,12 @@ def _home_page():
             scroll_anchor = "designer"
 
     if request.method == "POST":
-        action = (request.form.get("action") or "").strip()
+        # Not named "action": HTMLFormElement has [OverrideBuiltins], so a form
+        # control literally named "action" shadows form.action, and some
+        # browsers then drop that control's value from native submission
+        # entirely (constructing-the-form-data-set silently omits it even
+        # though event.submitter correctly identifies the clicked button).
+        action = (request.form.get("afm_action") or "").strip()
         discover_id = (request.form.get("discover_deploy") or "").strip()
 
         if discover_id:
@@ -7596,7 +7601,7 @@ def _home_page():
                         raise
 
     if request.method == "POST":
-        post_action = (request.form.get("action") or "").strip()
+        post_action = (request.form.get("afm_action") or "").strip()
         reapply_filters = post_action in _FILTER_REAPPLY_ACTIONS
         if (not preview_tracks or reapply_filters) and post_action != "preview":
             restored, values = _try_restore_preview_state(

@@ -5,20 +5,20 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy \u2014 preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "3.0.8",
+      "min_core_version": "2.5.0",
+      "changelog": "Fix the real cause of silent deploy/preview failures: every action button was named 'action', which collides with HTMLFormElement's own reserved .action property (HTMLFormElement uses [OverrideBuiltins], so a control named 'action' shadows the form's built-in property). Some browsers then silently omit that control's name/value from native form submission entirely, even though event.submitter correctly identifies the clicked button. Renamed the dispatch field to afm_action everywhere (buttons, hidden inputs, JS checks, server-side reads).",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "a0f1022dcd08bf7a2c59777728c68d4a"
+    },
+    {
       "version": "3.0.7",
       "min_core_version": "2.5.0",
       "changelog": "Fix silent deploy/preview failure: implicit Enter-key form submission (from a typeahead pick or any text field) activated no button, so action= was omitted entirely and the server silently no-op'd with no error. Typeahead Enter handlers now always preventDefault, and a form-wide guard blocks implicit Enter-submission from plain text fields. Added a server-side fallback message for defense in depth.",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
       "checksum": "9135dfc0b8820c9a12611b7b20e759ab"
-    },
-    {
-      "version": "3.0.6",
-      "min_core_version": "2.5.0",
-      "changelog": "Persist post-deploy/preview flash messages in Postgres (keyed by channel slug) instead of Flask session, since AudioMuse's host app doesn't reliably issue session cookies for plugin routes.",
-      "imageUrl": "",
-      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": "b21281d483662353629a413e4960e7cb"
     }
   ]
 }

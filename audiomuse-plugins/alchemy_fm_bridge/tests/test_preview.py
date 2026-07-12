@@ -69,7 +69,7 @@ class TestPreviewRoute:
         resp = client.post(
             "/",
             data={
-                "action": "preview",
+                "afm_action": "preview",
                 "programming_type": "clap_query",
                 "clap_query": "late night rock",
                 "refresh_mode": "similar_to_last",
@@ -90,7 +90,7 @@ class TestPreviewRoute:
         resp = client.post(
             "/",
             data={
-                "action": "preview",
+                "afm_action": "preview",
                 "programming_type": "clap_query",
                 "clap_query": "jazz piano",
                 "refresh_mode": "similar_to_last",
@@ -103,7 +103,7 @@ class TestPreviewRoute:
         resp = client.post(
             "/",
             data={
-                "action": "preview",
+                "afm_action": "preview",
                 "programming_type": "mood_centroid",
                 "mood_name": "energetic",
                 "centroid_index": "",
@@ -119,7 +119,7 @@ class TestPreviewRoute:
         resp = client.post(
             "/",
             data={
-                "action": "preview",
+                "afm_action": "preview",
                 "name": "Pop Punk",
                 "slug": "pop-punk",
                 "programming_type": "alchemy_anchor",
@@ -142,7 +142,7 @@ class TestPreviewRoute:
         resp = client.post(
             "/",
             data={
-                "action": "preview",
+                "afm_action": "preview",
                 "programming_type": "alchemy_anchor",
                 "anchor_search": "No Such Anchor",
                 "refresh_mode": "similar_to_last",
@@ -168,7 +168,7 @@ class TestPreviewRoute:
         resp = client.post(
             "/",
             data={
-                "action": "preview",
+                "afm_action": "preview",
                 "programming_type": "mood_centroid",
                 "mood_name": "energetic",
                 "centroid_index": "",
