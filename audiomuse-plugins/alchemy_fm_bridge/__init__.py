@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.6"
+PLUGIN_VERSION = "3.0.7"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -5925,6 +5925,23 @@ def _page_script(
   const designerForm = document.getElementById('afm-designer-form');
   const afmShell = document.querySelector('.afm-shell');
 
+  if (designerForm) {{
+    // This form has many submit buttons (Preview, Deploy, Test Connection, etc.).
+    // Enter in a plain text field implicitly submits with no button "activated",
+    // so the browser omits any action=... field entirely and the server silently
+    // no-ops. Block implicit Enter-submission here; explicit button clicks are
+    // unaffected, and typeahead fields handle Enter themselves (pick a result).
+    designerForm.addEventListener('keydown', (event) => {{
+      if (event.key !== 'Enter') return;
+      const target = event.target;
+      if (!target || target.tagName !== 'INPUT') return;
+      const type = (target.getAttribute('type') || 'text').toLowerCase();
+      const textLikeTypes = ['text', 'search', 'email', 'url', 'tel', 'number', 'password'];
+      if (!textLikeTypes.includes(type)) return;
+      event.preventDefault();
+    }});
+  }}
+
   function showAfmActionLoading(submitter) {{
     const loadingId = submitter.getAttribute('data-afm-loading');
     const loading = loadingId ? document.getElementById(loadingId) : null;
@@ -6174,6 +6191,13 @@ def _page_script(
     }});
 
     input.addEventListener('keydown', (event) => {{
+      if (event.key === 'Enter') {{
+        event.preventDefault();
+        if (activeIndex >= 0 && currentArtists[activeIndex]) {{
+          appendArtist(currentArtists[activeIndex]);
+        }}
+        return;
+      }}
       const buttons = menu.querySelectorAll('.afm-artist-suggestion');
       if (!buttons.length) return;
       if (event.key === 'ArrowDown') {{
@@ -6182,11 +6206,6 @@ def _page_script(
       }} else if (event.key === 'ArrowUp') {{
         event.preventDefault();
         setActive(Math.max(activeIndex - 1, 0));
-      }} else if (event.key === 'Enter') {{
-        if (activeIndex >= 0 && currentArtists[activeIndex]) {{
-          event.preventDefault();
-          appendArtist(currentArtists[activeIndex]);
-        }}
       }} else if (event.key === 'Escape') {{
         closeMenu();
       }}
@@ -6371,6 +6390,13 @@ def _page_script(
     }});
 
     input.addEventListener('keydown', (event) => {{
+      if (event.key === 'Enter') {{
+        event.preventDefault();
+        if (activeIndex >= 0 && currentPlaylists[activeIndex]) {{
+          pickPlaylist(currentPlaylists[activeIndex]);
+        }}
+        return;
+      }}
       const buttons = results.querySelectorAll('.afm-bootstrap-pick');
       if (!buttons.length) return;
       if (event.key === 'ArrowDown') {{
@@ -6379,11 +6405,6 @@ def _page_script(
       }} else if (event.key === 'ArrowUp') {{
         event.preventDefault();
         setActive(Math.max(activeIndex - 1, 0));
-      }} else if (event.key === 'Enter') {{
-        if (activeIndex >= 0 && currentPlaylists[activeIndex]) {{
-          event.preventDefault();
-          pickPlaylist(currentPlaylists[activeIndex]);
-        }}
       }} else if (event.key === 'Escape') {{
         clearResults();
       }}
@@ -6541,6 +6562,13 @@ def _page_script(
     }});
 
     input.addEventListener('keydown', (event) => {{
+      if (event.key === 'Enter') {{
+        event.preventDefault();
+        if (activeIndex >= 0 && currentTracks[activeIndex]) {{
+          pickTrack(currentTracks[activeIndex]);
+        }}
+        return;
+      }}
       const buttons = results.querySelectorAll('.afm-seed-track-pick');
       if (!buttons.length) return;
       if (event.key === 'ArrowDown') {{
@@ -6549,11 +6577,6 @@ def _page_script(
       }} else if (event.key === 'ArrowUp') {{
         event.preventDefault();
         setActive(Math.max(activeIndex - 1, 0));
-      }} else if (event.key === 'Enter') {{
-        if (activeIndex >= 0 && currentTracks[activeIndex]) {{
-          event.preventDefault();
-          pickTrack(currentTracks[activeIndex]);
-        }}
       }} else if (event.key === 'Escape') {{
         clearResults();
       }}
@@ -6732,6 +6755,13 @@ def _page_script(
     }});
 
     input.addEventListener('keydown', (event) => {{
+      if (event.key === 'Enter') {{
+        event.preventDefault();
+        if (activeIndex >= 0 && currentAnchors[activeIndex]) {{
+          pickAnchor(currentAnchors[activeIndex]);
+        }}
+        return;
+      }}
       const buttons = results.querySelectorAll('.afm-seed-track-pick');
       if (!buttons.length) return;
       if (event.key === 'ArrowDown') {{
@@ -6740,9 +6770,6 @@ def _page_script(
       }} else if (event.key === 'ArrowUp') {{
         event.preventDefault();
         setActive(Math.max(activeIndex - 1, 0));
-      }} else if (event.key === 'Enter' && activeIndex >= 0 && currentAnchors[activeIndex]) {{
-        event.preventDefault();
-        pickAnchor(currentAnchors[activeIndex]);
       }} else if (event.key === 'Escape') {{
         clearResults();
       }}
@@ -6867,6 +6894,13 @@ def _page_script(
       }});
 
       input.addEventListener('keydown', (event) => {{
+        if (event.key === 'Enter') {{
+          event.preventDefault();
+          if (activeIndex >= 0 && currentTerms[activeIndex]) {{
+            appendTerm(currentTerms[activeIndex]);
+          }}
+          return;
+        }}
         const buttons = menu.querySelectorAll('.afm-artist-suggestion');
         if (!buttons.length) return;
         if (event.key === 'ArrowDown') {{
@@ -6875,9 +6909,6 @@ def _page_script(
         }} else if (event.key === 'ArrowUp') {{
           event.preventDefault();
           setActive(Math.max(activeIndex - 1, 0));
-        }} else if (event.key === 'Enter' && activeIndex >= 0 && currentTerms[activeIndex]) {{
-          event.preventDefault();
-          appendTerm(currentTerms[activeIndex]);
         }} else if (event.key === 'Escape') {{
           closeMenu();
         }}
@@ -7226,6 +7257,20 @@ def _home_page():
                 flashes.add(str(exc), "error", anchor="stations")
                 scroll_anchor = "stations"
         else:
+            if (
+                not action
+                and not (request.form.get("pick_bootstrap_playlist") or "").strip()
+                and not (request.form.get("pick_seed") or "").strip()
+            ):
+                # Implicit Enter-key submission from a plain text field activates no
+                # button, so the browser omits action=... entirely. Surface that
+                # clearly instead of silently re-rendering with nothing having happened.
+                flashes.add(
+                    "That didn't submit correctly — no action was recorded. If you "
+                    "pressed Enter in a text field, click a button (Preview, Deploy, "
+                    "etc.) instead.",
+                    "error",
+                )
             values.update({k: request.form.get(k, values.get(k, "")) for k in request.form})
             values["enabled"] = request.form.get("enabled") == "on"
             values["bootstrap_queue"] = request.form.get("bootstrap_queue") == "on"
