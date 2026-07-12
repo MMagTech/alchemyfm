@@ -614,12 +614,14 @@
         audio.dataset.pageStreamSrc = listenUrl;
         audio.dataset.pageSlug = s.slug;
 
-        audio.dataset.streamSrc = listenUrl;
+        if (!playingOther) {
+          audio.dataset.streamSrc = listenUrl;
 
-        if (onThisStation && audio.dataset.wantLive === '1') {
-          const srcMismatch = !streamUrlsMatch(audio.currentSrc || audio.src, listenUrl);
-          if (audio.error || (!audio.paused && srcMismatch)) {
-            audio.reconnectLiveStream?.();
+          if (onThisStation && audio.dataset.wantLive === '1') {
+            const srcMismatch = !streamUrlsMatch(audio.currentSrc || audio.src, listenUrl);
+            if (audio.error || (!audio.paused && srcMismatch)) {
+              audio.reconnectLiveStream?.();
+            }
           }
         }
 
