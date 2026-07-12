@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.11"
+PLUGIN_VERSION = "3.0.12"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -3131,10 +3131,7 @@ html:not(.dark-mode) .afm-shell .afm-filter-feedback {
 }
 .afm-edit-bar {
   display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: flex-start;
-  flex-wrap: wrap;
+  flex-direction: column;
   padding: 1rem 1.1rem;
   margin: 0 0 1rem;
   border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
@@ -3166,7 +3163,44 @@ html:not(.dark-mode) .afm-shell .afm-filter-feedback {
   align-items: center;
 }
 .afm-edit-slug { color: var(--muted, #94a3b8); font-size: 0.88rem; }
-.afm-edit-actions { display: flex; gap: 0.55rem; flex-wrap: wrap; align-items: center; }
+.afm-edit-topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.afm-edit-actions { display: flex; gap: 0.55rem; flex-wrap: wrap; align-items: center; flex-shrink: 0; }
+.afm-edit-group {
+  width: 100%;
+  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  padding-top: 0.75rem;
+  margin-top: 0.85rem;
+}
+.afm-edit-group-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted, #94a3b8);
+  margin: 0 0 0.5rem;
+}
+.afm-edit-group-row { display: flex; gap: 0.55rem; flex-wrap: wrap; align-items: center; }
+.afm-file-picker {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+}
+.afm-file-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  cursor: pointer;
+}
+.afm-file-picker-text { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .afm-panel {
   border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
   border-radius: 12px;
@@ -5289,11 +5323,14 @@ def _edit_toolbar_html(values: dict[str, Any], *, flash_html: str = "") -> str:
         )
     station_id = values.get("edit_station_id")
     id_note = f" · id {station_id}" if station_id else ""
-    op_buttons = ""
+    op_group = ""
+    artwork_group = ""
     if station_id:
         on_label = "Take Off Air" if values.get("edit_on_air") else "Put On Air"
-        op_buttons = (
-            f'<form method="post" style="margin:0;display:inline;">'
+        op_group = (
+            '<div class="afm-edit-group">'
+            '<p class="afm-edit-group-label">Station Operations</p>'
+            '<form method="post" class="afm-edit-group-row" style="margin:0;">'
             f'<input type="hidden" name="editing_slug" value="{html.escape(editing_slug)}">'
             f'<input type="hidden" name="op_station_id" value="{int(station_id)}">'
             '<button type="submit" name="afm_action" value="op_refresh_queue" formnovalidate '
@@ -5304,20 +5341,28 @@ def _edit_toolbar_html(values: dict[str, Any], *, flash_html: str = "") -> str:
             'class="afm-btn afm-btn-secondary">Rebuild M3U</button>'
             f'<button type="submit" name="afm_action" value="op_toggle_enabled" formnovalidate '
             f'class="afm-btn afm-btn-secondary">{html.escape(on_label)}</button>'
-            "</form>"
-            f'<form method="post" enctype="multipart/form-data" style="margin:0;display:inline;">'
+            "</form></div>"
+        )
+        artwork_group = (
+            '<div class="afm-edit-group">'
+            '<p class="afm-edit-group-label">Station Artwork</p>'
+            '<form method="post" enctype="multipart/form-data" class="afm-edit-group-row" style="margin:0;">'
             f'<input type="hidden" name="editing_slug" value="{html.escape(editing_slug)}">'
             f'<input type="hidden" name="op_station_id" value="{int(station_id)}">'
-            '<input type="file" name="artwork_file" accept="image/*" style="max-width:10rem;">'
+            '<label class="afm-btn afm-btn-secondary afm-file-picker">'
+            '<input type="file" name="artwork_file" accept="image/*" class="afm-file-input">'
+            '<span class="afm-file-picker-text">Choose Image</span>'
+            "</label>"
             '<button type="submit" name="afm_action" value="op_upload_artwork" formnovalidate '
             'class="afm-btn afm-btn-secondary">Upload Art</button>'
             '<button type="submit" name="afm_action" value="op_delete_artwork" formnovalidate '
             'class="afm-btn afm-btn-secondary">Remove Art</button>'
-            "</form>"
+            "</form></div>"
         )
     return (
         f'<div class="afm-edit-bar" id="designer">'
         f"{flash_html}"
+        '<div class="afm-edit-topbar">'
         "<div>"
         '<span class="afm-edit-eyebrow">Editing Station</span>'
         f'<h2 class="afm-edit-title">{html.escape(name)}</h2>'
@@ -5329,7 +5374,6 @@ def _edit_toolbar_html(values: dict[str, Any], *, flash_html: str = "") -> str:
         "</div>"
         "</div>"
         '<div class="afm-edit-actions">'
-        f"{op_buttons}"
         f'<a href="{html.escape(url_for("alchemy_fm_bridge.home"))}" class="afm-btn afm-btn-secondary">← All Stations</a>'
         '<button type="submit" form="afm-designer-form" name="afm_action" value="new_channel" formnovalidate '
         'class="afm-btn afm-btn-secondary">New Channel</button>'
@@ -5337,6 +5381,8 @@ def _edit_toolbar_html(values: dict[str, Any], *, flash_html: str = "") -> str:
         'class="afm-btn afm-btn-primary" data-afm-loading="afm-deploy-loading" '
         'data-afm-loading-panel="step-deploy" data-loading-label="Saving…">Save Changes</button>'
         "</div></div>"
+        f"{op_group}{artwork_group}"
+        "</div>"
     )
 
 
@@ -5800,6 +5846,16 @@ def _page_script(
     typeSelect.addEventListener('change', () => {{ syncType(); updateStep2Status(); }});
     syncType();
   }}
+  document.querySelectorAll('.afm-file-input').forEach((fileInput) => {{
+    const label = fileInput.closest('.afm-file-picker');
+    const textEl = label ? label.querySelector('.afm-file-picker-text') : null;
+    if (!textEl) return;
+    const defaultText = textEl.textContent;
+    fileInput.addEventListener('change', () => {{
+      const chosen = fileInput.files && fileInput.files[0];
+      textEl.textContent = chosen ? chosen.name : defaultText;
+    }});
+  }});
   ['clap_query', 'lyrics_query', 'seed_id'].forEach((fieldName) => {{
     const field = document.querySelector('input[name="' + fieldName + '"]');
     if (field) field.addEventListener('input', updateStep2Status);

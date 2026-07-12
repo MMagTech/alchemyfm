@@ -5,20 +5,20 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy \u2014 preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "3.0.12",
+      "min_core_version": "2.5.0",
+      "changelog": "Clean up the 'Editing Station' toolbar layout: split the single crowded row of eleven controls and a raw file input into three groups (identity + navigation/save at top, a labeled 'Station Operations' row, a labeled 'Station Artwork' row). Restyled the artwork file picker as a proper button with a live-updating chosen-filename label instead of the unstyled native file input that was truncating its own text.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "9eed7b2a8e1a56129a36a83575e8e402"
+    },
+    {
       "version": "3.0.11",
       "min_core_version": "2.5.0",
       "changelog": "Fix chat_preview AJAX regression: the 3.0.8 action->afm_action rename updated every button but missed runChatPreviewAjax()'s manually-constructed FormData, which still hardcoded the old field name (formData.set('action', 'chat_preview')). Chat Preview has been silently broken since 3.0.8. Fixed, and added regression tests since this path had zero prior coverage.",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
       "checksum": "d818580050385355aef9cc47e8e0d965"
-    },
-    {
-      "version": "3.0.10",
-      "min_core_version": "2.5.0",
-      "changelog": "Make the Step 2 'Current: ...' status and incompleteness warning update live as you interact with the form, instead of only refreshing on the next full page load. Switching programming type, picking a seed track or anchor, typing a CLAP/lyrics query, or choosing a mood/cluster now updates the status immediately client-side, mirroring the server's _programming_detail_from_values/_programming_incomplete logic.",
-      "imageUrl": "",
-      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": "163f3c098e9931ff4409d0d0bd63fbf4"
     }
   ]
 }
