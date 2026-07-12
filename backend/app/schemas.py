@@ -53,6 +53,7 @@ class StationSummary(BaseModel):
     description: str
     artwork_url: str
     enabled: bool
+    featured: bool = False
     now_playing: NowPlaying | None = None
     stream_url: str
     listeners: int = 0
@@ -103,6 +104,8 @@ class StationUpdate(BaseModel):
     artwork_url: str | None = None
     icecast_mount: str | None = None
     enabled: bool | None = None
+    featured: bool | None = None
+    featured_order: int | None = None
     source_type: SourceType | None = None
     source_ref: str | None = None
     queue_target: int | None = Field(default=None, ge=5, le=200)
@@ -116,6 +119,7 @@ class StationUpdate(BaseModel):
 
 class StationAdmin(StationDetail):
     id: int
+    featured_order: int = 0
     queue_target: int
     refresh_threshold: int
     artist_separation_minutes: int

@@ -31,3 +31,38 @@ def test_get_station_detail(client, sample_station):
     data = resp.json()
     assert data["slug"] == "test-jazz"
     assert data["source_type"] == "clap_query"
+
+
+def test_list_stations_sorts_featured_first(client, db_session):
+    from app.database import Station
+
+    db_session.add_all(
+        [
+            Station(
+                name="Alpha",
+                slug="alpha",
+                icecast_mount="/alpha",
+                enabled=True,
+                source_type="clap_query",
+                source_ref="alpha",
+            ),
+            Station(
+                name="Zeta",
+                slug="zeta",
+                icecast_mount="/zeta",
+                enabled=True,
+                source_type="clap_query",
+                source_ref="zeta",
+                featured=True,
+                featured_order=0,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    resp = client.get("/api/stations")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert [s["slug"] for s in data] == ["zeta", "alpha"]
+    assert data[0]["featured"] is True
+    assert data[1]["featured"] is False

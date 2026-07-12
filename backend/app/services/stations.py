@@ -57,6 +57,7 @@ def station_to_summary(
         description=_public_description(station.description),
         artwork_url=public_artwork_url(station, request),
         enabled=station.enabled,
+        featured=station.featured,
         now_playing=get_now_playing(
             db,
             station,
@@ -118,6 +119,7 @@ def station_to_admin(db: Session, station: Station, queued_count: int) -> Statio
     return StationAdmin(
         **detail.model_dump(),
         id=station.id,
+        featured_order=station.featured_order,
         queue_target=station.queue_target,
         refresh_threshold=station.refresh_threshold,
         artist_separation_minutes=station.artist_separation_minutes,
@@ -173,6 +175,22 @@ async def create_station_record(db: Session, payload: StationCreate) -> Station:
     return station
 
 
+# Featured cap scales with catalog size so it always fills whole rows of 3:
+# fewer than 6 enabled stations and the Featured section doesn't show at all
+# (gated client-side), 6-14 enabled stations allows one row (3), 15+ unlocks
+# a second row (6) and stays there regardless of how large the catalog gets.
+FEATURED_CAP_EXPANSION_THRESHOLD = 15
+FEATURED_CAP_BASE = 3
+FEATURED_CAP_EXPANDED = 6
+
+
+def _max_featured_stations(db: Session) -> int:
+    enabled_count = db.query(Station).filter(Station.enabled.is_(True)).count()
+    if enabled_count >= FEATURED_CAP_EXPANSION_THRESHOLD:
+        return FEATURED_CAP_EXPANDED
+    return FEATURED_CAP_BASE
+
+
 def update_station_record(db: Session, station: Station, payload: StationUpdate) -> Station:
     data = payload.model_dump(exclude_unset=True)
     if "icecast_mount" in data and data["icecast_mount"]:
@@ -183,6 +201,23 @@ def update_station_record(db: Session, station: Station, payload: StationUpdate)
         )
         if existing:
             raise ValueError(f"Icecast mount {data['icecast_mount']} is already in use")
+    if data.get("featured") and not station.featured:
+        featured_count = (
+            db.query(Station)
+            .filter(Station.featured.is_(True), Station.id != station.id)
+            .count()
+        )
+        max_featured = _max_featured_stations(db)
+        if featured_count >= max_featured:
+            raise ValueError(f"At most {max_featured} stations can be featured at once")
+        if "featured_order" not in data:
+            max_order = (
+                db.query(Station.featured_order)
+                .filter(Station.featured.is_(True))
+                .order_by(Station.featured_order.desc())
+                .first()
+            )
+            data["featured_order"] = (max_order[0] + 1) if max_order else 0
     for key, value in data.items():
         if key == "source_type" and value is not None:
             value = value.value if hasattr(value, "value") else value

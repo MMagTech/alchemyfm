@@ -194,6 +194,8 @@ const AlchemyHome = {
 
     const root = document.getElementById('stations');
     root?.addEventListener('click', (e) => this.onGridClick(e), { signal });
+    const featuredRoot = document.getElementById('stations-featured');
+    featuredRoot?.addEventListener('click', (e) => this.onGridClick(e), { signal });
 
     const audio = typeof GlobalLivePlayer !== 'undefined'
       ? GlobalLivePlayer.getAudio()
@@ -207,6 +209,7 @@ const AlchemyHome = {
 
   updateCard(s) {
     const card = this.ensureCard(s);
+    card.classList.toggle('is-featured', Boolean(s.featured));
     this._stationsBySlug.set(s.slug, s);
     const np = s.now_playing;
     const trackKey = RadioApp.trackKey(np);
@@ -244,23 +247,53 @@ const AlchemyHome = {
     return card;
   },
 
+  _minStationsForFeatured: 6,
+
   renderStations(stations) {
     const root = document.getElementById('stations');
     if (!root || !stations?.length) return false;
+
+    const featuredSection = document.getElementById('featured-section');
+    const featuredRoot = document.getElementById('stations-featured');
+    const allLabel = document.getElementById('all-stations-label');
+    const featured = stations.filter((s) => s.featured);
+    const showFeatured = stations.length >= this._minStationsForFeatured && featured.length > 0;
+    const rest = showFeatured ? stations.filter((s) => !s.featured) : stations;
+
+    if (featuredSection) featuredSection.hidden = !showFeatured;
+    if (allLabel) allLabel.hidden = !showFeatured;
+
     const seen = new Set();
     root.querySelector('.empty')?.remove();
+
+    if (showFeatured && featuredRoot) {
+      const featuredFrag = document.createDocumentFragment();
+      featured.forEach((s) => {
+        seen.add(s.slug);
+        featuredFrag.appendChild(this.updateCard(s));
+      });
+      featuredRoot.appendChild(featuredFrag);
+    } else if (featuredRoot) {
+      featuredRoot.innerHTML = '';
+    }
+
     const frag = document.createDocumentFragment();
-    stations.forEach((s) => {
+    rest.forEach((s) => {
       seen.add(s.slug);
       frag.appendChild(this.updateCard(s));
     });
-    root.querySelectorAll('[data-slug]').forEach((el) => {
-      if (!seen.has(el.dataset.slug)) {
-        this._stationsBySlug.delete(el.dataset.slug);
-        el.remove();
-      }
-    });
     root.appendChild(frag);
+
+    [root, featuredRoot].forEach((container) => {
+      if (!container) return;
+      container.querySelectorAll('[data-slug]').forEach((el) => {
+        if (!seen.has(el.dataset.slug)) {
+          this._stationsBySlug.delete(el.dataset.slug);
+          el.remove();
+        }
+      });
+    });
+
     this.syncAllCardPlayUi();
     return true;
   },

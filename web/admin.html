@@ -568,6 +568,8 @@
       }
     });
 
+    let adminStationsCache = [];
+
     async function loadAdminStations() {
       const body = document.getElementById('stations-body');
       try {
@@ -576,6 +578,8 @@
           body.innerHTML = '<tr><td colspan="5" class="admin-empty">No stations yet. Deploy a channel from AudioMuse (<strong>Plugins → Alchemy FM</strong>).</td></tr>';
           return;
         }
+        const enabledCount = stations.filter((s) => s.enabled).length;
+        const featuredCap = enabledCount >= 15 ? 6 : 3;
         body.innerHTML = stations.map((s) => {
           let healthClass = 'admin-pill-ok';
           let healthLabel = 'OK';
@@ -601,6 +605,11 @@
             `</span>`;
           const toggleClass = s.enabled ? 'btn-admin-disable' : 'btn-admin-enable';
           const toggleLabel = s.enabled ? 'Off' : 'On';
+          const starClass = s.featured ? 'admin-star-btn is-featured' : 'admin-star-btn';
+          const starTitle = s.featured ? 'Remove from Featured' : `Add to Featured (up to ${featuredCap})`;
+          const reorder = s.featured ? `
+                <button class="admin-reorder-btn" data-action="reorder-up" data-id="${s.id}" title="Move earlier in Featured">&#9650;</button>
+                <button class="admin-reorder-btn" data-action="reorder-down" data-id="${s.id}" title="Move later in Featured">&#9660;</button>` : '';
           return `
           <tr class="${s.enabled ? 'admin-row-live' : 'admin-row-off'}">
             <td class="admin-name-cell">
@@ -613,31 +622,85 @@
             <td class="admin-status-cell" data-label="Status"><span class="admin-pill-row">${onAir}${health}</span></td>
             <td class="actions" data-label="Actions">
               <div class="admin-actions admin-actions-ops">
+                <button class="${starClass}" data-action="feature" data-id="${s.id}" data-featured="${s.featured}" title="${starTitle}" aria-label="${starTitle}">&#9733;</button>
+                ${reorder}
                 <button class="btn btn-sm ${toggleClass}" data-action="toggle" data-id="${s.id}" data-enabled="${s.enabled}" title="${s.enabled ? 'Take station off air' : 'Put station on air'}">${toggleLabel}</button>
               </div>
             </td>
           </tr>`;
         }).join('');
+        adminStationsCache = stations;
       } catch (err) {
         body.innerHTML = `<tr><td colspan="5">${RadioApp.escape(err.message)}</td></tr>`;
       }
     }
 
     document.getElementById('stations-body').addEventListener('click', async (e) => {
-      const btn = e.target.closest('button[data-action="toggle"]');
-      if (!btn) return;
-      const id = btn.dataset.id;
-      try {
-        const enabled = btn.dataset.enabled !== 'true';
-        await adminFetchJSON(`/api/admin/stations/${id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ enabled }),
-        });
-        RadioApp.showAdminToast(enabled ? 'Station enabled.' : 'Station disabled.', 'success', 4000);
-        loadAdminStations();
-      } catch (err) {
-        RadioApp.showAdminToast(err.message, 'error');
+      const toggleBtn = e.target.closest('button[data-action="toggle"]');
+      if (toggleBtn) {
+        const id = toggleBtn.dataset.id;
+        try {
+          const enabled = toggleBtn.dataset.enabled !== 'true';
+          await adminFetchJSON(`/api/admin/stations/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled }),
+          });
+          RadioApp.showAdminToast(enabled ? 'Station enabled.' : 'Station disabled.', 'success', 4000);
+          loadAdminStations();
+        } catch (err) {
+          RadioApp.showAdminToast(err.message, 'error');
+        }
+        return;
+      }
+
+      const starBtn = e.target.closest('button[data-action="feature"]');
+      if (starBtn) {
+        const id = starBtn.dataset.id;
+        try {
+          const featured = starBtn.dataset.featured !== 'true';
+          await adminFetchJSON(`/api/admin/stations/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ featured }),
+          });
+          RadioApp.showAdminToast(featured ? 'Added to Featured.' : 'Removed from Featured.', 'success', 4000);
+          loadAdminStations();
+        } catch (err) {
+          RadioApp.showAdminToast(err.message, 'error');
+        }
+        return;
+      }
+
+      const reorderBtn = e.target.closest('button[data-action="reorder-up"], button[data-action="reorder-down"]');
+      if (reorderBtn) {
+        const id = Number(reorderBtn.dataset.id);
+        const direction = reorderBtn.dataset.action === 'reorder-up' ? -1 : 1;
+        const featuredOrdered = adminStationsCache
+          .filter((s) => s.featured)
+          .sort((a, b) => a.featured_order - b.featured_order);
+        const index = featuredOrdered.findIndex((s) => s.id === id);
+        const swapIndex = index + direction;
+        if (index === -1 || swapIndex < 0 || swapIndex >= featuredOrdered.length) return;
+        const current = featuredOrdered[index];
+        const swap = featuredOrdered[swapIndex];
+        try {
+          await Promise.all([
+            adminFetchJSON(`/api/admin/stations/${current.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ featured_order: swap.featured_order }),
+            }),
+            adminFetchJSON(`/api/admin/stations/${swap.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ featured_order: current.featured_order }),
+            }),
+          ]);
+          loadAdminStations();
+        } catch (err) {
+          RadioApp.showAdminToast(err.message, 'error');
+        }
       }
     });
 
