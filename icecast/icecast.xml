@@ -4,7 +4,7 @@
     <limits>
         <clients>25</clients>
         <sources>10</sources>
-        <queue-size>524288</queue-size>
+        <queue-size>1048576</queue-size>
         <burst-on-connect>1</burst-on-connect>
         <burst-size>65535</burst-size>
     </limits>

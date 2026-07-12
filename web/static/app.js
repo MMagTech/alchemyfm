@@ -361,6 +361,7 @@ const RadioApp = {
     let listenElapsedMs = 0;
     let listenStartedAt = null;
     let resumeDebounceTimer = null;
+    let userPaused = false;
     audio._liveSessionNotify = options.onSessionChange;
 
     const listenSeconds = () => {
@@ -473,6 +474,7 @@ const RadioApp = {
       }
 
       connectInFlight = true;
+      userPaused = false;
       audio._liveUi?.setConnectingUi?.(bustCache ? 'Reconnecting…' : 'Connecting…');
 
       if (prevSrc && (!sameStream || bustCache)) {
@@ -575,6 +577,7 @@ const RadioApp = {
 
     const softPause = () => {
       if (audio.paused) return;
+      userPaused = true;
       audio.pause();
       audio._liveUi?.setPlayingUi?.(false);
       audio._liveUi?.setStatusText?.('Paused');
@@ -641,6 +644,23 @@ const RadioApp = {
       if (audio.dataset.wantLive !== '1') {
         audio._liveUi?.setPlayingUi?.(false);
         audio._liveUi?.setStatusText?.('Paused');
+      } else if (!userPaused) {
+        // Unexpected pause while still wanted live — e.g. iOS suspending the
+        // audio session (route change, Siri, phone call) or a network drop.
+        // Resume from this event directly rather than waiting on the next
+        // visibilitychange/focus: iOS throttles setTimeout/setInterval hard
+        // once the page stops actively playing audio, so the stall-watch and
+        // reconnect timers below can silently stop firing in the background.
+        scheduleResumeIfWanted();
+      }
+    });
+
+    audio.addEventListener('ended', () => {
+      // A same-origin chunked stream can also end "cleanly" (no error event)
+      // when the underlying connection is dropped, e.g. a WiFi/cellular
+      // handoff on mobile. Treat it the same as a stall so we reconnect.
+      if (audio.dataset.wantLive === '1') {
+        markStreamOffline('Stream interrupted');
       }
     });
 
