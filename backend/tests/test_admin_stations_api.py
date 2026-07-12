@@ -143,6 +143,45 @@ def test_admin_feature_stations_stack_order(admin_client):
     assert orders == [0, 1, 2]
 
 
+def test_admin_new_stations_append_sort_order(admin_client, sample_station):
+    # sample_station is created by the fixture before these; new stations
+    # (including ones deployed by the AudioMuse plugin, which never sends
+    # sort_order) must append after it rather than colliding at 0.
+    orders = []
+    for i in range(2):
+        resp = admin_client.post(
+            "/api/admin/stations",
+            json=_station_payload(slug=f"sort-{i}", icecast_mount=f"/sort-{i}"),
+        )
+        assert resp.status_code == 201
+        orders.append(resp.json()["sort_order"])
+    assert orders[0] < orders[1]
+
+
+def test_admin_reorder_updates_sort_order(admin_client, sample_station):
+    resp = admin_client.post(
+        "/api/admin/stations",
+        json=_station_payload(slug="sort-other", icecast_mount="/sort-other"),
+    )
+    other_id = resp.json()["id"]
+    other_order = resp.json()["sort_order"]
+    sample_order = sample_station.sort_order
+
+    resp = admin_client.put(
+        f"/api/admin/stations/{sample_station.id}",
+        json={"sort_order": other_order},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["sort_order"] == other_order
+
+    resp = admin_client.put(
+        f"/api/admin/stations/{other_id}",
+        json={"sort_order": sample_order},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["sort_order"] == sample_order
+
+
 def test_admin_feature_station_rejects_fourth(admin_client):
     ids = []
     for i in range(4):

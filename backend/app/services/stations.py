@@ -1,5 +1,6 @@
 from fastapi import Request
 from slugify import slugify
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -120,6 +121,7 @@ def station_to_admin(db: Session, station: Station, queued_count: int) -> Statio
         **detail.model_dump(),
         id=station.id,
         featured_order=station.featured_order,
+        sort_order=station.sort_order,
         queue_target=station.queue_target,
         refresh_threshold=station.refresh_threshold,
         artist_separation_minutes=station.artist_separation_minutes,
@@ -144,6 +146,11 @@ async def create_station_record(db: Session, payload: StationCreate) -> Station:
     if db.query(Station).filter(Station.icecast_mount == mount).first():
         raise ValueError(f"Icecast mount {mount} is already in use")
 
+    # New stations (including those deployed by the AudioMuse plugin, which never
+    # sends sort_order) always append to the end of the admin-defined order.
+    max_sort_order = db.query(func.max(Station.sort_order)).scalar()
+    next_sort_order = (max_sort_order + 1) if max_sort_order is not None else 0
+
     station = Station(
         name=payload.name,
         slug=slug,
@@ -151,6 +158,7 @@ async def create_station_record(db: Session, payload: StationCreate) -> Station:
         artwork_url=payload.artwork_url,
         icecast_mount=mount,
         enabled=payload.enabled,
+        sort_order=next_sort_order,
         source_type=payload.source_type.value,
         source_ref=payload.source_ref,
         queue_target=payload.queue_target,

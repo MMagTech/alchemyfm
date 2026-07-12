@@ -19,7 +19,16 @@ router = APIRouter(
 
 @router.get("", response_model=list[StationAdmin])
 def admin_list_stations(db: Session = Depends(get_db)):
-    stations = db.query(Station).order_by(Station.name.asc()).all()
+    stations = (
+        db.query(Station)
+        .order_by(
+            Station.featured.desc(),
+            Station.featured_order.asc(),
+            Station.sort_order.asc(),
+            Station.name.asc(),
+        )
+        .all()
+    )
     result: list[StationAdmin] = []
     for station in stations:
         queued = (

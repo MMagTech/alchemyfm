@@ -106,6 +106,7 @@ class StationUpdate(BaseModel):
     enabled: bool | None = None
     featured: bool | None = None
     featured_order: int | None = None
+    sort_order: int | None = None
     source_type: SourceType | None = None
     source_ref: str | None = None
     queue_target: int | None = Field(default=None, ge=5, le=200)
@@ -120,6 +121,7 @@ class StationUpdate(BaseModel):
 class StationAdmin(StationDetail):
     id: int
     featured_order: int = 0
+    sort_order: int = 0
     queue_target: int
     refresh_threshold: int
     artist_separation_minutes: int

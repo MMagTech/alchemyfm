@@ -70,7 +70,12 @@ async def list_stations(
     stations = (
         db.query(Station)
         .filter(Station.enabled.is_(True))
-        .order_by(Station.featured.desc(), Station.featured_order.asc(), Station.name.asc())
+        .order_by(
+            Station.featured.desc(),
+            Station.featured_order.asc(),
+            Station.sort_order.asc(),
+            Station.name.asc(),
+        )
         .all()
     )
     mount_stats = fetch_all_mount_stats()

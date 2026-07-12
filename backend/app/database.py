@@ -60,6 +60,7 @@ class Station(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     featured: Mapped[bool] = mapped_column(Boolean, default=False)
     featured_order: Mapped[int] = mapped_column(Integer, default=0)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     source_type: Mapped[str] = mapped_column(String(32), nullable=False)
     source_ref: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -188,6 +189,7 @@ def _migrate_db() -> None:
             ("programming_json", "TEXT NOT NULL DEFAULT ''"),
             ("featured", "BOOLEAN NOT NULL DEFAULT 0"),
             ("featured_order", "INTEGER NOT NULL DEFAULT 0"),
+            ("sort_order", "INTEGER NOT NULL DEFAULT 0"),
         ):
             if col not in cols:
                 conn.execute(text(f"ALTER TABLE stations ADD COLUMN {col} {ddl}"))

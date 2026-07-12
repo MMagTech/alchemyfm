@@ -607,9 +607,10 @@
           const toggleLabel = s.enabled ? 'Off' : 'On';
           const starClass = s.featured ? 'admin-star-btn is-featured' : 'admin-star-btn';
           const starTitle = s.featured ? 'Remove from Featured' : `Add to Featured (up to ${featuredCap})`;
-          const reorder = s.featured ? `
-                <button class="admin-reorder-btn" data-action="reorder-up" data-id="${s.id}" title="Move earlier in Featured">&#9650;</button>
-                <button class="admin-reorder-btn" data-action="reorder-down" data-id="${s.id}" title="Move later in Featured">&#9660;</button>` : '';
+          const reorderGroup = s.featured ? 'Featured' : 'All Stations';
+          const reorder = `
+                <button class="admin-reorder-btn" data-action="reorder-up" data-id="${s.id}" title="Move earlier in ${reorderGroup}">&#9650;</button>
+                <button class="admin-reorder-btn" data-action="reorder-down" data-id="${s.id}" title="Move later in ${reorderGroup}">&#9660;</button>`;
           return `
           <tr class="${s.enabled ? 'admin-row-live' : 'admin-row-off'}">
             <td class="admin-name-cell">
@@ -676,25 +677,32 @@
       if (reorderBtn) {
         const id = Number(reorderBtn.dataset.id);
         const direction = reorderBtn.dataset.action === 'reorder-up' ? -1 : 1;
-        const featuredOrdered = adminStationsCache
-          .filter((s) => s.featured)
-          .sort((a, b) => a.featured_order - b.featured_order);
-        const index = featuredOrdered.findIndex((s) => s.id === id);
+        const station = adminStationsCache.find((s) => s.id === id);
+        if (!station) return;
+        // Featured stations reorder among themselves (featured_order); everyone
+        // else reorders within the non-featured group (sort_order). These are
+        // independent lists, same as how they're grouped in the admin table
+        // and on the home page.
+        const orderField = station.featured ? 'featured_order' : 'sort_order';
+        const group = adminStationsCache
+          .filter((s) => Boolean(s.featured) === Boolean(station.featured))
+          .sort((a, b) => a[orderField] - b[orderField]);
+        const index = group.findIndex((s) => s.id === id);
         const swapIndex = index + direction;
-        if (index === -1 || swapIndex < 0 || swapIndex >= featuredOrdered.length) return;
-        const current = featuredOrdered[index];
-        const swap = featuredOrdered[swapIndex];
+        if (index === -1 || swapIndex < 0 || swapIndex >= group.length) return;
+        const current = group[index];
+        const swap = group[swapIndex];
         try {
           await Promise.all([
             adminFetchJSON(`/api/admin/stations/${current.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ featured_order: swap.featured_order }),
+              body: JSON.stringify({ [orderField]: swap[orderField] }),
             }),
             adminFetchJSON(`/api/admin/stations/${swap.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ featured_order: current.featured_order }),
+              body: JSON.stringify({ [orderField]: current[orderField] }),
             }),
           ]);
           loadAdminStations();
