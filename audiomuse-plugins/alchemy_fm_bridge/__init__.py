@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.12"
+PLUGIN_VERSION = "3.0.13"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -5114,6 +5114,16 @@ def _station_identity_fields_html(values: dict[str, Any]) -> str:
         + _field_label("Icecast Mount")
         + f"<input name='icecast_mount' placeholder='/channel-slug' value='{html.escape(str(values.get('icecast_mount', '')))}'>"
         + "<p class='hint'>Listen URL path, e.g. /yachtrock</p>"
+        + "</div>"
+        + "<div class='afm-field'>"
+        + _field_label("Station Artwork")
+        + "<div class='afm-edit-group-row'>"
+        + "<label class='afm-btn afm-btn-secondary afm-file-picker'>"
+        + "<input type='file' name='artwork_file' accept='image/*' class='afm-file-input'>"
+        + "<span class='afm-file-picker-text'>Choose Image</span>"
+        + "</label></div>"
+        + "<p class='hint'>Optional. Uploaded automatically the moment Deploy creates or updates the station "
+        + "— skip this if you'd rather add art later from the station's own toolbar.</p>"
         + "</div></section>"
     )
 
@@ -7681,6 +7691,23 @@ def _home_page():
                             station=station,
                             action=push_action,
                         )
+                        artwork_upload = request.files.get("artwork_file")
+                        if artwork_upload and artwork_upload.filename:
+                            artwork_data = artwork_upload.read()
+                            if artwork_data and station.get("id"):
+                                try:
+                                    client.upload_artwork(
+                                        int(station["id"]),
+                                        artwork_upload.filename,
+                                        artwork_data,
+                                        artwork_upload.mimetype or "image/jpeg",
+                                    )
+                                except ChannelDesignerError as exc:
+                                    flashes.add(
+                                        f"Station saved, but artwork upload failed: {exc}",
+                                        "warn",
+                                        anchor="step-deploy",
+                                    )
                         if deploy_warning:
                             flashes.add(deploy_warning, "warn", anchor="step-deploy")
                         queued_note = (
@@ -7862,7 +7889,7 @@ def _home_page():
     designer_form = (
         f"{designer_section_open}"
         f"<form method='post' id='afm-designer-form' class='afm-designer-form' "
-        f"data-chat-preview-url='{chat_preview_url}'>"
+        f"enctype='multipart/form-data' data-chat-preview-url='{chat_preview_url}'>"
         f"{_designer_flow_overview_html(flash_html=flashes.html_for('designer'))}"
         f"{_chat_designer_fields_html(values, flash_html=flashes.html_for('chat-designer'))}"
         f"{_discover_channels_html(flash_html=flashes.html_for('discover'))}"

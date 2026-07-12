@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 from typing import Any
 from unittest.mock import patch
 
@@ -200,3 +201,60 @@ class TestDeployRoute:
         assert "created on Alchemy FM" in body
         assert "play queue could not be filled" in body
         assert "Deploy failed — fix this before trying again" not in body
+
+    def test_push_deploy_uploads_staged_artwork_on_create(self, client, audiomuse_mocks, pg_db):
+        """Step 1's artwork picker should upload automatically once the
+        station id from a successful create is known -- there's no station
+        to attach artwork to before that point."""
+        mock_client = patch.object(bridge, "_client")
+        with mock_client as client_factory:
+            alchemy = client_factory.return_value
+            alchemy.push_station.return_value = (
+                {"id": 42, "name": "Deploy Route FM", "slug": "deploy-route-fm", "queued_count": 5},
+                "created",
+                None,
+            )
+            data = _push_form()
+            data["artwork_file"] = (io.BytesIO(b"fake-png-bytes"), "cover.png")
+            resp = client.post("/", data=data, content_type="multipart/form-data")
+
+        assert resp.status_code == 302
+        alchemy.upload_artwork.assert_called_once()
+        call_args = alchemy.upload_artwork.call_args[0]
+        assert call_args[0] == 42
+        assert call_args[1] == "cover.png"
+        assert call_args[2] == b"fake-png-bytes"
+
+    def test_push_deploy_without_artwork_does_not_call_upload(self, client, audiomuse_mocks, pg_db):
+        mock_client = patch.object(bridge, "_client")
+        with mock_client as client_factory:
+            alchemy = client_factory.return_value
+            alchemy.push_station.return_value = (
+                {"id": 43, "name": "Deploy Route FM", "slug": "deploy-route-fm", "queued_count": 5},
+                "created",
+                None,
+            )
+            resp = client.post("/", data=_push_form())
+
+        assert resp.status_code == 302
+        alchemy.upload_artwork.assert_not_called()
+
+    def test_push_deploy_artwork_failure_is_a_warning_not_a_blocker(self, client, audiomuse_mocks, pg_db):
+        """A broken artwork upload must not undo an otherwise-successful deploy."""
+        mock_client = patch.object(bridge, "_client")
+        with mock_client as client_factory:
+            alchemy = client_factory.return_value
+            alchemy.push_station.return_value = (
+                {"id": 44, "name": "Deploy Route FM", "slug": "deploy-route-fm", "queued_count": 5},
+                "created",
+                None,
+            )
+            alchemy.upload_artwork.side_effect = bridge.ChannelDesignerError("Alchemy FM returned HTTP 413")
+            data = _push_form()
+            data["artwork_file"] = (io.BytesIO(b"fake-png-bytes"), "cover.png")
+            resp = client.post("/", data=data, content_type="multipart/form-data", follow_redirects=True)
+
+        assert resp.status_code == 200
+        body = resp.get_data(as_text=True)
+        assert "created on Alchemy FM" in body
+        assert "artwork upload failed" in body.lower()
