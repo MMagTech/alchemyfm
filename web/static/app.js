@@ -247,17 +247,17 @@ const RadioApp = {
       if (skip.onNext || skip.onPrevious) {
         setHandler('nexttrack', skip.onNext ? () => skip.onNext() : null);
         setHandler('previoustrack', skip.onPrevious ? () => skip.onPrevious() : null);
-        // iOS/CarPlay show skip-10s buttons for live streams; map them to station change.
-        setHandler('seekforward', skip.onNext ? () => skip.onNext() : null);
-        setHandler('seekbackward', skip.onPrevious ? () => skip.onPrevious() : null);
-        setHandler('seekto', null);
       } else {
         setHandler('previoustrack', null);
         setHandler('nexttrack', null);
-        setHandler('seekforward', null);
-        setHandler('seekbackward', null);
-        setHandler('seekto', null);
       }
+      // Registering seekforward/seekbackward at all is what makes iOS/CarPlay
+      // show the +/-10s scrub buttons instead of prev/next skip icons for this
+      // live stream — leave them unset so only nexttrack/previoustrack exist
+      // and CarPlay/steering-wheel controls render as permanent skip icons.
+      setHandler('seekforward', null);
+      setHandler('seekbackward', null);
+      setHandler('seekto', null);
     };
 
     wireHandlers();

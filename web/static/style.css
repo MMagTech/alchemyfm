@@ -2407,6 +2407,13 @@ body.live-station-page .live-mini-player {
   padding: 0.55rem 1rem calc(0.55rem + env(safe-area-inset-bottom, 0px));
   background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
   border-top: 1px solid var(--border-subtle);
+  /* iOS Safari can detach a `position: fixed` element that also uses
+     backdrop-filter during momentum scroll, letting it drift with the
+     page instead of staying pinned to the viewport, until the scroll
+     settles. Forcing its own compositing layer keeps it anchored. */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: transform;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.22);
@@ -2875,9 +2882,9 @@ body.live-station-page .live-mini-player {
 
 .admin-page-header {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1.5rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
   margin-bottom: 1.65rem;
 }
 
@@ -2891,23 +2898,9 @@ body.live-station-page .live-mini-player {
 
 .admin-page-header .admin-lede {
   margin: 0;
-  flex: 1 1 14rem;
-  max-width: 28rem;
-  text-align: right;
+  max-width: 40rem;
+  text-align: left;
   font-size: 0.9rem;
-}
-
-@media (max-width: 599px) {
-  .admin-page-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.4rem;
-  }
-
-  .admin-page-header .admin-lede {
-    text-align: left;
-    max-width: none;
-  }
 }
 
 .admin-panel {

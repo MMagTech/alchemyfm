@@ -44,7 +44,7 @@
   <main class="admin-main">
     <header class="admin-page-header">
       <h2>Admin</h2>
-      <p class="admin-lede">Manage on-air stations, appearance, and global broadcast settings.</p>
+      <p class="admin-lede">Control on-air status, Featured order, appearance, and global broadcast settings.</p>
     </header>
 
     <section class="admin-panel admin-panel-compact" id="appearance-section">
@@ -105,7 +105,7 @@
                 <label for="encode_format">Format</label>
                 <select id="encode_format" name="encode_format" required>
                   <option value="mp3" selected>MP3</option>
-                  <option value="vorbis">Ogg Vorbis</option>
+                  <option value="aac">AAC</option>
                 </select>
               </div>
               <div id="mp3-bitrate-field">
@@ -119,9 +119,9 @@
                   <option value="320">320 kbps</option>
                 </select>
               </div>
-              <div id="vorbis-bitrate-field" hidden>
-                <label for="vorbis_bitrate">Vorbis Bitrate</label>
-                <select id="vorbis_bitrate" name="vorbis_bitrate">
+              <div id="aac-bitrate-field" hidden>
+                <label for="aac_bitrate">AAC Bitrate</label>
+                <select id="aac_bitrate" name="aac_bitrate">
                   <option value="96">96 kbps</option>
                   <option value="128" selected>128 kbps</option>
                   <option value="160">160 kbps</option>
@@ -157,24 +157,23 @@
     </section>
 
     <section class="admin-panel admin-panel-primary" id="stations-section">
-      <div class="admin-designer-callout" id="channel-designer-callout">
-        <h3 class="admin-group-title">Design Channels in AudioMuse</h3>
-        <p class="admin-designer-callout-body">
-          For sonic vibe search (CLAP), lyrics themes, mood clusters, preview with tempo and energy,
-          and living channels that evolve with your library — use the
-          <a href="https://github.com/MMagTech/alchemyfm/tree/master/audiomuse-plugins/alchemy_fm_bridge" target="_blank" rel="noopener noreferrer"><strong>Alchemy FM Channel Designer</strong></a> plugin in AudioMuse
-          (<strong>Plugins → Alchemy FM</strong>).
-        </p>
-        <p class="admin-designer-callout-body">
-          The table below lists deployed stations. Use <strong>Off</strong> / <strong>On</strong> for
-          broadcast control. Create and edit channels in the plugin.
-        </p>
-      </div>
       <div class="admin-panel-head">
         <div>
           <h2>Stations</h2>
           <p class="admin-lede">On-air channels. Queues refill automatically in the background.</p>
         </div>
+      </div>
+      <div class="admin-designer-callout" id="channel-designer-callout">
+        <h3 class="admin-group-title">Design Channels in AudioMuse</h3>
+        <p class="admin-designer-callout-body">
+          Every station is created and edited in AudioMuse's
+          <a href="https://github.com/MMagTech/alchemyfm/tree/master/audiomuse-plugins/alchemy_fm_bridge" target="_blank" rel="noopener noreferrer"><strong>Alchemy FM Channel Designer</strong></a> plugin
+          (<strong>Plugins → Alchemy FM</strong>) — sonic vibe search (CLAP), lyrics themes, mood clusters,
+          tempo/energy previews, and living channels that evolve with your library.
+        </p>
+        <p class="admin-designer-callout-body">
+          The table below lists deployed stations. Use <strong>Off</strong> / <strong>On</strong> here for broadcast control.
+        </p>
       </div>
       <div class="admin-table-wrap">
         <table class="admin-table admin-table-ops">
@@ -405,7 +404,7 @@
     function updateEncodeFormatUi() {
       const fmt = document.getElementById('encode_format').value;
       document.getElementById('mp3-bitrate-field').hidden = fmt !== 'mp3';
-      document.getElementById('vorbis-bitrate-field').hidden = fmt !== 'vorbis';
+      document.getElementById('aac-bitrate-field').hidden = fmt !== 'aac';
     }
 
     async function loadBroadcastSettings() {
@@ -414,7 +413,7 @@
         document.getElementById('max_listeners').value = s.max_listeners;
         document.getElementById('encode_format').value = s.encode_format || 'mp3';
         document.getElementById('mp3_bitrate').value = String(s.mp3_bitrate);
-        document.getElementById('vorbis_bitrate').value = String(s.vorbis_bitrate || 128);
+        document.getElementById('aac_bitrate').value = String(s.aac_bitrate || 128);
         document.getElementById('sample_rate').value = String(s.sample_rate);
         document.getElementById('genre').value = s.genre || 'Radio';
         document.getElementById('crossfade_sec').value = s.crossfade_sec;
@@ -551,7 +550,7 @@
         max_listeners: Number(fd.get('max_listeners')),
         encode_format: fd.get('encode_format'),
         mp3_bitrate: Number(fd.get('mp3_bitrate')),
-        vorbis_bitrate: Number(fd.get('vorbis_bitrate')),
+        aac_bitrate: Number(fd.get('aac_bitrate')),
         sample_rate: Number(fd.get('sample_rate')),
         genre: fd.get('genre') || 'Radio',
         crossfade_sec: Number(fd.get('crossfade_sec')),
