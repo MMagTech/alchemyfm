@@ -8,6 +8,24 @@ const LiveTuningFx = {
   MIN_MS: 120,
   MAX_MS: 800,
   _cachedEnabled: null,
+  _pendingRestore: null,
+  _visibilityRestoreArmed: false,
+
+  // The mobile switch effect ducks the live audio element's volume and
+  // restores it on the 'playing' event or an 800ms fallback timer — both of
+  // which iOS can throttle while the page is backgrounded/locked. If a duck
+  // is still pending when the page comes back to the foreground, force the
+  // restore immediately instead of leaving playback stuck at ~18% volume.
+  _armVisibilityRestore() {
+    if (this._visibilityRestoreArmed) return;
+    this._visibilityRestoreArmed = true;
+    const restoreIfPending = () => this._pendingRestore?.();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') restoreIfPending();
+    });
+    window.addEventListener('pageshow', restoreIfPending);
+    window.addEventListener('focus', restoreIfPending);
+  },
 
   isEnabled() {
     if (this._cachedEnabled === null) {
@@ -155,6 +173,7 @@ const LiveTuningFx = {
   },
 
   startMobileSwitchFx(audio) {
+    this._armVisibilityRestore();
     const started = Date.now();
     const prevVol = audio.volume;
     let settled = false;
@@ -168,6 +187,7 @@ const LiveTuningFx = {
         audio.removeEventListener('playing', onPlaying);
         clearTimeout(maxTimer);
         audio.volume = prevVol;
+        if (this._pendingRestore === finish) this._pendingRestore = null;
         resolve();
       };
 
@@ -179,6 +199,8 @@ const LiveTuningFx = {
           setTimeout(finish, this.MIN_MS - elapsed);
         }
       };
+
+      this._pendingRestore = finish;
 
       try {
         void this.playMobileStaticBurst().catch(() => {});
