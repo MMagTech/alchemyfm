@@ -121,7 +121,7 @@ def require_admin(
     )
 
 
-def _client_ip(request: Request) -> str | None:
+def client_ip(request: Request) -> str | None:
     if settings.trust_proxy_headers:
         forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
         if forwarded:
@@ -138,7 +138,7 @@ def require_internal_client(request: Request) -> None:
     """Block /internal from the public internet when enabled (defense in depth)."""
     if not settings.restrict_internal_routes:
         return
-    raw = _client_ip(request)
+    raw = client_ip(request)
     if not raw:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     try:

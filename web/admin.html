@@ -149,6 +149,13 @@
             <input id="crossfade_sec" name="crossfade_sec" type="number" min="0" max="8" value="0">
             <p class="hint">0 = hard cut. 2–4s is typical for music radio.</p>
           </div>
+          <div class="admin-broadcast-group">
+            <h3 class="admin-group-title">Backups</h3>
+            <label for="backup_keep_count">Keep last</label>
+            <input id="backup_keep_count" name="backup_keep_count" type="number" min="1" max="100" value="7">
+            <p class="hint">Automatic daily snapshot of radio.db, knowledge.db (if enabled), and icecast.xml. Older backups beyond this count are deleted.</p>
+            <button class="btn btn-sm" type="button" id="download-backup-btn">Download Backup Now</button>
+          </div>
         </div>
         <div class="form-actions">
           <button class="btn" type="submit">Save Broadcast Settings</button>
@@ -417,6 +424,7 @@
         document.getElementById('sample_rate').value = String(s.sample_rate);
         document.getElementById('genre').value = s.genre || 'Radio';
         document.getElementById('crossfade_sec').value = s.crossfade_sec;
+        document.getElementById('backup_keep_count').value = s.backup_keep_count || 7;
         updateEncodeFormatUi();
         syncIcecastRestartUi(s.icecast_restart_available);
       } catch (err) {
@@ -554,6 +562,7 @@
         sample_rate: Number(fd.get('sample_rate')),
         genre: fd.get('genre') || 'Radio',
         crossfade_sec: Number(fd.get('crossfade_sec')),
+        backup_keep_count: Number(fd.get('backup_keep_count')),
       };
       try {
         await adminFetchJSON('/api/admin/broadcast', {
@@ -564,6 +573,41 @@
         RadioApp.showAdminToast('Broadcast settings saved.', 'success', 5000);
       } catch (err) {
         RadioApp.showAdminToast(err.message, 'error');
+      }
+    });
+
+    document.getElementById('download-backup-btn').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      const prevLabel = btn.textContent;
+      btn.textContent = 'Creating backup…';
+      try {
+        const resp = await fetch('/api/admin/broadcast/backup/download', {
+          method: 'POST',
+          credentials: 'same-origin',
+        });
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => ({}));
+          throw new Error(body.detail || `Backup failed (${resp.status})`);
+        }
+        const blob = await resp.blob();
+        const disposition = resp.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename="?([^";]+)"?/);
+        const filename = match ? match[1] : 'alchemyfm-backup.zip';
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        RadioApp.showAdminToast('Backup downloaded.', 'success', 4000);
+      } catch (err) {
+        RadioApp.showAdminToast(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = prevLabel;
       }
     });
 

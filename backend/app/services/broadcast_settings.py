@@ -12,6 +12,7 @@ DEFAULTS = {
     "max_listeners": 100,
     "default_theme": "violet",
     "artist_bio_enabled": True,
+    "backup_keep_count": 7,
 }
 
 

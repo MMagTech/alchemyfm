@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.auth import require_admin
@@ -10,6 +11,7 @@ from app.schemas import (
     BroadcastSettingsUpdate,
     IcecastRestartResponse,
 )
+from app.services.backup import create_backup, prune_old_backups
 from app.services.broadcast_settings import (
     apply_broadcast_settings,
     get_broadcast_settings,
@@ -82,3 +84,16 @@ def restart_icecast():
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return IcecastRestartResponse(ok=True, container=container_name)
+
+
+@router.post("/backup/download")
+def download_backup(db: Session = Depends(get_db)):
+    """Create a fresh backup (radio.db + knowledge.db + icecast.xml) and
+    return it immediately, so what you download is always current."""
+    try:
+        path = create_backup()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    row = get_broadcast_settings(db)
+    prune_old_backups(row.backup_keep_count)
+    return FileResponse(path, filename=path.name, media_type="application/zip")

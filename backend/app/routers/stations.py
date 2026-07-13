@@ -6,6 +6,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.auth import admin_user_from_request
+from app.rate_limit import limiter
 from app.services.broadcast_settings import get_broadcast_settings
 from app.services.icecast_config import stream_media_type
 from app.config import settings
@@ -100,6 +101,7 @@ async def list_stations(
 
 
 @router.get("/{slug}/listen.m3u")
+@limiter.limit("10/minute")
 def listen_m3u(slug: str, request: Request, db: Session = Depends(get_db)):
     """M3U playlist for external players."""
     station = db.query(Station).filter(Station.slug == slug, Station.enabled.is_(True)).first()
@@ -128,6 +130,7 @@ async def listen_stream_head(slug: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{slug}/listen")
+@limiter.limit("20/minute")
 async def listen_stream(slug: str, request: Request, db: Session = Depends(get_db)):
     """Same-origin stream for in-browser playback + visualizer.
 

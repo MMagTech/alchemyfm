@@ -59,6 +59,16 @@ def _clean_tables() -> Generator[None, None, None]:
     yield
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter() -> Generator[None, None, None]:
+    """Every test's requests share one TestClient IP, so without a reset the
+    admin-login/stream rate limits would accumulate across unrelated tests."""
+    from app.rate_limit import limiter
+
+    limiter.reset()
+    yield
+
+
 @pytest.fixture
 def db_session() -> Generator[Session, None, None]:
     session = SessionLocal()

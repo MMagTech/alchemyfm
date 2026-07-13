@@ -11,6 +11,7 @@ from app.auth import (
     set_session_cookie,
     validate_admin_credentials,
 )
+from app.rate_limit import limiter
 from app.services.deploy_check import check_deploy_dependencies
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -27,7 +28,8 @@ class LoginResponse(BaseModel):
 
 
 @router.post("/login", response_model=LoginResponse)
-def admin_login(payload: LoginRequest, response: Response):
+@limiter.limit("5/15minute")
+def admin_login(request: Request, payload: LoginRequest, response: Response):
     if not admin_auth_enabled():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

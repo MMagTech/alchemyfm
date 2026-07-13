@@ -50,6 +50,11 @@ class QueueItemStatus(str, enum.Enum):
 
 class Station(Base):
     __tablename__ = "stations"
+    # Never reuse a deleted station's id (SQLite ROWID reuse otherwise) -- the
+    # AudioMuse plugin caches this id per channel, so a reused id after a
+    # delete or a database restore can silently point cached plugin state at
+    # the wrong station.
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -154,6 +159,7 @@ class BroadcastSettings(Base):
     default_theme: Mapped[str] = mapped_column(String(32), default="violet")
     artist_bio_enabled: Mapped[bool] = mapped_column(default=True)
     default_navidrome_playlist_id: Mapped[str] = mapped_column(String(100), default="")
+    backup_keep_count: Mapped[int] = mapped_column(Integer, default=7)
 
 
 connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
@@ -211,6 +217,40 @@ def _migrate_db() -> None:
                     {"idx": idx, "id": station_id},
                 )
             conn.commit()
+        # Retrofit AUTOINCREMENT onto an existing stations table (SQLite can't
+        # ALTER this in place, so rebuild the table once). See the comment on
+        # Station.__table_args__ for why this matters.
+        create_sql = conn.execute(
+            text("SELECT sql FROM sqlite_master WHERE type='table' AND name='stations'")
+        ).scalar()
+        if create_sql and "AUTOINCREMENT" not in create_sql.upper():
+            conn.execute(text("DROP TABLE IF EXISTS stations_autoincrement_rebuild"))
+            conn.execute(text("ALTER TABLE stations RENAME TO stations_autoincrement_rebuild"))
+            old_indexes = conn.execute(
+                text(
+                    "SELECT name FROM sqlite_master WHERE type='index' "
+                    "AND tbl_name='stations_autoincrement_rebuild' AND sql IS NOT NULL"
+                )
+            ).fetchall()
+            for (idx_name,) in old_indexes:
+                conn.execute(text(f'DROP INDEX IF EXISTS "{idx_name}"'))
+            Station.__table__.create(bind=conn)
+            col_list = ", ".join(c.name for c in Station.__table__.columns)
+            # created_at is NOT NULL at the ORM level but has no DB-level
+            # default (SQLAlchemy's default= only applies on ORM inserts), so
+            # coalesce it in case any legacy row was ever written without one.
+            select_list = ", ".join(
+                "COALESCE(created_at, CURRENT_TIMESTAMP)" if c.name == "created_at" else c.name
+                for c in Station.__table__.columns
+            )
+            conn.execute(
+                text(
+                    f"INSERT INTO stations ({col_list}) "
+                    f"SELECT {select_list} FROM stations_autoincrement_rebuild"
+                )
+            )
+            conn.execute(text("DROP TABLE stations_autoincrement_rebuild"))
+            conn.commit()
         conn.execute(
             text(
                 "UPDATE stations SET enabled = 0, "
@@ -230,6 +270,7 @@ def _migrate_db() -> None:
                 ("default_theme", "VARCHAR(32) NOT NULL DEFAULT 'violet'"),
                 ("artist_bio_enabled", "INTEGER NOT NULL DEFAULT 1"),
                 ("default_navidrome_playlist_id", "VARCHAR(100) NOT NULL DEFAULT ''"),
+                ("backup_keep_count", "INTEGER NOT NULL DEFAULT 7"),
             ):
                 if col not in cols:
                     conn.execute(text(f"ALTER TABLE broadcast_settings ADD COLUMN {col} {ddl}"))

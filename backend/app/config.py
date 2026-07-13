@@ -47,9 +47,16 @@ class Settings(BaseSettings):
     ollama_url: str = ""
     ollama_model: str = ""
 
+    # Automatic backups of radio.db + knowledge.db + icecast.xml
+    backup_interval_hours: int = 24
+
     @property
     def stations_root(self) -> str:
         return f"{self.data_dir.rstrip('/')}/stations"
+
+    @property
+    def backup_dir(self) -> str:
+        return f"{self.data_dir.rstrip('/')}/backups"
 
     @property
     def log_dir(self) -> str:

@@ -7,11 +7,15 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy.orm import Session
 
 from app.auth import admin_auth_enabled, admin_user_from_request
 from app.config import settings
 from app.database import SessionLocal, Station, init_db
+from app.rate_limit import limiter
 from app.schemas import BroadcastStatsRead, HealthResponse
 from app.middleware import SecurityHeadersMiddleware
 from app.routers import admin, admin_auth, admin_broadcast, admin_knowledge, admin_navidrome, internal, stations
@@ -70,6 +74,25 @@ async def _queue_refresh_loop() -> None:
         except Exception:
             logger.exception("Queue refresh loop error")
         await asyncio.sleep(settings.queue_refresh_interval_sec)
+
+
+async def _backup_loop() -> None:
+    from app.services.backup import create_backup, prune_old_backups
+
+    interval_sec = max(1, settings.backup_interval_hours) * 3600
+    while True:
+        try:
+            path = await asyncio.to_thread(create_backup)
+            db = SessionLocal()
+            try:
+                bs = get_broadcast_settings(db)
+                prune_old_backups(bs.backup_keep_count)
+            finally:
+                db.close()
+            logger.info("Automatic backup created: %s", path.name)
+        except Exception:
+            logger.exception("Automatic backup failed")
+        await asyncio.sleep(interval_sec)
 
 
 def _configure_logging() -> None:
@@ -141,13 +164,19 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
     task = asyncio.create_task(_queue_refresh_loop())
+    backup_task = asyncio.create_task(_backup_loop())
     knowledge_task = start_knowledge_worker()
     yield
     task.cancel()
+    backup_task.cancel()
     if knowledge_task:
         knowledge_task.cancel()
     try:
         await task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await backup_task
     except asyncio.CancelledError:
         pass
     if knowledge_task:
@@ -166,6 +195,9 @@ app = FastAPI(
     openapi_url=None,
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(stations.router)
