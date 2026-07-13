@@ -1,4 +1,50 @@
 /**
+ * Diagnostic log for the mobile lock-screen/CarPlay station-skip
+ * investigation. Persisted to localStorage (survives the app being fully
+ * killed while backgrounded, unlike sessionStorage) so a failed skip can be
+ * inspected afterward via /?debug=1. Remove once that issue is resolved.
+ */
+const AlchemyDiag = {
+  KEY: 'alchemyfm-diag-log',
+  MAX_ENTRIES: 60,
+
+  log(event, data = {}) {
+    try {
+      const entries = this._read();
+      entries.push({
+        t: new Date().toISOString(),
+        event,
+        hidden: typeof document !== 'undefined' ? document.hidden : null,
+        visibility: typeof document !== 'undefined' ? document.visibilityState : null,
+        ...data,
+      });
+      while (entries.length > this.MAX_ENTRIES) entries.shift();
+      localStorage.setItem(this.KEY, JSON.stringify(entries));
+    } catch {}
+  },
+
+  _read() {
+    try {
+      const raw = localStorage.getItem(this.KEY);
+      const data = raw ? JSON.parse(raw) : [];
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
+  },
+
+  dump() {
+    return JSON.stringify(this._read(), null, 2);
+  },
+
+  clear() {
+    try {
+      localStorage.removeItem(this.KEY);
+    } catch {}
+  },
+};
+
+/**
  * Shared live stream audio + bottom mini-player for listener pages.
  * Persists tune-in across navigation via sessionStorage + soft navigation.
  */
@@ -115,6 +161,8 @@ const GlobalLivePlayer = {
     if (!RadioApp.isMobileStation?.()) return;
     if (!this.isListening() && !this.readSession()?.wantLive) return;
     if (this._stationSkipInFlight || this._miniSwitching) return;
+
+    AlchemyDiag.log('hw-skip-start', { delta, cachedListWarm: Boolean(this._stationList?.length) });
 
     // Skip the async ensureStationList() hop entirely when the list is
     // already warm — a lock-screen/CarPlay nexttrack press only grants iOS a
@@ -1102,7 +1150,30 @@ const GlobalLivePlayer = {
     }
   },
 
+  maybeShowDebugLog() {
+    if (!/[?&]debug=1(&|$)/.test(location.search)) return false;
+    document.body.innerHTML = '';
+    document.body.style.cssText = 'margin:0;background:#0b0b0b;color:#0f0;font-family:monospace;padding:1rem;';
+    const heading = document.createElement('p');
+    heading.textContent = 'Alchemy FM diagnostic log — tap the text below, Select All, Copy, then paste it in chat.';
+    heading.style.cssText = 'font-size:14px;margin:0 0 0.75rem;';
+    const textarea = document.createElement('textarea');
+    textarea.readOnly = true;
+    textarea.value = AlchemyDiag.dump();
+    textarea.style.cssText = 'width:100%;height:65vh;background:#111;color:#0f0;font-family:monospace;font-size:11px;border:1px solid #333;box-sizing:border-box;';
+    const clearBtn = document.createElement('button');
+    clearBtn.textContent = 'Clear log';
+    clearBtn.style.cssText = 'margin-top:0.75rem;padding:0.6rem 1.2rem;font-size:14px;';
+    clearBtn.addEventListener('click', () => {
+      AlchemyDiag.clear();
+      textarea.value = AlchemyDiag.dump();
+    });
+    document.body.append(heading, textarea, clearBtn);
+    return true;
+  },
+
   init() {
+    if (this.maybeShowDebugLog()) return null;
     if (!this.isListenerPage()) return null;
 
     this.ensureShell();
@@ -1243,6 +1314,10 @@ const GlobalLivePlayer = {
     const audio = this.getAudio();
     if (!audio || !station || typeof RadioApp === 'undefined') return;
 
+    if (hardwareSkip) {
+      AlchemyDiag.log('switch-station-start', { toSlug: station.slug, hardwareSkip });
+    }
+
     if (RadioApp.isMobileStation?.()) {
       void this.ensureStationList();
     }
@@ -1305,6 +1380,9 @@ const GlobalLivePlayer = {
     this.applySwitchVisuals(station, { switching: isSwitch });
     RadioApp.applySavedLiveVolume(audio);
 
+    if (hardwareSkip) {
+      AlchemyDiag.log('connect-stream-call', { toSlug: station.slug });
+    }
     const connectTask = audio._liveEngine.connectStream(isSwitch, {
       skipReset: isSwitch && hardwareSkip,
     }).catch(() => {
@@ -1333,6 +1411,23 @@ const GlobalLivePlayer = {
     audio._liveUi?.syncStationUi?.();
     audio._liveUi?.syncVizFromAudio?.();
     AlchemyHome?.syncAllCardPlayUi?.();
+
+    if (hardwareSkip) {
+      // Snapshot the new audio element's real state a few seconds out --
+      // tells us whether it's actually playing, stuck buffering, or errored,
+      // independent of whether the play() promise itself resolved/rejected.
+      setTimeout(() => {
+        AlchemyDiag.log('post-skip-check', {
+          toSlug: station.slug,
+          paused: audio.paused,
+          readyState: audio.readyState,
+          networkState: audio.networkState,
+          currentTime: audio.currentTime,
+          errorCode: audio.error ? audio.error.code : null,
+          wantLive: audio.dataset.wantLive,
+        });
+      }, 4000);
+    }
   },
 
   prepareStationAudio(station) {

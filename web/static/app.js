@@ -495,7 +495,25 @@ const RadioApp = {
       }
       audio.src = src;
       this.configurePlaybackSession();
-      return audio.play().finally(() => {
+      const playStartedAt = Date.now();
+      return audio.play().then(
+        () => {
+          if (skipReset && typeof AlchemyDiag !== 'undefined') {
+            AlchemyDiag.log('play-resolved', { src, msSincePlayCall: Date.now() - playStartedAt });
+          }
+        },
+        (err) => {
+          if (skipReset && typeof AlchemyDiag !== 'undefined') {
+            AlchemyDiag.log('play-rejected', {
+              src,
+              errorName: err?.name,
+              errorMessage: String(err?.message || err),
+              msSincePlayCall: Date.now() - playStartedAt,
+            });
+          }
+          throw err;
+        },
+      ).finally(() => {
         connectInFlight = false;
       });
     };
@@ -707,6 +725,12 @@ const RadioApp = {
     });
 
     audio.addEventListener('error', () => {
+      if (typeof AlchemyDiag !== 'undefined') {
+        AlchemyDiag.log('audio-error-event', {
+          errorCode: audio.error ? audio.error.code : null,
+          src: audio.currentSrc || audio.src || '',
+        });
+      }
       clearInterval(tick);
       clearStallWatch();
       stopListenTimer();
