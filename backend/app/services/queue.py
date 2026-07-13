@@ -412,15 +412,19 @@ def get_now_playing(
     mount_stats: dict | None = None,
     include_knowledge: bool = True,
 ) -> NowPlaying | None:
-    # Icecast title is what's actually on the wire — prefer it over DB state.
+    # Icecast title is what's actually on the wire — prefer it over DB state,
+    # except Icecast's in-stream metadata can mangle punctuation (e.g. curly
+    # apostrophes rendered as "*"). Once we can match the wire text to a
+    # catalog row, prefer that row's clean title/artist for display.
     ice = fetch_mount_now_playing(station.icecast_mount, mount_stats=mount_stats)
     if ice and (ice.artist or ice.title):
-        item_id = _lookup_item_id(db, station, ice.artist, ice.title)
         artist, title = ice.artist, ice.title
-        if item_id and not artist.strip():
-            matched = _find_queue_item_for_metadata(db, station, artist, title)
-            if matched:
-                artist = matched.artist
+        matched = _find_queue_item_for_metadata(db, station, artist, title)
+        if matched:
+            item_id = matched.item_id
+            artist, title = matched.artist, matched.title
+        else:
+            item_id = _lookup_item_id(db, station, artist, title)
         return _now_playing_from_item(
             item_id, artist, title, include_knowledge=include_knowledge
         )
