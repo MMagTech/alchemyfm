@@ -116,7 +116,13 @@ const GlobalLivePlayer = {
     if (!this.isListening() && !this.readSession()?.wantLive) return;
     if (this._stationSkipInFlight || this._miniSwitching) return;
 
-    const stations = await this.ensureStationList();
+    // Skip the async ensureStationList() hop entirely when the list is
+    // already warm — a lock-screen/CarPlay nexttrack press only grants iOS a
+    // brief autoplay window, and even one avoidable microtask before we can
+    // pick the next station eats into it.
+    const stations = this._stationList?.length
+      ? this._stationList
+      : await this.ensureStationList();
     if (!stations.length) return;
 
     this._stationSkipInFlight = true;
