@@ -23,7 +23,7 @@ def write_icecast_config(max_listeners: int, source_slots: int = 10) -> Path:
     <limits>
         <clients>{max_listeners}</clients>
         <sources>{sources}</sources>
-        <queue-size>524288</queue-size>
+        <queue-size>1048576</queue-size>
         <burst-on-connect>1</burst-on-connect>
         <burst-size>65535</burst-size>
     </limits>
@@ -68,16 +68,17 @@ def write_icecast_config(max_listeners: int, source_slots: int = 10) -> Path:
 
 
 def encode_format_liquidsoap(bs) -> str:
-    if bs.encode_format == "vorbis":
-        # Liquidsoap 2.2: %vorbis is VBR (quality=); bitrate needs .cbr or .abr
+    if bs.encode_format == "aac":
+        # AAC-LC over ADTS via fdk-aac -- decodes natively on iOS/Safari,
+        # unlike Ogg Vorbis which has no decoder anywhere in WebKit.
         return (
-            f"%vorbis.cbr(samplerate={bs.sample_rate}, channels=2, "
-            f"bitrate={bs.vorbis_bitrate})"
+            f"%fdkaac(channels=2, samplerate={bs.sample_rate}, "
+            f"bitrate={bs.aac_bitrate})"
         )
     return f"%mp3(bitrate={bs.mp3_bitrate}, samplerate={bs.sample_rate})"
 
 
 def stream_media_type(encode_format: str) -> str:
-    if encode_format == "vorbis":
-        return "audio/ogg"
+    if encode_format == "aac":
+        return "audio/aac"
     return "audio/mpeg"

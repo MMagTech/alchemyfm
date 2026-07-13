@@ -197,7 +197,7 @@ def broadcast_stats():
         ]
         bs = get_broadcast_settings(db)
         stream_bitrate = (
-            bs.vorbis_bitrate if bs.encode_format == "vorbis" else bs.mp3_bitrate
+            bs.aac_bitrate if bs.encode_format == "aac" else bs.mp3_bitrate
         )
     finally:
         db.close()

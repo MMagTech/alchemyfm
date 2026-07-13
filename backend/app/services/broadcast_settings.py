@@ -4,7 +4,7 @@ from app.database import BroadcastSettings
 
 DEFAULTS = {
     "mp3_bitrate": 192,
-    "vorbis_bitrate": 128,
+    "aac_bitrate": 128,
     "sample_rate": 44100,
     "encode_format": "mp3",
     "genre": "Radio",

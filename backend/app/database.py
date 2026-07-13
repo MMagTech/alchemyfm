@@ -145,7 +145,7 @@ class BroadcastSettings(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     mp3_bitrate: Mapped[int] = mapped_column(Integer, default=192)
-    vorbis_bitrate: Mapped[int] = mapped_column(Integer, default=128)
+    aac_bitrate: Mapped[int] = mapped_column(Integer, default=128)
     sample_rate: Mapped[int] = mapped_column(Integer, default=44100)
     encode_format: Mapped[str] = mapped_column(String(16), default="mp3")
     genre: Mapped[str] = mapped_column(String(100), default="Radio")
@@ -194,6 +194,23 @@ def _migrate_db() -> None:
             if col not in cols:
                 conn.execute(text(f"ALTER TABLE stations ADD COLUMN {col} {ddl}"))
                 conn.commit()
+        # sort_order landed with a flat default of 0 for every existing row, so
+        # reordering (which swaps two stations' sort_order values) is a no-op
+        # until they're distinct. Backfill once, alphabetically, so ties never
+        # start out identical; harmless to re-check on every boot since it only
+        # fires while every station still shares the same value.
+        row_count, distinct_orders = conn.execute(
+            text("SELECT COUNT(*), COUNT(DISTINCT sort_order) FROM stations")
+        ).first()
+        if row_count and row_count > 1 and distinct_orders <= 1:
+            for idx, (station_id,) in enumerate(
+                conn.execute(text("SELECT id FROM stations ORDER BY name ASC")).fetchall()
+            ):
+                conn.execute(
+                    text("UPDATE stations SET sort_order = :idx WHERE id = :id"),
+                    {"idx": idx, "id": station_id},
+                )
+            conn.commit()
         conn.execute(
             text(
                 "UPDATE stations SET enabled = 0, "
@@ -208,6 +225,7 @@ def _migrate_db() -> None:
             for col, ddl in (
                 ("encode_format", "VARCHAR(16) NOT NULL DEFAULT 'mp3'"),
                 ("vorbis_bitrate", "INTEGER NOT NULL DEFAULT 128"),
+                ("aac_bitrate", "INTEGER NOT NULL DEFAULT 128"),
                 ("max_listeners", "INTEGER NOT NULL DEFAULT 100"),
                 ("default_theme", "VARCHAR(32) NOT NULL DEFAULT 'violet'"),
                 ("artist_bio_enabled", "INTEGER NOT NULL DEFAULT 1"),
@@ -220,12 +238,19 @@ def _migrate_db() -> None:
                 conn.execute(
                     text(
                         "INSERT INTO broadcast_settings "
-                        "(id, mp3_bitrate, vorbis_bitrate, sample_rate, encode_format, genre, "
+                        "(id, mp3_bitrate, aac_bitrate, sample_rate, encode_format, genre, "
                         "crossfade_sec, max_listeners, default_theme) "
                         "VALUES (1, 192, 128, 44100, 'mp3', 'Radio', 0, 100, 'violet')"
                     )
                 )
                 conn.commit()
+            # Ogg Vorbis is unsupported on iOS Safari/WKWebView (no decoder ever
+            # shipped) -- normalize any station still set to it back to mp3
+            # rather than leave every listener on a dead format after upgrade.
+            conn.execute(
+                text("UPDATE broadcast_settings SET encode_format = 'mp3' WHERE encode_format = 'vorbis'")
+            )
+            conn.commit()
         except Exception:
             pass
         try:

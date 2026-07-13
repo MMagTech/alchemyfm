@@ -153,7 +153,7 @@ class BroadcastStatsRead(BaseModel):
 
 class BroadcastSettingsRead(BaseModel):
     mp3_bitrate: int
-    vorbis_bitrate: int
+    aac_bitrate: int
     sample_rate: int
     encode_format: str
     genre: str
@@ -193,7 +193,7 @@ class AppearanceSettingsUpdate(BaseModel):
 
 class BroadcastSettingsUpdate(BaseModel):
     mp3_bitrate: int | None = Field(default=None, ge=64, le=320)
-    vorbis_bitrate: int | None = Field(default=None, ge=64, le=320)
+    aac_bitrate: int | None = Field(default=None, ge=64, le=320)
     sample_rate: int | None = Field(default=None)
     encode_format: str | None = None
     genre: str | None = Field(default=None, max_length=100)
@@ -214,15 +214,15 @@ class BroadcastSettingsUpdate(BaseModel):
     @field_validator("encode_format")
     @classmethod
     def validate_encode_format(cls, v: str | None) -> str | None:
-        if v is not None and v not in ("mp3", "vorbis"):
-            raise ValueError("encode_format must be mp3 or vorbis")
+        if v is not None and v not in ("mp3", "aac"):
+            raise ValueError("encode_format must be mp3 or aac")
         return v
 
-    @field_validator("vorbis_bitrate")
+    @field_validator("aac_bitrate")
     @classmethod
-    def validate_vorbis_bitrate(cls, v: int | None) -> int | None:
+    def validate_aac_bitrate(cls, v: int | None) -> int | None:
         if v is not None and v not in (96, 128, 160, 192, 256, 320):
-            raise ValueError("vorbis_bitrate must be one of 96, 128, 160, 192, 256, 320")
+            raise ValueError("aac_bitrate must be one of 96, 128, 160, 192, 256, 320")
         return v
 
     @field_validator("sample_rate")
