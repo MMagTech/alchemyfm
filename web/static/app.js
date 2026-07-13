@@ -450,7 +450,7 @@ const RadioApp = {
       }
     };
 
-    const connectStream = (bustCache = false) => {
+    const connectStream = (bustCache = false, { skipReset = false } = {}) => {
       if (connectInFlight) return Promise.resolve();
       const base = baseStreamUrl();
       if (!base) return Promise.reject(new Error('No stream URL'));
@@ -477,7 +477,14 @@ const RadioApp = {
       userPaused = false;
       audio._liveUi?.setConnectingUi?.(bustCache ? 'Reconnecting…' : 'Connecting…');
 
-      if (prevSrc && (!sameStream || bustCache)) {
+      // A lock-screen/CarPlay nexttrack press only grants iOS a brief autoplay
+      // window. Tearing the element down first (pause/removeAttribute/load)
+      // asks iOS to revive a freshly-emptied element from scratch; assigning
+      // .src directly already resets the media element per spec, so the hard
+      // reset is skipped for that path and left in place everywhere else
+      // (foreground switches, error-recovery reconnects) where it's unlikely
+      // to be gating anything and a clean re-init is the safer default.
+      if (prevSrc && (!sameStream || bustCache) && !skipReset) {
         audio.pause();
         audio.removeAttribute('src');
         audio.load();

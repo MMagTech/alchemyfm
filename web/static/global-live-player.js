@@ -131,7 +131,7 @@ const GlobalLivePlayer = {
       let idx = stations.findIndex((s) => s.slug === slug);
       if (idx < 0) idx = 0;
       const nextIdx = (idx + delta + stations.length) % stations.length;
-      await this.switchToStation(stations[nextIdx]);
+      await this.switchToStation(stations[nextIdx], { hardwareSkip: true });
     } finally {
       this._stationSkipInFlight = false;
     }
@@ -1239,7 +1239,7 @@ const GlobalLivePlayer = {
     audio._liveUi?.syncVizFromAudio?.();
   },
 
-  async switchToStation(station) {
+  async switchToStation(station, { hardwareSkip = false } = {}) {
     const audio = this.getAudio();
     if (!audio || !station || typeof RadioApp === 'undefined') return;
 
@@ -1305,7 +1305,9 @@ const GlobalLivePlayer = {
     this.applySwitchVisuals(station, { switching: isSwitch });
     RadioApp.applySavedLiveVolume(audio);
 
-    const connectTask = audio._liveEngine.connectStream(isSwitch).catch(() => {
+    const connectTask = audio._liveEngine.connectStream(isSwitch, {
+      skipReset: isSwitch && hardwareSkip,
+    }).catch(() => {
       audio.reconnectLiveStream?.();
     });
 
