@@ -2395,6 +2395,10 @@ body.live-station-page .live-mini-player {
   display: none !important;
 }
 
+.live-mini-player[hidden] {
+  display: none;
+}
+
 .live-mini-player {
   position: fixed;
   left: 0;

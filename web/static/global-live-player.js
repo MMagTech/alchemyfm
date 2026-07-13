@@ -152,11 +152,6 @@ const GlobalLivePlayer = {
     return next;
   },
 
-  clearSession() {
-    this.writeSession(null);
-    this._heardMeta = null;
-  },
-
   isListening() {
     const audio = this.getAudio();
     return Boolean(audio && audio.dataset.wantLive === '1');
@@ -307,11 +302,13 @@ const GlobalLivePlayer = {
     if (!bar || !audio) return;
 
     const session = this.readSession();
-    const active = session?.wantLive === true || audio.dataset.wantLive === '1';
     const onHome = this.isHomePage() || this.isOnSoftHome();
     const streamSlug = this.slugFromStreamSrc(audio.dataset.streamSrc || audio.src);
     const activeSlug = streamSlug || session?.slug;
-    const show = onHome && active && Boolean(activeSlug);
+    // Show whenever there's a known last station, playing or paused — the
+    // play button below already reflects the real paused/playing state, so
+    // this just controls whether there's a "last station" to show at all.
+    const show = onHome && Boolean(activeSlug);
 
     bar.hidden = !show;
     document.body.classList.toggle('has-live-mini-player', show);
@@ -748,7 +745,10 @@ const GlobalLivePlayer = {
   onSessionChange(audio, meta = {}) {
     const wantLive = audio?.dataset?.wantLive === '1';
     if (!wantLive) {
-      this.clearSession();
+      // A pause (or media-session stop) shouldn't erase which station you
+      // were on — keep slug/stationName/streamSrc so the mini player can
+      // still show "last station, tap to resume" after reopening the app.
+      this.mergeSession({ wantLive: false });
       this.syncMiniVisibility();
       return;
     }
@@ -1103,6 +1103,16 @@ const GlobalLivePlayer = {
     document.body.classList.toggle('live-station-page', this.isStationPage());
     document.body.classList.toggle('live-home-page', this.isHomePage());
 
+    // Warm the station list now, well ahead of any lock-screen/CarPlay
+    // nexttrack press. iOS grants autoplay for a media-session action only
+    // briefly, and switchToAdjacentStation awaits this list before it can
+    // even pick the next station — a cold sessionStorage cache (common after
+    // iOS kills and relaunches a backgrounded PWA) would otherwise force a
+    // live network fetch inside that narrow gesture window.
+    if (typeof RadioApp !== 'undefined' && RadioApp.isMobileStation?.()) {
+      void this.ensureStationList();
+    }
+
     const audio = this.getAudio();
     const session = this.readSession();
 
@@ -1117,6 +1127,14 @@ const GlobalLivePlayer = {
       this.bindMiniUi();
       if (session?.wantLive && session.slug) {
         this.resumeFromSession(session);
+      } else if (session?.slug) {
+        // Paused/stopped last session — show it in the mini player without
+        // attempting to reconnect; that only happens on an explicit tap.
+        // Still set streamSrc so a later tap on play has a URL to connect to.
+        audio.dataset.streamSrc = session.streamSrc || this.browserStreamUrl(session.slug);
+        this.updateMiniMeta({ stationName: session.stationName, slug: session.slug });
+        this.syncMiniVisibility();
+        void this.refreshMiniNowPlaying(session.slug);
       } else {
         this.syncMiniVisibility();
       }
@@ -1247,14 +1265,20 @@ const GlobalLivePlayer = {
 
     let tuningWait = Promise.resolve();
     if (isSwitch) {
-      try {
-        await this.ensureTuningReady();
-      } catch {
-        /* tuning bed is optional */
-      }
-      if (typeof LiveTuningFx !== 'undefined') {
-        tuningWait = LiveTuningFx.startSwitch(audio, { fromSlug, toSlug: station.slug });
-      }
+      // Don't await asset loading here — a lock-screen/CarPlay nexttrack
+      // press only grants iOS a brief autoplay window, and any delay before
+      // connectStream() below can make the real audio.play() get silently
+      // rejected while the device is locked. Run the tuning bed as a
+      // fire-and-forget side effect instead of gating the station connect.
+      tuningWait = this.ensureTuningReady()
+        .then(() => {
+          if (typeof LiveTuningFx !== 'undefined') {
+            return LiveTuningFx.startSwitch(audio, { fromSlug, toSlug: station.slug });
+          }
+        })
+        .catch(() => {
+          /* tuning bed is optional */
+        });
     }
 
     this.applySwitchVisuals(station, { pending: true, switching: isSwitch });
