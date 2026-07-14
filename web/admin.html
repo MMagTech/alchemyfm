@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/icons/favicon.ico?v=2" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png?v=2">
   <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png?v=2">
-  <link rel="stylesheet" href="/static/style.css?v=140">
+  <link rel="stylesheet" href="/static/style.css?v=141">
   <link rel="stylesheet" href="/static/themes.css?v=2">
   <link rel="stylesheet" href="/static/admin-mobile.css?v=13" media="(max-width: 640px)">
   <script src="/static/themes.js?v=14"></script>
@@ -36,6 +36,7 @@
       <a href="/">Tune In</a>
       <a href="/admin/stations.html">Stations</a>
       <a href="/admin.html" aria-current="page">Settings</a>
+      <a href="/admin/logs.html">Logs</a>
       <a href="/admin/knowledge.html" id="admin-knowledge-link" hidden>Knowledge</a>
       <span class="nav-break" aria-hidden="true"></span>
       <button type="button" class="nav-link-btn" id="admin-help-btn">Help</button>
@@ -309,7 +310,7 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=54"></script>
+  <script src="/static/app.js?v=55"></script>
   <script>
     function redirectToLogin() {
       const next = encodeURIComponent(location.pathname + location.search);

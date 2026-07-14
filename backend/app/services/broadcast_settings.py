@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import BroadcastSettings
 
 DEFAULTS = {
@@ -14,6 +15,7 @@ DEFAULTS = {
     "artist_bio_enabled": True,
     "backup_keep_count": 7,
     "backup_auto_enabled": True,
+    "log_level": settings.log_level,
 }
 
 

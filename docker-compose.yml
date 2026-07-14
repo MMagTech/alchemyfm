@@ -3,15 +3,20 @@ services:
     image: infiniteproject/icecast:latest
     ports:
       - "${ICECAST_PORT:-8000}:8000"
-    environment:
-      ICECAST_SOURCE_PASSWORD: ${ICECAST_SOURCE_PASSWORD:-hackme}
-      ICECAST_ADMIN_PASSWORD: ${ICECAST_SOURCE_PASSWORD:-hackme}
-      ICECAST_RELAY_PASSWORD: ${ICECAST_SOURCE_PASSWORD:-hackme}
-      ICECAST_MAX_CLIENTS: ${ICECAST_MAX_CLIENTS:-100}
-      # Default image limit is 2 — one mount per station needs more headroom.
-      ICECAST_MAX_SOURCES: ${ICECAST_MAX_SOURCES:-20}
     volumes:
-      - ./icecast/icecast.xml:/etc/icecast2/icecast.xml:ro
+      # The image's own entrypoint.sh tries to sed-patch passwords/hostname/
+      # limits into ITS OWN /etc/icecast.xml, then runs
+      # `icecast -c /etc/icecast.xml` -- it never reads /etc/icecast2/, so a
+      # config mounted there (the old path) is silently ignored no matter
+      # what write_icecast_config() puts in it. Mount over the file the
+      # entrypoint actually loads instead. No ICECAST_* env vars needed here
+      # any more -- our file already has real values baked in directly by
+      # write_icecast_config(), and entrypoint.sh's sed -i can't rewrite a
+      # bind-mounted file anyway (fails with "Resource busy" on the rename);
+      # leaving the env vars set would just make it try and fail on every
+      # start for no benefit.
+      - ./icecast/icecast.xml:/etc/icecast.xml
+      - radio-data:/data
     restart: unless-stopped
 
   backend:

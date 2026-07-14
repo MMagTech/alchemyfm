@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -85,6 +87,10 @@ def save_broadcast_settings(
     row = update_broadcast_settings(db, data)
     if set(data.keys()) & _APPLY_TRIGGER_FIELDS:
         apply_broadcast_settings(db, row)
+    if "log_level" in data:
+        # Takes effect immediately -- unlike encode/listener settings, the log
+        # level doesn't touch Liquidsoap/Icecast, so no station restart needed.
+        logging.getLogger().setLevel(getattr(logging, row.log_level, logging.INFO))
     return BroadcastSettingsRead.model_validate(row).model_copy(
         update={"icecast_restart_available": icecast_restart_enabled()}
     )

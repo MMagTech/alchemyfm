@@ -163,6 +163,7 @@ class BroadcastSettingsRead(BaseModel):
     icecast_restart_available: bool = False
     backup_keep_count: int = 7
     backup_auto_enabled: bool = True
+    log_level: str = "INFO"
 
     model_config = {"from_attributes": True}
 
@@ -204,6 +205,14 @@ class BroadcastSettingsUpdate(BaseModel):
     default_theme: str | None = None
     backup_keep_count: int | None = Field(default=None, ge=1, le=100)
     backup_auto_enabled: bool | None = None
+    log_level: str | None = None
+
+    @field_validator("log_level")
+    @classmethod
+    def validate_log_level(cls, v: str | None) -> str | None:
+        if v is not None and v.upper() not in ("DEBUG", "INFO", "WARNING", "ERROR"):
+            raise ValueError("log_level must be one of: DEBUG, INFO, WARNING, ERROR")
+        return v.upper() if v is not None else v
 
     @field_validator("default_theme")
     @classmethod

@@ -13,6 +13,13 @@ STATIONS_LIQ_DIR = LIQUIDSOAP_DIR / "stations"
 MANIFEST_PATH = LIQUIDSOAP_DIR / "manifest.json"
 
 LIQ_HEADER = '''\
+# Each station runs as its own process (see supervisor.sh) but they all
+# append to this one shared file -- fine for ordinary operational logging
+# (each process's own writes stay line-atomic), avoids one log file per
+# station cluttering the admin Logs page.
+settings.log.file.set(true)
+settings.log.file.path.set("/data/logs/liquidsoap.log")
+
 backend_url = "http://backend:8080"
 callback_secret = "{callback_secret}"
 icecast_host = "icecast"

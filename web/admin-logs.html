@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#09090b" media="(max-width: 640px)">
+  <title>Logs — Alchemy FM</title>
+  <link rel="icon" href="/static/icons/favicon.ico?v=2" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png?v=2">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png?v=2">
+  <link rel="stylesheet" href="/static/style.css?v=141">
+  <link rel="stylesheet" href="/static/themes.css?v=2">
+  <link rel="stylesheet" href="/static/admin-mobile.css?v=13" media="(max-width: 640px)">
+  <script src="/static/themes.js?v=14"></script>
+</head>
+<body>
+  <header>
+    <h1 class="site-wordmark">
+      <a href="/" class="site-wordmark-link">
+        <span class="site-wordmark-icon" aria-hidden="true">
+          <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" focusable="false">
+            <rect x="1.5" y="9" width="3" height="9" rx="1.2"/>
+            <rect x="6.5" y="6" width="3" height="12" rx="1.2"/>
+            <rect x="11.5" y="3" width="3" height="15" rx="1.2"/>
+            <rect x="16.5" y="7" width="3" height="11" rx="1.2"/>
+          </svg>
+        </span>
+        <span class="site-wordmark-text"><span class="site-wordmark-name">Alchemy</span><span class="site-wordmark-fm">FM</span></span>
+      </a>
+    </h1>
+    <div class="header-end">
+      <div id="header-broadcast-stats" class="header-broadcast-stats" aria-live="polite">
+        <span class="header-stat is-loading">…</span>
+      </div>
+      <nav>
+      <a href="/">Tune In</a>
+      <a href="/admin/stations.html">Stations</a>
+      <a href="/admin.html">Settings</a>
+      <a href="/admin/logs.html" aria-current="page">Logs</a>
+      <a href="/admin/knowledge.html" id="admin-knowledge-link" hidden>Knowledge</a>
+      <span class="nav-break" aria-hidden="true"></span>
+      <button type="button" class="nav-link-btn" id="admin-help-btn">Help</button>
+      <button type="button" class="nav-link-btn" id="logout-btn">Log Out</button>
+      </nav>
+    </div>
+  </header>
+  <main class="admin-main">
+    <header class="admin-page-header">
+      <h2>Logs</h2>
+      <p class="admin-lede">Backend, Icecast, and Liquidsoap activity for troubleshooting.</p>
+    </header>
+
+    <section class="admin-panel admin-panel-compact" id="log-level-section">
+      <div id="log-level-message" class="broadcast-toast-host" aria-live="polite" hidden></div>
+      <form id="log-level-form">
+        <section class="admin-fieldset" aria-labelledby="log-level-title">
+          <h3 class="admin-fieldset-title" id="log-level-title">Backend Log Level</h3>
+          <div class="form-grid form-grid-2">
+            <div>
+              <label for="log_level">Level</label>
+              <select id="log_level" name="log_level" required>
+                <option value="DEBUG">Debug (verbose)</option>
+                <option value="INFO" selected>Info</option>
+                <option value="WARNING">Warning</option>
+                <option value="ERROR">Error</option>
+              </select>
+            </div>
+          </div>
+          <p class="hint">Applies immediately, no restart needed. Only affects the backend log below — Icecast and Liquidsoap have their own fixed verbosity.</p>
+          <div class="form-actions">
+            <button class="btn" type="submit">Save Log Level</button>
+          </div>
+        </section>
+      </form>
+    </section>
+
+    <section class="admin-panel" id="logs-section">
+      <div class="admin-panel-head">
+        <div>
+          <h2>Log Files</h2>
+          <p class="admin-lede">Persisted under the app's data volume — survive restarts and container recreation.</p>
+        </div>
+        <button class="btn btn-sm" type="button" id="download-all-logs-btn">Download All Logs</button>
+      </div>
+      <div id="logs-grid" class="admin-stations-grid">
+        <p class="admin-empty">Loading…</p>
+      </div>
+    </section>
+  </main>
+
+  <div id="clear-log-dialog" class="admin-dialog" hidden>
+    <div class="admin-dialog-backdrop" data-clear-dismiss></div>
+    <div
+      class="admin-dialog-panel admin-dialog-panel-danger"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="clear-log-title"
+      aria-describedby="clear-log-desc"
+    >
+      <div class="admin-dialog-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.75">
+          <path d="M4 7h16M9 7V5h6v2M10 11v6M14 11v6"/>
+          <path d="M6 7l1 14h10l1-14"/>
+        </svg>
+      </div>
+      <h3 id="clear-log-title" class="admin-dialog-title">Clear this log?</h3>
+      <p id="clear-log-desc" class="admin-dialog-lede">
+        Deletes everything currently in this log file. Useful right before reproducing an issue,
+        so the next lines you see are just from that.
+      </p>
+      <div class="admin-dialog-actions">
+        <button type="button" class="btn btn-secondary" data-clear-dismiss>Cancel</button>
+        <button type="button" class="btn btn-danger" id="clear-log-confirm">Clear Log</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="admin-help-dialog" class="admin-dialog admin-help-dialog" hidden>
+    <div class="admin-dialog-backdrop" data-help-dismiss></div>
+    <div
+      class="admin-help-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="admin-help-title"
+    >
+      <header class="admin-help-header">
+        <div>
+          <h2 id="admin-help-title">Logs Help</h2>
+          <p class="admin-help-lede">Where to look when something's not working.</p>
+        </div>
+        <button type="button" class="admin-help-close" data-help-dismiss aria-label="Close help">×</button>
+      </header>
+      <div class="admin-help-body">
+        <section class="admin-help-section">
+          <h3>Which Log?</h3>
+          <dl class="admin-help-dl">
+            <dt>Backend</dt>
+            <dd>The Alchemy FM app itself — API requests, queue refills, admin actions, errors.</dd>
+            <dt>Liquidsoap</dt>
+            <dd>The audio pipeline for every station — encoding, crossfades, track transitions, Icecast connection issues from the source side.</dd>
+            <dt>Icecast Access</dt>
+            <dd>Every listener connect/disconnect to the streaming server, from the server's own perspective.</dd>
+            <dt>Icecast Error</dt>
+            <dd>Icecast-level problems — source auth failures, listener limit hits, startup issues.</dd>
+          </dl>
+        </section>
+        <section class="admin-help-section">
+          <h3>Reporting a Bug</h3>
+          <p class="admin-help-p">
+            Clear the relevant log first, reproduce the issue, then download it — that keeps the
+            file focused on just the problem instead of everything since the last restart.
+          </p>
+        </section>
+        <section class="admin-help-section">
+          <h3>Log Level</h3>
+          <p class="admin-help-p">
+            Controls only the backend's own verbosity. Debug is much noisier and will rotate
+            through the size cap faster — worth turning back down to Info once you're done digging.
+          </p>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=55"></script>
+  <script>
+    function redirectToLogin() {
+      const next = encodeURIComponent(location.pathname + location.search);
+      location.href = `/admin/login.html?next=${next}`;
+    }
+
+    async function adminFetchJSON(url, options = {}) {
+      const res = await fetch(url, { credentials: 'same-origin', ...options });
+      if (res.status === 401) {
+        redirectToLogin();
+        throw new Error('Session expired');
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail = data.detail;
+        const message = Array.isArray(detail)
+          ? detail.map((item) => item.msg || JSON.stringify(item)).join('; ')
+          : (typeof detail === 'string' ? detail : (data.error || res.statusText));
+        throw new Error(message);
+      }
+      return data;
+    }
+
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      try {
+        await fetch('/api/admin/logout', { method: 'POST', credentials: 'same-origin' });
+      } catch (_) { /* still send user to login */ }
+      location.href = '/admin/login.html';
+    });
+
+    const LOG_LABELS = {
+      'backend': 'Backend',
+      'liquidsoap': 'Liquidsoap',
+      'icecast-access': 'Icecast Access',
+      'icecast-error': 'Icecast Error',
+    };
+
+    function formatBytes(n) {
+      if (n < 1024) return `${n} B`;
+      if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+      return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    async function loadLogLevel() {
+      try {
+        const s = await adminFetchJSON('/api/admin/broadcast');
+        document.getElementById('log_level').value = s.log_level || 'INFO';
+      } catch (err) {
+        RadioApp.showAdminToast(err.message, 'error', 8000, '', 'log-level-message');
+      }
+    }
+
+    document.getElementById('log-level-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const log_level = document.getElementById('log_level').value;
+      try {
+        await adminFetchJSON('/api/admin/broadcast', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ log_level }),
+        });
+        RadioApp.showAdminToast('Log level saved.', 'success', 4000, '', 'log-level-message');
+      } catch (err) {
+        RadioApp.showAdminToast(err.message, 'error', 0, '', 'log-level-message');
+      }
+    });
+
+    let pendingClearName = null;
+
+    function openClearDialog(name) {
+      pendingClearName = name;
+      const dialog = document.getElementById('clear-log-dialog');
+      dialog.hidden = false;
+      document.body.classList.add('admin-dialog-open');
+      document.getElementById('clear-log-confirm')?.focus();
+    }
+
+    function closeClearDialog() {
+      pendingClearName = null;
+      const dialog = document.getElementById('clear-log-dialog');
+      dialog.hidden = true;
+      document.body.classList.remove('admin-dialog-open');
+    }
+
+    document.getElementById('clear-log-dialog').addEventListener('click', (e) => {
+      if (e.target.closest('[data-clear-dismiss]')) closeClearDialog();
+    });
+    document.getElementById('clear-log-confirm').addEventListener('click', async () => {
+      const name = pendingClearName;
+      closeClearDialog();
+      if (!name) return;
+      try {
+        await adminFetchJSON(`/api/admin/logs/${encodeURIComponent(name)}/clear`, { method: 'POST' });
+        await loadLogs();
+      } catch (err) {
+        RadioApp.showAdminToast(err.message, 'error');
+      }
+    });
+
+    async function loadTail(name) {
+      const el = document.getElementById(`log-tail-${name}`);
+      if (!el) return;
+      el.textContent = 'Loading…';
+      try {
+        const res = await fetch(`/api/admin/logs/${encodeURIComponent(name)}/tail?lines=200`, { credentials: 'same-origin' });
+        if (res.status === 401) { redirectToLogin(); return; }
+        const text = await res.text();
+        el.textContent = text || '(empty)';
+        el.scrollTop = el.scrollHeight;
+      } catch (err) {
+        el.textContent = `Could not load: ${err.message}`;
+      }
+    }
+
+    async function loadLogs() {
+      const grid = document.getElementById('logs-grid');
+      try {
+        const data = await adminFetchJSON('/api/admin/logs');
+        grid.innerHTML = data.logs.map((entry) => `
+          <div class="admin-station-card">
+            <div class="admin-station-top">
+              <span class="admin-station-link">${LOG_LABELS[entry.name] || entry.name}</span>
+              <span class="admin-chip">${entry.exists ? formatBytes(entry.size) : 'not created yet'}</span>
+            </div>
+            <pre class="log-tail-view" id="log-tail-${entry.name}">Loading…</pre>
+            <div class="admin-station-actions">
+              <div class="admin-actions admin-actions-ops">
+                <button class="btn btn-sm" type="button" data-action="refresh" data-name="${entry.name}">Refresh</button>
+                <button class="btn btn-sm" type="button" data-action="download" data-name="${entry.name}" ${entry.exists ? '' : 'disabled'}>Download</button>
+                <button class="btn btn-sm btn-danger" type="button" data-action="clear" data-name="${entry.name}" ${entry.exists ? '' : 'disabled'}>Clear</button>
+              </div>
+            </div>
+          </div>
+        `).join('');
+        data.logs.forEach((entry) => loadTail(entry.name));
+      } catch (err) {
+        grid.innerHTML = `<p class="admin-empty">${RadioApp.escape(err.message)}</p>`;
+      }
+    }
+
+    document.getElementById('logs-grid').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      const name = btn.dataset.name;
+      if (btn.dataset.action === 'refresh') {
+        loadTail(name);
+      } else if (btn.dataset.action === 'download') {
+        window.location.href = `/api/admin/logs/${encodeURIComponent(name)}/download`;
+      } else if (btn.dataset.action === 'clear') {
+        openClearDialog(name);
+      }
+    });
+
+    document.getElementById('download-all-logs-btn').addEventListener('click', () => {
+      window.location.href = '/api/admin/logs/download-all';
+    });
+
+    loadLogLevel();
+    loadLogs();
+
+    fetch('/api/health').then(r => r.json()).then(h => {
+      const link = document.getElementById('admin-knowledge-link');
+      if (link && h.knowledge_feature) link.hidden = false;
+    }).catch(() => {});
+
+    const adminHelpDialog = document.getElementById('admin-help-dialog');
+    function openAdminHelp() {
+      adminHelpDialog.hidden = false;
+      document.body.classList.add('admin-dialog-open');
+      adminHelpDialog.querySelector('.admin-help-close')?.focus();
+    }
+    function closeAdminHelp() {
+      adminHelpDialog.hidden = true;
+      document.body.classList.remove('admin-dialog-open');
+    }
+    document.getElementById('admin-help-btn')?.addEventListener('click', openAdminHelp);
+    adminHelpDialog?.addEventListener('click', (e) => {
+      if (e.target.closest('[data-help-dismiss]')) closeAdminHelp();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (!document.getElementById('clear-log-dialog')?.hidden) closeClearDialog();
+        else if (adminHelpDialog && !adminHelpDialog.hidden) closeAdminHelp();
+      }
+    });
+  </script>
+</body>
+</html>

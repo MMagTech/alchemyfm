@@ -6,7 +6,7 @@
  */
 const AlchemyDiag = {
   KEY: 'alchemyfm-diag-log',
-  MAX_ENTRIES: 60,
+  MAX_ENTRIES: 250,
 
   log(event, data = {}) {
     try {
@@ -1183,10 +1183,97 @@ const GlobalLivePlayer = {
     return true;
   },
 
+  /**
+   * Standalone "Add to Home Screen" PWAs have no address bar, so /?debug=1
+   * can't be typed -- and iOS gives that PWA its own storage partition,
+   * separate from Safari, so viewing the debug page in Safari shows a
+   * different (empty) log than the one the PWA actually wrote. A long-press
+   * on the header wordmark TEXT (distinct from the icon button's existing
+   * tap-for-home / short-hold-for-operator-signin gestures) navigates the
+   * current window in place, same storage context, no URL bar needed.
+   * Remove alongside AlchemyDiag once the investigation concludes.
+   */
+  setupDebugGesture() {
+    const el = document.querySelector('.site-wordmark-text');
+    if (!el || el.dataset.debugGesture === '1') return;
+    el.dataset.debugGesture = '1';
+
+    const HOLD_MS = 3000;
+    const MOVE_CANCEL_PX = 12;
+    let pressTimer = null;
+    let didHold = false;
+    let startX = 0;
+    let startY = 0;
+
+    const clearPress = () => {
+      if (pressTimer) {
+        window.clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+    };
+
+    const openDebugView = () => {
+      const sep = location.search ? '&' : '?';
+      location.href = `${location.pathname}${location.search}${sep}debug=1`;
+    };
+
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
+    el.addEventListener('selectstart', (e) => e.preventDefault());
+
+    el.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      didHold = false;
+      startX = e.clientX;
+      startY = e.clientY;
+      clearPress();
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch {}
+      pressTimer = window.setTimeout(() => {
+        pressTimer = null;
+        didHold = true;
+        if (navigator.vibrate) navigator.vibrate(15);
+        openDebugView();
+      }, HOLD_MS);
+    });
+
+    el.addEventListener('pointermove', (e) => {
+      if (!pressTimer) return;
+      if (Math.abs(e.clientX - startX) > MOVE_CANCEL_PX || Math.abs(e.clientY - startY) > MOVE_CANCEL_PX) {
+        clearPress();
+      }
+    });
+
+    const onPointerEnd = (e) => {
+      clearPress();
+      try {
+        if (el.hasPointerCapture?.(e.pointerId)) el.releasePointerCapture(e.pointerId);
+      } catch {}
+      if (didHold) {
+        e.preventDefault();
+        didHold = false;
+      }
+    };
+
+    el.addEventListener('pointerup', onPointerEnd);
+    el.addEventListener('pointercancel', (e) => {
+      clearPress();
+      didHold = false;
+      try {
+        if (el.hasPointerCapture?.(e.pointerId)) el.releasePointerCapture(e.pointerId);
+      } catch {}
+    });
+
+    el.addEventListener('click', (e) => {
+      if (didHold) e.preventDefault();
+    });
+  },
+
   init() {
     if (this.maybeShowDebugLog()) return null;
     if (!this.isListenerPage()) return null;
 
+    this.setupDebugGesture();
     this.ensureShell();
     document.body.classList.toggle('live-station-page', this.isStationPage());
     document.body.classList.toggle('live-home-page', this.isHomePage());

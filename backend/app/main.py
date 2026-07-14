@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -18,7 +19,16 @@ from app.database import SessionLocal, Station, init_db
 from app.rate_limit import limiter
 from app.schemas import BroadcastStatsRead, HealthResponse
 from app.middleware import SecurityHeadersMiddleware
-from app.routers import admin, admin_auth, admin_broadcast, admin_knowledge, admin_navidrome, internal, stations
+from app.routers import (
+    admin,
+    admin_auth,
+    admin_broadcast,
+    admin_knowledge,
+    admin_logs,
+    admin_navidrome,
+    internal,
+    stations,
+)
 from app.knowledge.database import init_knowledge_db
 from app.knowledge.worker import start_knowledge_worker
 from app.services.broadcast_settings import apply_broadcast_settings, get_broadcast_settings
@@ -47,8 +57,11 @@ _icecast_last_track: dict[str, tuple[str, str] | None] = {}
 
 
 async def _queue_refresh_loop() -> None:
+    from app.services.logs import rotate_liquidsoap_log_if_needed
+
     while True:
         try:
+            rotate_liquidsoap_log_if_needed()
             db: Session = SessionLocal()
             kdb = None
             knowledge_active = False
@@ -128,7 +141,14 @@ def _configure_logging() -> None:
     )
     if not already_have_file:
         try:
-            Path(settings.log_dir).mkdir(parents=True, exist_ok=True)
+            log_dir = Path(settings.log_dir)
+            log_dir.mkdir(parents=True, exist_ok=True)
+            # Icecast and Liquidsoap write their own logs into this same
+            # shared directory as non-root users (Icecast drops to its own
+            # uid via <changeowner> after binding its port) -- world-writable
+            # since there's no shared uid/gid across these different images
+            # to coordinate a tighter mode, and log files aren't sensitive.
+            os.chmod(log_dir, 0o777)
             file_handler = RotatingFileHandler(
                 settings.log_file,
                 maxBytes=settings.log_max_bytes,
@@ -164,6 +184,10 @@ async def lifespan(app: FastAPI):
         bs = get_broadcast_settings(db)
         apply_broadcast_settings(db, bs)
         rebuild_all_station_m3u(db)
+        # .env's LOG_LEVEL only seeds the DB row on first boot -- once saved
+        # via the admin UI, the persisted value takes over on every restart,
+        # same as every other broadcast setting.
+        logging.getLogger().setLevel(getattr(logging, bs.log_level, logging.INFO))
     finally:
         db.close()
     task = asyncio.create_task(_queue_refresh_loop())
@@ -208,6 +232,7 @@ app.include_router(admin_auth.router)
 app.include_router(admin.router)
 app.include_router(admin_broadcast.router)
 app.include_router(admin_knowledge.router)
+app.include_router(admin_logs.router)
 app.include_router(admin_navidrome.router)
 app.include_router(internal.router)
 
@@ -335,6 +360,23 @@ def admin_stations_page(request: Request):
         )
     try:
         return _html_page("admin-stations.html")
+    except HTTPException:
+        return {"error": "not found"}
+
+
+@app.get("/admin/logs.html")
+def admin_logs_page(request: Request):
+    if not admin_auth_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Admin is disabled. Set ADMIN_PASSWORD in your environment.",
+        )
+    if not admin_user_from_request(request):
+        return RedirectResponse(
+            url="/admin/login.html?next=/admin/logs.html", status_code=302
+        )
+    try:
+        return _html_page("admin-logs.html")
     except HTTPException:
         return {"error": "not found"}
 

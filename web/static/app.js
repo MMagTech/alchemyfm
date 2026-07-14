@@ -352,6 +352,7 @@ const RadioApp = {
     audio.classList.add('live-audio-hidden');
 
     let tick = null;
+    let heartbeatTimer = null;
     let reconnectTimer = null;
     let reconnectAttempt = 0;
     let streamLive = false;
@@ -541,7 +542,18 @@ const RadioApp = {
       if (audio.dataset.wantLive !== '1') return;
       clearTimeout(reconnectTimer);
       const delay = Math.min(15000, 2000 + reconnectAttempt * 2000);
+      const scheduledAt = Date.now();
+      if (typeof AlchemyDiag !== 'undefined') {
+        AlchemyDiag.log('reconnect-scheduled', { delay, reconnectAttempt });
+      }
       reconnectTimer = setTimeout(() => {
+        if (typeof AlchemyDiag !== 'undefined') {
+          AlchemyDiag.log('reconnect-firing', {
+            intendedDelay: delay,
+            actualDelay: Date.now() - scheduledAt,
+            reconnectAttempt,
+          });
+        }
         reconnectAttempt += 1;
         connectStream(true).catch(() => scheduleReconnect());
       }, delay);
@@ -566,6 +578,28 @@ const RadioApp = {
       pauseAndFlushBuffer();
       audio._liveUi?.setIdleUi?.(message);
       scheduleReconnect();
+    };
+
+    // Periodic proof-of-life independent of any stall/error handling -- if
+    // this stops appearing in the log while wantLive stays '1', the JS
+    // runtime itself got throttled/suspended in the background, rather than
+    // the stream or our own reconnect logic actually failing.
+    const stopHeartbeat = () => {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    };
+
+    const startHeartbeat = () => {
+      stopHeartbeat();
+      heartbeatTimer = setInterval(() => {
+        if (typeof AlchemyDiag === 'undefined') return;
+        AlchemyDiag.log('heartbeat', {
+          paused: audio.paused,
+          currentTime: audio.currentTime,
+          readyState: audio.readyState,
+          networkState: audio.networkState,
+        });
+      }, 15000);
     };
 
     const bufferAheadSec = () => {
@@ -702,6 +736,7 @@ const RadioApp = {
     audio.addEventListener('pause', () => {
       stopListenTimer();
       clearInterval(tick);
+      stopHeartbeat();
       clearStallWatch();
       if ('mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'paused';
@@ -716,6 +751,13 @@ const RadioApp = {
         // visibilitychange/focus: iOS throttles setTimeout/setInterval hard
         // once the page stops actively playing audio, so the stall-watch and
         // reconnect timers below can silently stop firing in the background.
+        if (typeof AlchemyDiag !== 'undefined') {
+          AlchemyDiag.log('unexpected-pause', {
+            currentTime: audio.currentTime,
+            readyState: audio.readyState,
+            networkState: audio.networkState,
+          });
+        }
         scheduleResumeIfWanted();
       }
     });
@@ -725,12 +767,18 @@ const RadioApp = {
       // when the underlying connection is dropped, e.g. a WiFi/cellular
       // handoff on mobile. Treat it the same as a stall so we reconnect.
       if (audio.dataset.wantLive === '1') {
+        if (typeof AlchemyDiag !== 'undefined') {
+          AlchemyDiag.log('audio-ended-event', { currentTime: audio.currentTime });
+        }
         markStreamOffline('Stream interrupted');
       }
     });
 
     audio.addEventListener('waiting', () => {
       audio._liveUi?.setConnectingUi?.('Buffering…');
+      if (typeof AlchemyDiag !== 'undefined' && audio.dataset.wantLive === '1') {
+        AlchemyDiag.log('audio-waiting-event', { currentTime: audio.currentTime, bufferAheadSec: bufferAheadSec() });
+      }
       armStallWatch();
     });
 
@@ -741,6 +789,7 @@ const RadioApp = {
       hasBufferedThisConnect = true;
       this.applySavedLiveVolume(audio);
       audio._liveUi?.setPlayingUi?.(true);
+      startHeartbeat();
       armStallWatch();
       this.configurePlaybackSession();
       if ('mediaSession' in navigator) {
@@ -751,6 +800,9 @@ const RadioApp = {
 
     audio.addEventListener('stalled', () => {
       audio._liveUi?.setConnectingUi?.('Buffering…');
+      if (typeof AlchemyDiag !== 'undefined' && audio.dataset.wantLive === '1') {
+        AlchemyDiag.log('audio-stalled-event', { currentTime: audio.currentTime, bufferAheadSec: bufferAheadSec() });
+      }
       armStallWatch();
     });
 
