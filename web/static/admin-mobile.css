@@ -35,6 +35,21 @@ header nav {
   flex-wrap: wrap;
   justify-content: center;
   gap: 0.35rem 0.85rem;
+  /* The desktop rule in style.css fixes nav to a single-row height
+     (--header-ctrl-h); once wrapped to 2+ rows here, that height is too
+     short and the extra rows overflow outside the header's own box,
+     overlapping page content below it. */
+  height: auto;
+}
+
+/* Always break Help/Log Out onto their own row with a divider, rather than
+   an accidental width-dependent wrap that looks like a layout mistake. */
+.nav-break {
+  display: block;
+  flex-basis: 100%;
+  height: 0;
+  margin-top: 0.15rem;
+  border-top: 1px solid var(--border-subtle);
 }
 
 header nav a,
@@ -91,201 +106,35 @@ main {
   width: 100%;
 }
 
-.admin-table-wrap {
-  margin: 0;
-  overflow: visible;
-}
-
-.admin-table {
-  table-layout: auto;
-}
-
-.admin-table thead {
-  display: none;
-}
-
-.admin-table tbody tr {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    "name status"
-    "mount queue"
-    "actions actions";
-  gap: 0.55rem 0.75rem;
-  margin-bottom: 0.85rem;
-  padding: 1rem 0.9rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--field);
-  box-shadow: var(--shadow-card);
-}
-
-.admin-table tbody tr:last-child {
-  margin-bottom: 0;
-}
-
-.admin-table tbody td {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 0.2rem;
-  padding: 0;
-  overflow: visible;
-  text-align: left;
-  min-width: 0;
-}
-
-.admin-table tbody td::before {
-  content: attr(data-label);
-  flex-shrink: 0;
-  font-size: 0.65rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--muted);
-  line-height: 1.2;
-}
-
-.admin-table tbody td[colspan] {
-  display: block;
-  grid-column: 1 / -1;
-  text-align: center;
-  padding: 0.5rem 0;
-}
-
-.admin-table tbody td[colspan]::before {
-  display: none;
-}
-
-.admin-table tbody td.admin-name-cell {
-  grid-area: name;
-  min-width: 0;
-}
-
-.admin-table tbody td.admin-name-cell::before {
-  display: none;
-}
-
-.admin-table tbody td.admin-name-cell .admin-station-link {
-  font-size: 1.02rem;
-  font-weight: 700;
-  line-height: 1.25;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-}
-
-.admin-table tbody td.admin-status-cell {
-  grid-area: status;
-  align-items: flex-end;
-  align-self: start;
-}
-
-.admin-table tbody td.admin-status-cell::before {
-  display: none;
-}
-
-.admin-table tbody td.admin-cell-mount {
-  grid-area: mount;
-}
-
-.admin-table tbody td.admin-source-cell {
-  grid-area: source;
-}
-
-.admin-table tbody td.admin-queue-cell {
-  grid-area: queue;
-  padding-top: 0.15rem;
-  padding-bottom: 0.55rem;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.admin-table.admin-table-ops tbody td.admin-queue-cell {
-  padding-top: 0;
-  padding-bottom: 0;
-  border-bottom: none;
-  align-items: flex-end;
-}
-
-.admin-table.admin-table-ops tbody td.actions {
-  padding-top: 0.65rem;
-  margin-top: 0.35rem;
-  border-top: 1px solid var(--border-subtle);
-}
-
-.admin-table tbody td.admin-queue-cell .admin-queue-compact {
-  font-size: 0.84rem;
-}
-
-.admin-table tbody td.actions {
-  grid-area: actions;
-  padding-top: 0.15rem;
-  margin-top: 0;
-  border-top: none;
-}
-
-.admin-table tbody td.actions::before {
-  display: none;
-}
-
-.admin-table tbody td.admin-status-cell .admin-pill-row {
+.admin-station-top .admin-pill-row {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.3rem;
 }
 
-.admin-actions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
-  gap: 0.45rem;
-  width: 100%;
-  align-items: stretch;
-}
-
 .admin-actions-ops {
   display: flex;
+  flex-wrap: nowrap;
   justify-content: flex-end;
+}
+
+/* Desktop keeps the actions inline in the meta row (room to spare); mobile
+   forces them onto their own row with a divider since there isn't. */
+.admin-station-actions {
+  flex-basis: 100%;
+  margin-left: 0;
+  margin-top: 0.5rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .admin-actions-ops .btn-sm {
   width: auto;
   min-width: 5rem;
-}
-
-.admin-actions .btn-sm {
-  width: 100%;
   min-height: 2.35rem;
-  justify-content: center;
-  padding-left: 0.35rem;
-  padding-right: 0.35rem;
 }
 
-.admin-action-menu {
-  display: block;
-}
-
-.admin-action-menu > summary {
-  width: 100%;
-  min-height: 2.35rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.admin-action-more {
-  min-width: 0;
-  width: 100%;
-}
-
-.admin-action-menu-panel {
-  left: auto;
-  right: 0;
-  min-width: 9.5rem;
-}
-
-.admin-table tbody td .admin-chip {
+.admin-station-card .admin-chip {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;

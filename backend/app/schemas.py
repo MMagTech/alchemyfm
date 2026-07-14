@@ -162,6 +162,7 @@ class BroadcastSettingsRead(BaseModel):
     default_theme: str = "violet"
     icecast_restart_available: bool = False
     backup_keep_count: int = 7
+    backup_auto_enabled: bool = True
 
     model_config = {"from_attributes": True}
 
@@ -202,6 +203,7 @@ class BroadcastSettingsUpdate(BaseModel):
     max_listeners: int | None = Field(default=None, ge=1, le=10000)
     default_theme: str | None = None
     backup_keep_count: int | None = Field(default=None, ge=1, le=100)
+    backup_auto_enabled: bool | None = None
 
     @field_validator("default_theme")
     @classmethod

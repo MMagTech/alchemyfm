@@ -160,6 +160,7 @@ class BroadcastSettings(Base):
     artist_bio_enabled: Mapped[bool] = mapped_column(default=True)
     default_navidrome_playlist_id: Mapped[str] = mapped_column(String(100), default="")
     backup_keep_count: Mapped[int] = mapped_column(Integer, default=7)
+    backup_auto_enabled: Mapped[bool] = mapped_column(default=True)
 
 
 connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
@@ -271,6 +272,7 @@ def _migrate_db() -> None:
                 ("artist_bio_enabled", "INTEGER NOT NULL DEFAULT 1"),
                 ("default_navidrome_playlist_id", "VARCHAR(100) NOT NULL DEFAULT ''"),
                 ("backup_keep_count", "INTEGER NOT NULL DEFAULT 7"),
+                ("backup_auto_enabled", "INTEGER NOT NULL DEFAULT 1"),
             ):
                 if col not in cols:
                     conn.execute(text(f"ALTER TABLE broadcast_settings ADD COLUMN {col} {ddl}"))

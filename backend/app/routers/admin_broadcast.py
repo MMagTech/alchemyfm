@@ -25,6 +25,19 @@ router = APIRouter(
     dependencies=[Depends(require_admin)],
 )
 
+# Fields that actually change what Liquidsoap/Icecast serve -- only these
+# warrant regenerating station scripts and briefly restarting every station.
+# Saving something like backup settings shouldn't interrupt playback.
+_APPLY_TRIGGER_FIELDS = {
+    "max_listeners",
+    "encode_format",
+    "mp3_bitrate",
+    "aac_bitrate",
+    "sample_rate",
+    "genre",
+    "crossfade_sec",
+}
+
 
 @router.get("", response_model=BroadcastSettingsRead)
 def read_broadcast_settings(db: Session = Depends(get_db)):
@@ -70,7 +83,7 @@ def save_broadcast_settings(
 ):
     data = payload.model_dump(exclude_unset=True)
     row = update_broadcast_settings(db, data)
-    if not set(data.keys()).issubset({"default_theme"}):
+    if set(data.keys()) & _APPLY_TRIGGER_FIELDS:
         apply_broadcast_settings(db, row)
     return BroadcastSettingsRead.model_validate(row).model_copy(
         update={"icecast_restart_available": icecast_restart_enabled()}

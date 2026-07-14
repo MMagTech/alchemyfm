@@ -13,6 +13,7 @@ DEFAULTS = {
     "default_theme": "violet",
     "artist_bio_enabled": True,
     "backup_keep_count": 7,
+    "backup_auto_enabled": True,
 }
 
 

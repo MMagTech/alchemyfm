@@ -82,14 +82,17 @@ async def _backup_loop() -> None:
     interval_sec = max(1, settings.backup_interval_hours) * 3600
     while True:
         try:
-            path = await asyncio.to_thread(create_backup)
             db = SessionLocal()
             try:
                 bs = get_broadcast_settings(db)
-                prune_old_backups(bs.backup_keep_count)
+                auto_enabled = bs.backup_auto_enabled
+                keep_count = bs.backup_keep_count
             finally:
                 db.close()
-            logger.info("Automatic backup created: %s", path.name)
+            if auto_enabled:
+                path = await asyncio.to_thread(create_backup)
+                prune_old_backups(keep_count)
+                logger.info("Automatic backup created: %s", path.name)
         except Exception:
             logger.exception("Automatic backup failed")
         await asyncio.sleep(interval_sec)
@@ -315,6 +318,23 @@ def admin_page(request: Request):
         return RedirectResponse(url="/admin/login.html?next=/admin.html", status_code=302)
     try:
         return _html_page("admin.html")
+    except HTTPException:
+        return {"error": "not found"}
+
+
+@app.get("/admin/stations.html")
+def admin_stations_page(request: Request):
+    if not admin_auth_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Admin is disabled. Set ADMIN_PASSWORD in your environment.",
+        )
+    if not admin_user_from_request(request):
+        return RedirectResponse(
+            url="/admin/login.html?next=/admin/stations.html", status_code=302
+        )
+    try:
+        return _html_page("admin-stations.html")
     except HTTPException:
         return {"error": "not found"}
 

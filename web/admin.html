@@ -4,13 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#09090b" media="(max-width: 640px)">
-  <title>Admin — Alchemy FM</title>
+  <title>Settings — Alchemy FM</title>
   <link rel="icon" href="/static/icons/favicon.ico?v=2" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png?v=2">
   <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png?v=2">
-  <link rel="stylesheet" href="/static/style.css?v=135">
+  <link rel="stylesheet" href="/static/style.css?v=140">
   <link rel="stylesheet" href="/static/themes.css?v=2">
-  <link rel="stylesheet" href="/static/admin-mobile.css?v=7" media="(max-width: 640px)">
+  <link rel="stylesheet" href="/static/admin-mobile.css?v=13" media="(max-width: 640px)">
   <script src="/static/themes.js?v=14"></script>
 </head>
 <body>
@@ -34,8 +34,10 @@
       </div>
       <nav>
       <a href="/">Tune In</a>
-      <a href="/admin.html" aria-current="page">Admin</a>
+      <a href="/admin/stations.html">Stations</a>
+      <a href="/admin.html" aria-current="page">Settings</a>
       <a href="/admin/knowledge.html" id="admin-knowledge-link" hidden>Knowledge</a>
+      <span class="nav-break" aria-hidden="true"></span>
       <button type="button" class="nav-link-btn" id="admin-help-btn">Help</button>
       <button type="button" class="nav-link-btn" id="logout-btn">Log Out</button>
       </nav>
@@ -43,8 +45,8 @@
   </header>
   <main class="admin-main">
     <header class="admin-page-header">
-      <h2>Admin</h2>
-      <p class="admin-lede">Control on-air status, Featured order, appearance, and global broadcast settings.</p>
+      <h2>Settings</h2>
+      <p class="admin-lede">Appearance, encoding, listener limits, and backups shared by all stations.</p>
     </header>
 
     <section class="admin-panel admin-panel-compact" id="appearance-section">
@@ -89,17 +91,8 @@
       <div id="broadcast-message" class="broadcast-toast-host" aria-live="polite" hidden></div>
       <form id="broadcast-form">
         <div class="admin-broadcast-grid">
-          <div class="admin-broadcast-group">
-            <h3 class="admin-group-title">Listeners</h3>
-            <label for="max_listeners">Max Listeners (Total)</label>
-            <div class="listeners-control">
-              <input id="max_listeners" name="max_listeners" type="number" min="1" max="10000" value="100" required>
-              <button class="btn btn-danger btn-sm" type="button" id="restart-icecast-btn" hidden>Restart Icecast</button>
-            </div>
-            <p class="hint listeners-hint" id="restart-icecast-hint">Restart Icecast after changing this limit.</p>
-          </div>
-          <div class="admin-broadcast-group admin-broadcast-group-wide">
-            <h3 class="admin-group-title">Encoding</h3>
+          <section class="admin-fieldset" aria-labelledby="bc-encoding-title">
+            <h3 class="admin-fieldset-title" id="bc-encoding-title">Encoding</h3>
             <div class="form-grid form-grid-2">
               <div>
                 <label for="encode_format">Format</label>
@@ -142,19 +135,23 @@
                 <input id="genre" name="genre" maxlength="100" placeholder="Radio">
               </div>
             </div>
-          </div>
-          <div class="admin-broadcast-group">
-            <h3 class="admin-group-title">Playback</h3>
-            <label for="crossfade_sec">Crossfade (seconds)</label>
-            <input id="crossfade_sec" name="crossfade_sec" type="number" min="0" max="8" value="0">
-            <p class="hint">0 = hard cut. 2–4s is typical for music radio.</p>
-          </div>
-          <div class="admin-broadcast-group">
-            <h3 class="admin-group-title">Backups</h3>
-            <label for="backup_keep_count">Keep last</label>
-            <input id="backup_keep_count" name="backup_keep_count" type="number" min="1" max="100" value="7">
-            <p class="hint">Automatic daily snapshot of radio.db, knowledge.db (if enabled), and icecast.xml. Older backups beyond this count are deleted.</p>
-            <button class="btn btn-sm" type="button" id="download-backup-btn">Download Backup Now</button>
+          </section>
+          <div class="admin-broadcast-subgrid">
+            <section class="admin-fieldset" aria-labelledby="bc-listeners-title">
+              <h3 class="admin-fieldset-title" id="bc-listeners-title">Listeners</h3>
+              <label for="max_listeners">Max Listeners (Total)</label>
+              <div class="listeners-control">
+                <input id="max_listeners" name="max_listeners" type="number" min="1" max="10000" value="100" required>
+                <button class="btn btn-danger btn-sm" type="button" id="restart-icecast-btn" hidden>Restart Icecast</button>
+              </div>
+              <p class="hint listeners-hint" id="restart-icecast-hint">Restart Icecast after changing this limit.</p>
+            </section>
+            <section class="admin-fieldset" aria-labelledby="bc-playback-title">
+              <h3 class="admin-fieldset-title" id="bc-playback-title">Playback</h3>
+              <label for="crossfade_sec">Crossfade (seconds)</label>
+              <input id="crossfade_sec" name="crossfade_sec" type="number" min="0" max="8" value="0">
+              <p class="hint">0 = hard cut. 2–4s is typical for music radio.</p>
+            </section>
           </div>
         </div>
         <div class="form-actions">
@@ -163,48 +160,31 @@
       </form>
     </section>
 
-    <section class="admin-panel admin-panel-primary" id="stations-section">
+    <section class="admin-panel admin-panel-compact" id="backups-section">
       <div class="admin-panel-head">
         <div>
-          <h2>Stations</h2>
-          <p class="admin-lede">On-air channels. Queues refill automatically in the background.</p>
+          <h2>Backups</h2>
+          <p class="admin-lede">Snapshots of radio.db, knowledge.db (if enabled), and icecast.xml.</p>
         </div>
       </div>
-      <div class="admin-designer-callout" id="channel-designer-callout">
-        <h3 class="admin-group-title">Design Channels in AudioMuse</h3>
-        <p class="admin-designer-callout-body">
-          Every station is created and edited in AudioMuse's
-          <a href="https://github.com/MMagTech/alchemyfm/tree/master/audiomuse-plugins/alchemy_fm_bridge" target="_blank" rel="noopener noreferrer"><strong>Alchemy FM Channel Designer</strong></a> plugin
-          (<strong>Plugins → Alchemy FM</strong>) — sonic vibe search (CLAP), lyrics themes, mood clusters,
-          tempo/energy previews, and living channels that evolve with your library.
-        </p>
-        <p class="admin-designer-callout-body">
-          The table below lists deployed stations. Use <strong>Off</strong> / <strong>On</strong> here for broadcast control.
-        </p>
-      </div>
-      <div class="admin-table-wrap">
-        <table class="admin-table admin-table-ops">
-          <colgroup>
-            <col class="col-name">
-            <col class="col-mount">
-            <col class="col-queue">
-            <col class="col-status">
-            <col class="col-actions">
-          </colgroup>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Mount</th>
-              <th>Queue</th>
-              <th>Status</th>
-              <th class="actions-col">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="stations-body">
-            <tr><td colspan="5">Loading…</td></tr>
-          </tbody>
-        </table>
-      </div>
+      <div id="backups-message" class="broadcast-toast-host" aria-live="polite" hidden></div>
+      <form id="backups-form">
+        <label class="appearance-checkbox">
+          <input type="checkbox" id="backup_auto_enabled" name="backup_auto_enabled" checked>
+          Automatic daily backup
+        </label>
+        <div class="form-grid form-grid-2">
+          <div>
+            <label for="backup_keep_count">Keep last</label>
+            <input id="backup_keep_count" name="backup_keep_count" type="number" min="1" max="100" value="7">
+          </div>
+        </div>
+        <p class="hint">Older backups beyond this count are deleted automatically, including right after a manual download.</p>
+        <div class="form-actions">
+          <button class="btn" type="submit">Save Backup Settings</button>
+          <button class="btn btn-sm" type="button" id="download-backup-btn">Download Backup Now</button>
+        </div>
+      </form>
     </section>
   </main>
 
@@ -218,34 +198,12 @@
     >
       <header class="admin-help-header">
         <div>
-          <h2 id="admin-help-title">Admin Help</h2>
-          <p class="admin-help-lede">Operations for on-air stations, appearance, broadcast, and knowledge settings. Channel design lives in AudioMuse.</p>
+          <h2 id="admin-help-title">Settings Help</h2>
+          <p class="admin-help-lede">Appearance, broadcast, and backup settings shared by all stations. On-air control lives on the Stations page.</p>
         </div>
         <button type="button" class="admin-help-close" data-help-dismiss aria-label="Close help">×</button>
       </header>
       <div class="admin-help-body">
-        <section class="admin-help-section">
-          <h3>Designing Channels</h3>
-          <p class="admin-help-p">
-            Create and edit all stations in the
-            <a href="https://github.com/MMagTech/alchemyfm/tree/master/audiomuse-plugins/alchemy_fm_bridge" target="_blank" rel="noopener noreferrer"><strong>Alchemy FM Channel Designer</strong></a> plugin in AudioMuse
-            (<strong>Plugins → Alchemy FM</strong>) — CLAP sonic search, lyrics themes, mood clusters, preview with
-            tempo and energy, and living channels that evolve with your library.
-          </p>
-        </section>
-        <section class="admin-help-section">
-          <h3>Stations Table</h3>
-          <dl class="admin-help-dl">
-            <dt>Name / Mount</dt>
-            <dd>Deployed channels from the plugin. Name links to the listener station page.</dd>
-            <dt>Queue</dt>
-            <dd>Tracks queued, estimated buffer minutes, and pool size. Refills automatically every ~30 seconds when low.</dd>
-            <dt>Status</dt>
-            <dd><strong>Live</strong> / <strong>Off</strong> plus health: <strong>OK</strong>, <strong>Refill</strong> (source issue), or <strong>No pool</strong>.</dd>
-            <dt>On / Off</dt>
-            <dd>Disable stops Liquidsoap for that station (mount goes silent). Enable starts it again within a few seconds. Edit programming in AudioMuse, not here.</dd>
-          </dl>
-        </section>
         <section class="admin-help-section">
           <h3>Appearance</h3>
           <dl class="admin-help-dl">
@@ -299,14 +257,21 @@
           </dl>
         </section>
         <section class="admin-help-section">
+          <h3>Backups</h3>
+          <dl class="admin-help-dl">
+            <dt>Automatic Daily Backup</dt>
+            <dd>Snapshots radio.db, knowledge.db (if enabled), and icecast.xml once a day. Turn off if you'd rather back up some other way.</dd>
+            <dt>Keep Last</dt>
+            <dd>Older backups beyond this count are deleted automatically, including right after a manual download.</dd>
+            <dt>Download Backup Now</dt>
+            <dd>Creates a fresh backup and downloads it immediately, independent of the automatic schedule.</dd>
+          </dl>
+        </section>
+        <section class="admin-help-section">
           <h3>Troubleshooting</h3>
           <ul class="admin-help-list">
-            <li><strong>Missing Album Art</strong> — Usually the on-air track could not be matched to a Navidrome ID. Redeploy or refresh from the Channel Designer plugin if metadata looks wrong.</li>
-            <li><strong>Wrong Or Repeating Tracks</strong> — Long uptimes: <code>queue.m3u</code> can grow with old entries while the database moves on. Restart the backend or redeploy from the plugin (see <code>docs/TECH_DEBT.md</code> in the repo).</li>
-            <li><strong>Station Silent After Changes</strong> — Confirm the station is enabled (On) in the table and check Docker logs for Liquidsoap. Persistent backend log: <code>DATA_DIR/logs/backend.log</code> (inside the app data volume).</li>
-            <li><strong>No Stations in Table</strong> — Deploy channels from AudioMuse (<strong>Plugins → Alchemy FM</strong>). They appear here automatically after deploy.</li>
-            <li><strong>Listeners Stuck After Icecast Restart</strong> — Stream epoch bumps automatically; tuned-in web players reconnect within a few seconds.</li>
             <li><strong>Listener Count Looks High (Safari / iPhone / remote access)</strong> — Safari opens a short <code>Range: bytes=0-1</code> probe before playback. The in-browser player uses <code>/api/stations/{slug}/listen</code> so the backend answers that probe without an extra Icecast connection. Counts can still read 2 if a listener uses the direct mount URL (external player + browser, or two tabs). At home on split ports (web <code>:8080</code>, Icecast <code>:8000</code>) the proxy path is used automatically; behind Traefik on one hostname, older builds preferred the direct mount and inflated counts — ensure the latest frontend is deployed. If counts still look wrong, check <code>backend.log</code> for <code>listen open … active=2</code>.</li>
+            <li><strong>Listeners Stuck After Icecast Restart</strong> — Stream epoch bumps automatically; tuned-in web players reconnect within a few seconds.</li>
           </ul>
         </section>
         <section class="admin-help-section">
@@ -425,6 +390,7 @@
         document.getElementById('genre').value = s.genre || 'Radio';
         document.getElementById('crossfade_sec').value = s.crossfade_sec;
         document.getElementById('backup_keep_count').value = s.backup_keep_count || 7;
+        document.getElementById('backup_auto_enabled').checked = s.backup_auto_enabled !== false;
         updateEncodeFormatUi();
         syncIcecastRestartUi(s.icecast_restart_available);
       } catch (err) {
@@ -562,7 +528,6 @@
         sample_rate: Number(fd.get('sample_rate')),
         genre: fd.get('genre') || 'Radio',
         crossfade_sec: Number(fd.get('crossfade_sec')),
-        backup_keep_count: Number(fd.get('backup_keep_count')),
       };
       try {
         await adminFetchJSON('/api/admin/broadcast', {
@@ -573,6 +538,25 @@
         RadioApp.showAdminToast('Broadcast settings saved.', 'success', 5000);
       } catch (err) {
         RadioApp.showAdminToast(err.message, 'error');
+      }
+    });
+
+    document.getElementById('backups-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const payload = {
+        backup_auto_enabled: document.getElementById('backup_auto_enabled').checked,
+        backup_keep_count: Number(fd.get('backup_keep_count')),
+      };
+      try {
+        await adminFetchJSON('/api/admin/broadcast', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        RadioApp.showAdminToast('Backup settings saved.', 'success', 5000, '', 'backups-message');
+      } catch (err) {
+        RadioApp.showAdminToast(err.message, 'error', 0, '', 'backups-message');
       }
     });
 
@@ -602,162 +586,17 @@
         a.click();
         a.remove();
         URL.revokeObjectURL(url);
-        RadioApp.showAdminToast('Backup downloaded.', 'success', 4000);
+        RadioApp.showAdminToast('Backup downloaded.', 'success', 4000, '', 'backups-message');
       } catch (err) {
-        RadioApp.showAdminToast(err.message, 'error');
+        RadioApp.showAdminToast(err.message, 'error', 0, '', 'backups-message');
       } finally {
         btn.disabled = false;
         btn.textContent = prevLabel;
       }
     });
 
-    let adminStationsCache = [];
-
-    async function loadAdminStations() {
-      const body = document.getElementById('stations-body');
-      try {
-        const stations = await adminFetchJSON('/api/admin/stations');
-        if (!stations.length) {
-          body.innerHTML = '<tr><td colspan="5" class="admin-empty">No stations yet. Deploy a channel from AudioMuse (<strong>Plugins → Alchemy FM</strong>).</td></tr>';
-          return;
-        }
-        const enabledCount = stations.filter((s) => s.enabled).length;
-        const featuredCap = enabledCount >= 15 ? 6 : 3;
-        body.innerHTML = stations.map((s) => {
-          let healthClass = 'admin-pill-ok';
-          let healthLabel = 'OK';
-          if (s.pool_count === 0) {
-            healthClass = 'admin-pill-bad';
-            healthLabel = 'No pool';
-          } else if (!s.source_healthy) {
-            healthClass = 'admin-pill-warn';
-            healthLabel = 'Refill';
-          }
-          const onAir = s.enabled
-            ? '<span class="admin-pill admin-pill-live">Live</span>'
-            : '<span class="admin-pill admin-pill-off">Off</span>';
-          const health = s.enabled
-            ? `<span class="admin-pill ${healthClass}">${healthLabel}</span>`
-            : '<span class="admin-pill admin-pill-standby">—</span>';
-          const queueTitle = `${s.queued_count} tracks queued · ~${s.buffer_minutes} min buffer` +
-            (s.pool_count > 0 ? ` · ${s.pool_count} in pool` : '');
-          const queueLine = `<span class="admin-queue-compact" title="${RadioApp.escapeAttr(queueTitle)}">` +
-            `<span>${s.queued_count}</span><span class="admin-queue-dot">·</span>` +
-            `<span>~${s.buffer_minutes}m</span>` +
-            (s.pool_count > 0 ? `<span class="admin-queue-dot">·</span><span class="admin-queue-pool">${s.pool_count}p</span>` : '') +
-            `</span>`;
-          const toggleClass = s.enabled ? 'btn-admin-disable' : 'btn-admin-enable';
-          const toggleLabel = s.enabled ? 'Off' : 'On';
-          const starClass = s.featured ? 'admin-star-btn is-featured' : 'admin-star-btn';
-          const starTitle = s.featured ? 'Remove from Featured' : `Add to Featured (up to ${featuredCap})`;
-          const reorderGroup = s.featured ? 'Featured' : 'All Stations';
-          const reorder = `
-                <button class="admin-reorder-btn" data-action="reorder-up" data-id="${s.id}" title="Move earlier in ${reorderGroup}">&#9650;</button>
-                <button class="admin-reorder-btn" data-action="reorder-down" data-id="${s.id}" title="Move later in ${reorderGroup}">&#9660;</button>`;
-          return `
-          <tr class="${s.enabled ? 'admin-row-live' : 'admin-row-off'}">
-            <td class="admin-name-cell">
-              <a class="admin-station-link" href="/station.html?slug=${encodeURIComponent(s.slug)}">${RadioApp.escape(s.name)}</a>
-            </td>
-            <td class="admin-cell-mount" data-label="Mount">
-              <span class="admin-chip admin-chip-mount" title="${RadioApp.escapeAttr(s.icecast_mount)}">${RadioApp.escape(s.icecast_mount)}</span>
-            </td>
-            <td class="admin-queue-cell" data-label="Queue">${queueLine}</td>
-            <td class="admin-status-cell" data-label="Status"><span class="admin-pill-row">${onAir}${health}</span></td>
-            <td class="actions" data-label="Actions">
-              <div class="admin-actions admin-actions-ops">
-                <button class="${starClass}" data-action="feature" data-id="${s.id}" data-featured="${s.featured}" title="${starTitle}" aria-label="${starTitle}">&#9733;</button>
-                ${reorder}
-                <button class="btn btn-sm ${toggleClass}" data-action="toggle" data-id="${s.id}" data-enabled="${s.enabled}" title="${s.enabled ? 'Take station off air' : 'Put station on air'}">${toggleLabel}</button>
-              </div>
-            </td>
-          </tr>`;
-        }).join('');
-        adminStationsCache = stations;
-      } catch (err) {
-        body.innerHTML = `<tr><td colspan="5">${RadioApp.escape(err.message)}</td></tr>`;
-      }
-    }
-
-    document.getElementById('stations-body').addEventListener('click', async (e) => {
-      const toggleBtn = e.target.closest('button[data-action="toggle"]');
-      if (toggleBtn) {
-        const id = toggleBtn.dataset.id;
-        try {
-          const enabled = toggleBtn.dataset.enabled !== 'true';
-          await adminFetchJSON(`/api/admin/stations/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ enabled }),
-          });
-          RadioApp.showAdminToast(enabled ? 'Station enabled.' : 'Station disabled.', 'success', 4000);
-          loadAdminStations();
-        } catch (err) {
-          RadioApp.showAdminToast(err.message, 'error');
-        }
-        return;
-      }
-
-      const starBtn = e.target.closest('button[data-action="feature"]');
-      if (starBtn) {
-        const id = starBtn.dataset.id;
-        try {
-          const featured = starBtn.dataset.featured !== 'true';
-          await adminFetchJSON(`/api/admin/stations/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ featured }),
-          });
-          RadioApp.showAdminToast(featured ? 'Added to Featured.' : 'Removed from Featured.', 'success', 4000);
-          loadAdminStations();
-        } catch (err) {
-          RadioApp.showAdminToast(err.message, 'error');
-        }
-        return;
-      }
-
-      const reorderBtn = e.target.closest('button[data-action="reorder-up"], button[data-action="reorder-down"]');
-      if (reorderBtn) {
-        const id = Number(reorderBtn.dataset.id);
-        const direction = reorderBtn.dataset.action === 'reorder-up' ? -1 : 1;
-        const station = adminStationsCache.find((s) => s.id === id);
-        if (!station) return;
-        // Featured stations reorder among themselves (featured_order); everyone
-        // else reorders within the non-featured group (sort_order). These are
-        // independent lists, same as how they're grouped in the admin table
-        // and on the home page.
-        const orderField = station.featured ? 'featured_order' : 'sort_order';
-        const group = adminStationsCache
-          .filter((s) => Boolean(s.featured) === Boolean(station.featured))
-          .sort((a, b) => a[orderField] - b[orderField]);
-        const index = group.findIndex((s) => s.id === id);
-        const swapIndex = index + direction;
-        if (index === -1 || swapIndex < 0 || swapIndex >= group.length) return;
-        const current = group[index];
-        const swap = group[swapIndex];
-        try {
-          await Promise.all([
-            adminFetchJSON(`/api/admin/stations/${current.id}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ [orderField]: swap[orderField] }),
-            }),
-            adminFetchJSON(`/api/admin/stations/${swap.id}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ [orderField]: current[orderField] }),
-            }),
-          ]);
-          loadAdminStations();
-        } catch (err) {
-          RadioApp.showAdminToast(err.message, 'error');
-        }
-      }
-    });
-
     loadBroadcastSettings();
     loadAppearanceSettings();
-    loadAdminStations();
 
     fetch('/api/health').then(r => r.json()).then(h => {
       const link = document.getElementById('admin-knowledge-link');

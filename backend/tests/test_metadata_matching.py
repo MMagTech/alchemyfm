@@ -30,3 +30,12 @@ def test_titles_match_rejects_genuinely_different_titles():
 
 def test_artists_match_survives_mangled_asterisk():
     assert _artists_match("Guns N* Roses", "Guns N' Roses")
+
+
+def test_titles_match_survives_mixed_mangled_punctuation():
+    # Real-world case: Icecast mangled two DIFFERENT characters (an
+    # apostrophe and a hyphen) to the same literal "*" in one title, so a
+    # fix that assumes "*" always means "apostrophe" breaks on tracks like
+    # this one -- both sides must collapse to the same word skeleton
+    # regardless of what the original punctuation was.
+    assert _titles_match("It*s Bigger Than Hip*Hop", "It's Bigger Than Hip-Hop")

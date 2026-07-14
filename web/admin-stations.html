@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#09090b" media="(max-width: 640px)">
+  <title>Stations — Alchemy FM</title>
+  <link rel="icon" href="/static/icons/favicon.ico?v=2" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png?v=2">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png?v=2">
+  <link rel="stylesheet" href="/static/style.css?v=140">
+  <link rel="stylesheet" href="/static/themes.css?v=2">
+  <link rel="stylesheet" href="/static/admin-mobile.css?v=13" media="(max-width: 640px)">
+  <script src="/static/themes.js?v=14"></script>
+</head>
+<body>
+  <header>
+    <h1 class="site-wordmark">
+      <a href="/" class="site-wordmark-link">
+        <span class="site-wordmark-icon" aria-hidden="true">
+          <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" focusable="false">
+            <rect x="1.5" y="9" width="3" height="9" rx="1.2"/>
+            <rect x="6.5" y="6" width="3" height="12" rx="1.2"/>
+            <rect x="11.5" y="3" width="3" height="15" rx="1.2"/>
+            <rect x="16.5" y="7" width="3" height="11" rx="1.2"/>
+          </svg>
+        </span>
+        <span class="site-wordmark-text"><span class="site-wordmark-name">Alchemy</span><span class="site-wordmark-fm">FM</span></span>
+      </a>
+    </h1>
+    <div class="header-end">
+      <div id="header-broadcast-stats" class="header-broadcast-stats" aria-live="polite">
+        <span class="header-stat is-loading">…</span>
+      </div>
+      <nav>
+      <a href="/">Tune In</a>
+      <a href="/admin/stations.html" aria-current="page">Stations</a>
+      <a href="/admin.html">Settings</a>
+      <a href="/admin/knowledge.html" id="admin-knowledge-link" hidden>Knowledge</a>
+      <span class="nav-break" aria-hidden="true"></span>
+      <button type="button" class="nav-link-btn" id="admin-help-btn">Help</button>
+      <button type="button" class="nav-link-btn" id="logout-btn">Log Out</button>
+      </nav>
+    </div>
+  </header>
+  <main class="admin-main">
+    <header class="admin-page-header">
+      <h2>Stations</h2>
+      <p class="admin-lede">On-air channels. Queues refill automatically in the background.</p>
+    </header>
+
+    <section class="admin-panel" id="stations-section">
+      <div class="admin-designer-callout" id="channel-designer-callout">
+        <h3 class="admin-group-title">Design Channels in AudioMuse</h3>
+        <p class="admin-designer-callout-body">
+          Every station is created and edited in AudioMuse's
+          <a href="https://github.com/MMagTech/alchemyfm/tree/master/audiomuse-plugins/alchemy_fm_bridge" target="_blank" rel="noopener noreferrer"><strong>Alchemy FM Channel Designer</strong></a> plugin
+          (<strong>Plugins → Alchemy FM</strong>) — sonic vibe search (CLAP), lyrics themes, mood clusters,
+          tempo/energy previews, and living channels that evolve with your library.
+        </p>
+        <p class="admin-designer-callout-body">
+          The list below shows deployed stations. Use <strong>Off</strong> / <strong>On</strong> here for broadcast control.
+        </p>
+      </div>
+      <div class="admin-stations-grid" id="stations-body">
+        <p class="admin-empty">Loading…</p>
+      </div>
+    </section>
+  </main>
+
+  <div id="admin-help-dialog" class="admin-dialog admin-help-dialog" hidden>
+    <div class="admin-dialog-backdrop" data-help-dismiss></div>
+    <div
+      class="admin-help-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="admin-help-title"
+    >
+      <header class="admin-help-header">
+        <div>
+          <h2 id="admin-help-title">Stations Help</h2>
+          <p class="admin-help-lede">On-air control for deployed channels. Channel design lives in AudioMuse.</p>
+        </div>
+        <button type="button" class="admin-help-close" data-help-dismiss aria-label="Close help">×</button>
+      </header>
+      <div class="admin-help-body">
+        <section class="admin-help-section">
+          <h3>Designing Channels</h3>
+          <p class="admin-help-p">
+            Create and edit all stations in the
+            <a href="https://github.com/MMagTech/alchemyfm/tree/master/audiomuse-plugins/alchemy_fm_bridge" target="_blank" rel="noopener noreferrer"><strong>Alchemy FM Channel Designer</strong></a> plugin in AudioMuse
+            (<strong>Plugins → Alchemy FM</strong>) — CLAP sonic search, lyrics themes, mood clusters, preview with
+            tempo and energy, and living channels that evolve with your library.
+          </p>
+        </section>
+        <section class="admin-help-section">
+          <h3>Stations List</h3>
+          <dl class="admin-help-dl">
+            <dt>Name / Mount</dt>
+            <dd>Deployed channels from the plugin. Name links to the listener station page.</dd>
+            <dt>Queue</dt>
+            <dd>Tracks queued, estimated buffer minutes, and pool size. Refills automatically every ~30 seconds when low.</dd>
+            <dt>Status</dt>
+            <dd><strong>Live</strong> / <strong>Off</strong> plus health: <strong>OK</strong>, <strong>Refill</strong> (source issue), or <strong>No pool</strong>.</dd>
+            <dt>&#9733; Featured</dt>
+            <dd>Pins the station to the Featured row on the home page, up to the current cap. Use the up/down arrows to reorder within Featured or the rest of the list.</dd>
+            <dt>On / Off</dt>
+            <dd>Disable stops Liquidsoap for that station (mount goes silent). Enable starts it again within a few seconds. Edit programming in AudioMuse, not here.</dd>
+          </dl>
+        </section>
+        <section class="admin-help-section">
+          <h3>Troubleshooting</h3>
+          <ul class="admin-help-list">
+            <li><strong>Missing Album Art</strong> — Usually the on-air track could not be matched to a Navidrome ID. Redeploy or refresh from the Channel Designer plugin if metadata looks wrong.</li>
+            <li><strong>Wrong Or Repeating Tracks</strong> — Long uptimes: <code>queue.m3u</code> can grow with old entries while the database moves on. Restart the backend or redeploy from the plugin (see <code>docs/TECH_DEBT.md</code> in the repo).</li>
+            <li><strong>Station Silent After Changes</strong> — Confirm the station is enabled (On) in the list and check Docker logs for Liquidsoap. Persistent backend log: <code>DATA_DIR/logs/backend.log</code> (inside the app data volume).</li>
+            <li><strong>No Stations Listed</strong> — Deploy channels from AudioMuse (<strong>Plugins → Alchemy FM</strong>). They appear here automatically after deploy.</li>
+            <li><strong>Listeners Stuck After Icecast Restart</strong> — Stream epoch bumps automatically; tuned-in web players reconnect within a few seconds.</li>
+          </ul>
+        </section>
+        <section class="admin-help-section">
+          <h3>External Services</h3>
+          <p class="admin-help-p">Programming comes from <strong>AudioMuse</strong>. Stream URLs and cover art come from <strong>Navidrome</strong>. Both must be configured in <code>.env</code> and reachable from the backend container — listeners never connect to them directly.</p>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=54"></script>
+  <script>
+    function redirectToLogin() {
+      const next = encodeURIComponent(location.pathname + location.search);
+      location.href = `/admin/login.html?next=${next}`;
+    }
+
+    async function adminFetchJSON(url, options = {}) {
+      const res = await fetch(url, { credentials: 'same-origin', ...options });
+      if (res.status === 401) {
+        redirectToLogin();
+        throw new Error('Session expired');
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail = data.detail;
+        const message = Array.isArray(detail)
+          ? detail.map((item) => item.msg || JSON.stringify(item)).join('; ')
+          : (typeof detail === 'string' ? detail : (data.error || res.statusText));
+        throw new Error(message);
+      }
+      return data;
+    }
+
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      try {
+        await fetch('/api/admin/logout', { method: 'POST', credentials: 'same-origin' });
+      } catch (_) { /* still send user to login */ }
+      location.href = '/admin/login.html';
+    });
+
+    let adminStationsCache = [];
+
+    async function loadAdminStations() {
+      const body = document.getElementById('stations-body');
+      try {
+        const stations = await adminFetchJSON('/api/admin/stations');
+        if (!stations.length) {
+          body.innerHTML = '<p class="admin-empty">No stations yet. Deploy a channel from AudioMuse (<strong>Plugins → Alchemy FM</strong>).</p>';
+          return;
+        }
+        const enabledCount = stations.filter((s) => s.enabled).length;
+        const featuredCap = enabledCount >= 15 ? 6 : 3;
+        body.innerHTML = stations.map((s) => {
+          let healthClass = 'admin-pill-ok';
+          let healthLabel = 'OK';
+          if (s.pool_count === 0) {
+            healthClass = 'admin-pill-bad';
+            healthLabel = 'No pool';
+          } else if (!s.source_healthy) {
+            healthClass = 'admin-pill-warn';
+            healthLabel = 'Refill';
+          }
+          const onAir = s.enabled
+            ? '<span class="admin-pill admin-pill-live">Live</span>'
+            : '<span class="admin-pill admin-pill-off">Off</span>';
+          const health = s.enabled
+            ? `<span class="admin-pill ${healthClass}">${healthLabel}</span>`
+            : '<span class="admin-pill admin-pill-standby">—</span>';
+          const queueTitle = `${s.queued_count} tracks queued · ~${s.buffer_minutes} min buffer` +
+            (s.pool_count > 0 ? ` · ${s.pool_count} in pool` : '');
+          const queueLine = `<span class="admin-queue-compact" title="${RadioApp.escapeAttr(queueTitle)}">` +
+            `<span>${s.queued_count}</span><span class="admin-queue-dot">·</span>` +
+            `<span>~${s.buffer_minutes}m</span>` +
+            (s.pool_count > 0 ? `<span class="admin-queue-dot">·</span><span class="admin-queue-pool">${s.pool_count}p</span>` : '') +
+            `</span>`;
+          const toggleClass = s.enabled ? 'btn-admin-disable' : 'btn-admin-enable';
+          const toggleLabel = s.enabled ? 'Off' : 'On';
+          const starClass = s.featured ? 'admin-star-btn is-featured' : 'admin-star-btn';
+          const starTitle = s.featured ? 'Remove from Featured' : `Add to Featured (up to ${featuredCap})`;
+          const reorderGroup = s.featured ? 'Featured' : 'All Stations';
+          const reorder = `
+                <button class="admin-reorder-btn" data-action="reorder-up" data-id="${s.id}" title="Move earlier in ${reorderGroup}">&#9650;</button>
+                <button class="admin-reorder-btn" data-action="reorder-down" data-id="${s.id}" title="Move later in ${reorderGroup}">&#9660;</button>`;
+          return `
+          <div class="admin-station-card ${s.enabled ? 'admin-row-live' : 'admin-row-off'}">
+            <div class="admin-station-top">
+              <a class="admin-station-link" href="/station.html?slug=${encodeURIComponent(s.slug)}">${RadioApp.escape(s.name)}</a>
+              <span class="admin-pill-row">${onAir}${health}</span>
+            </div>
+            <div class="admin-station-meta">
+              <div class="admin-station-field">
+                <span class="admin-station-field-label">Mount</span>
+                <span class="admin-chip admin-chip-mount" title="${RadioApp.escapeAttr(s.icecast_mount)}">${RadioApp.escape(s.icecast_mount)}</span>
+              </div>
+              <div class="admin-station-field">
+                <span class="admin-station-field-label">Queue</span>
+                ${queueLine}
+              </div>
+              <div class="admin-actions admin-actions-ops admin-station-actions">
+                <button class="${starClass}" data-action="feature" data-id="${s.id}" data-featured="${s.featured}" title="${starTitle}" aria-label="${starTitle}">&#9733;</button>
+                ${reorder}
+                <button class="btn btn-sm ${toggleClass}" data-action="toggle" data-id="${s.id}" data-enabled="${s.enabled}" title="${s.enabled ? 'Take station off air' : 'Put station on air'}">${toggleLabel}</button>
+              </div>
+            </div>
+          </div>`;
+        }).join('');
+        adminStationsCache = stations;
+      } catch (err) {
+        body.innerHTML = `<p class="admin-empty">${RadioApp.escape(err.message)}</p>`;
+      }
+    }
+
+    document.getElementById('stations-body').addEventListener('click', async (e) => {
+      const toggleBtn = e.target.closest('button[data-action="toggle"]');
+      if (toggleBtn) {
+        const id = toggleBtn.dataset.id;
+        try {
+          const enabled = toggleBtn.dataset.enabled !== 'true';
+          await adminFetchJSON(`/api/admin/stations/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled }),
+          });
+          RadioApp.showAdminToast(enabled ? 'Station enabled.' : 'Station disabled.', 'success', 4000);
+          loadAdminStations();
+        } catch (err) {
+          RadioApp.showAdminToast(err.message, 'error');
+        }
+        return;
+      }
+
+      const starBtn = e.target.closest('button[data-action="feature"]');
+      if (starBtn) {
+        const id = starBtn.dataset.id;
+        try {
+          const featured = starBtn.dataset.featured !== 'true';
+          await adminFetchJSON(`/api/admin/stations/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ featured }),
+          });
+          RadioApp.showAdminToast(featured ? 'Added to Featured.' : 'Removed from Featured.', 'success', 4000);
+          loadAdminStations();
+        } catch (err) {
+          RadioApp.showAdminToast(err.message, 'error');
+        }
+        return;
+      }
+
+      const reorderBtn = e.target.closest('button[data-action="reorder-up"], button[data-action="reorder-down"]');
+      if (reorderBtn) {
+        const id = Number(reorderBtn.dataset.id);
+        const direction = reorderBtn.dataset.action === 'reorder-up' ? -1 : 1;
+        const station = adminStationsCache.find((s) => s.id === id);
+        if (!station) return;
+        // Featured stations reorder among themselves (featured_order); everyone
+        // else reorders within the non-featured group (sort_order). These are
+        // independent lists, same as how they're grouped in the admin table
+        // and on the home page.
+        const orderField = station.featured ? 'featured_order' : 'sort_order';
+        const group = adminStationsCache
+          .filter((s) => Boolean(s.featured) === Boolean(station.featured))
+          .sort((a, b) => a[orderField] - b[orderField]);
+        const index = group.findIndex((s) => s.id === id);
+        const swapIndex = index + direction;
+        if (index === -1 || swapIndex < 0 || swapIndex >= group.length) return;
+        const current = group[index];
+        const swap = group[swapIndex];
+        try {
+          await Promise.all([
+            adminFetchJSON(`/api/admin/stations/${current.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ [orderField]: swap[orderField] }),
+            }),
+            adminFetchJSON(`/api/admin/stations/${swap.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ [orderField]: current[orderField] }),
+            }),
+          ]);
+          loadAdminStations();
+        } catch (err) {
+          RadioApp.showAdminToast(err.message, 'error');
+        }
+      }
+    });
+
+    loadAdminStations();
+
+    fetch('/api/health').then(r => r.json()).then(h => {
+      const link = document.getElementById('admin-knowledge-link');
+      if (link && h.knowledge_feature) link.hidden = false;
+    }).catch(() => {});
+
+    const adminHelpDialog = document.getElementById('admin-help-dialog');
+    function openAdminHelp() {
+      adminHelpDialog.hidden = false;
+      document.body.classList.add('admin-dialog-open');
+      adminHelpDialog.querySelector('.admin-help-close')?.focus();
+    }
+    function closeAdminHelp() {
+      adminHelpDialog.hidden = true;
+      document.body.classList.remove('admin-dialog-open');
+    }
+    document.getElementById('admin-help-btn')?.addEventListener('click', openAdminHelp);
+    adminHelpDialog?.addEventListener('click', (e) => {
+      if (e.target.closest('[data-help-dismiss]')) closeAdminHelp();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && adminHelpDialog && !adminHelpDialog.hidden) {
+        closeAdminHelp();
+      }
+    });
+  </script>
+</body>
+</html>

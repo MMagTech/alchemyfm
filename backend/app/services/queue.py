@@ -179,18 +179,20 @@ async def ensure_queue_fresh(db: Session, station: Station) -> None:
 
 
 def _normalize_metadata(s: str) -> str:
-    """Loose match for Icecast titles vs queue rows (spacing, commas, quotes).
+    """Loose match for Icecast titles vs queue rows.
 
-    Icecast's in-stream metadata sometimes mangles a curly apostrophe into a
-    literal "*" (charset/encoding mismatch on the wire) -- e.g. "Play'n It
-    Raw" arrives as "Play*n It Raw". Mapping "*" the same way as the other
-    quote characters below keeps that track matching its queue row, so
-    item_id (and therefore cover art) still resolves.
+    Icecast's in-stream metadata can mangle ANY character it can't encode
+    (curly apostrophes, dashes, ellipses, ...) into a literal "*" -- which
+    original character it was varies per track, so guessing one specific
+    replacement (e.g. always treating "*" as an apostrophe) just breaks
+    again on the next track where it stood in for something else, like a
+    dash ("It's Bigger Than Hip-Hop" -> "It*s Bigger Than Hip*Hop", where one
+    "*" is an apostrophe and the other a hyphen). Stripping all punctuation
+    down to bare words instead means both sides collapse to the same
+    skeleton regardless of what the original character was.
     """
     s = s.strip().lower()
-    for ch in ("\u2018", "\u2019", "\u2032", "`", "\u201c", "\u201d", "*"):
-        s = s.replace(ch, "'")
-    s = re.sub(r"[,.\-–—:;!?]", " ", s)
+    s = re.sub(r"[^\w\s]", " ", s, flags=re.UNICODE)
     return re.sub(r"\s+", " ", s).strip()
 
 
