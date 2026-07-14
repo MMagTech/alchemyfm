@@ -46,7 +46,10 @@ const AlchemyDiag = {
 
 /**
  * Shared live stream audio + bottom mini-player for listener pages.
- * Persists tune-in across navigation via sessionStorage + soft navigation.
+ * Persists tune-in across navigation via localStorage + soft navigation --
+ * sessionStorage was tried first but is destroyed the moment the tab/app is
+ * actually closed, not just backgrounded, which defeats "show my last
+ * station when I reopen the app" for the one scenario that matters most.
  */
 const GlobalLivePlayer = {
   STORAGE_KEY: 'alchemyfm-live-session',
@@ -97,7 +100,7 @@ const GlobalLivePlayer = {
 
   readSession() {
     try {
-      const raw = sessionStorage.getItem(this.STORAGE_KEY);
+      const raw = localStorage.getItem(this.STORAGE_KEY);
       if (!raw) return null;
       const data = JSON.parse(raw);
       if (!data || typeof data !== 'object') return null;
@@ -109,7 +112,7 @@ const GlobalLivePlayer = {
 
   readStationsCache() {
     try {
-      const raw = sessionStorage.getItem(this.STATIONS_CACHE_KEY);
+      const raw = localStorage.getItem(this.STATIONS_CACHE_KEY);
       if (!raw) return null;
       const data = JSON.parse(raw);
       return Array.isArray(data) ? data : null;
@@ -121,7 +124,7 @@ const GlobalLivePlayer = {
   writeStationsCache(stations) {
     try {
       if (stations?.length) {
-        sessionStorage.setItem(this.STATIONS_CACHE_KEY, JSON.stringify(stations));
+        localStorage.setItem(this.STATIONS_CACHE_KEY, JSON.stringify(stations));
         this._stationList = stations;
       }
     } catch {}
@@ -188,10 +191,10 @@ const GlobalLivePlayer = {
   writeSession(data) {
     try {
       if (!data) {
-        sessionStorage.removeItem(this.STORAGE_KEY);
+        localStorage.removeItem(this.STORAGE_KEY);
         return;
       }
-      sessionStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
     } catch {}
   },
 
@@ -394,6 +397,14 @@ const GlobalLivePlayer = {
       trackEl.innerHTML = '<span class="live-mini-track-inner"></span>';
       inner = trackEl.querySelector('.live-mini-track-inner');
     }
+    // The mini player polls now-playing every 750ms while live (startMiniPoll)
+    // and called this on every tick regardless of whether the text changed --
+    // syncMiniTrackMarquee resets the scroll animation each time, so a long
+    // title (16s+ cycle) never got more than 750ms of progress before being
+    // restarted. Only resync on an actual change; a resize still re-syncs
+    // directly via the resize listener, independent of this guard.
+    if (trackEl.dataset.label === label) return;
+    trackEl.dataset.label = label;
     inner.textContent = label;
     trackEl.title = label;
     this.syncMiniTrackMarquee(trackEl);
@@ -1207,8 +1218,12 @@ const GlobalLivePlayer = {
       } else if (session?.slug) {
         // Paused/stopped last session — show it in the mini player without
         // attempting to reconnect; that only happens on an explicit tap.
-        // Still set streamSrc so a later tap on play has a URL to connect to.
+        // Still set streamSrc so a later tap on play has a URL to connect to,
+        // and still set up the engine so the mini play button's togglePlay()
+        // actually exists to call -- without this, audio._liveEngine is
+        // never created and tapping play silently does nothing.
         audio.dataset.streamSrc = session.streamSrc || this.browserStreamUrl(session.slug);
+        this.ensureEngine(audio);
         this.updateMiniMeta({ stationName: session.stationName, slug: session.slug });
         this.syncMiniVisibility();
         void this.refreshMiniNowPlaying(session.slug);
@@ -1314,6 +1329,14 @@ const GlobalLivePlayer = {
     const audio = this.getAudio();
     if (!audio || !station || typeof RadioApp === 'undefined') return;
 
+    // Guard against overlapping calls (e.g. rapid station-card clicks): only
+    // the most recent call is allowed to apply its late-resolving metadata
+    // fetch or finalize the "now playing" UI state, so an earlier,
+    // already-superseded switch can't clobber a newer one's display after
+    // the fact.
+    this._switchEpoch = (this._switchEpoch || 0) + 1;
+    const myEpoch = this._switchEpoch;
+
     if (hardwareSkip) {
       AlchemyDiag.log('switch-station-start', { toSlug: station.slug, hardwareSkip });
     }
@@ -1385,6 +1408,7 @@ const GlobalLivePlayer = {
     }
     const connectTask = audio._liveEngine.connectStream(isSwitch, {
       skipReset: isSwitch && hardwareSkip,
+      slowStart: isSwitch && hardwareSkip,
     }).catch(() => {
       audio.reconnectLiveStream?.();
     });
@@ -1392,6 +1416,7 @@ const GlobalLivePlayer = {
     const metaTask = RadioApp.fetchJSON(
       `/api/stations/${encodeURIComponent(station.slug)}`
     ).then((meta) => {
+      if (myEpoch !== this._switchEpoch) return meta;
       this.applySwitchVisuals(meta, { switching: isSwitch });
       if (meta.name && meta.name !== station.name) {
         this.mergeSession({
@@ -1405,6 +1430,12 @@ const GlobalLivePlayer = {
     await connectTask;
     await tuningWait;
     await metaTask;
+
+    // A newer switchToStation call has already started (rapid station
+    // switching) -- let it own finishing up; applying our now-stale state
+    // here would flip _miniSwitching off under the current switch's feet
+    // and could resync the UI back to this abandoned station.
+    if (myEpoch !== this._switchEpoch) return;
 
     this._miniSwitching = false;
     this.syncMiniVisibility();

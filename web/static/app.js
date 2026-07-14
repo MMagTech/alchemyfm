@@ -357,6 +357,9 @@ const RadioApp = {
     let streamLive = false;
     let stallTimer = null;
     let connectInFlight = false;
+    let connectGeneration = 0;
+    let hasBufferedThisConnect = false;
+    let slowStartThisConnect = false;
     let lastProgressAt = 0;
     let listenElapsedMs = 0;
     let listenStartedAt = null;
@@ -450,8 +453,7 @@ const RadioApp = {
       }
     };
 
-    const connectStream = (bustCache = false, { skipReset = false } = {}) => {
-      if (connectInFlight) return Promise.resolve();
+    const connectStream = (bustCache = false, { skipReset = false, slowStart = false } = {}) => {
       const base = baseStreamUrl();
       if (!base) return Promise.reject(new Error('No stream URL'));
       audio.dataset.streamSrc = base;
@@ -472,9 +474,19 @@ const RadioApp = {
       if (audio.dataset.wantLive === '1' && !audio.paused && sameStream && !useCacheBust) {
         return Promise.resolve();
       }
+      // Only dedupe a connect already in flight to this SAME target -- a call
+      // for a genuinely different station (rapid switching) must be allowed
+      // to interrupt and take over, or the newer target gets silently
+      // dropped while an earlier, already-abandoned one keeps playing.
+      if (connectInFlight && sameStream) {
+        return Promise.resolve();
+      }
 
+      const myGeneration = ++connectGeneration;
       connectInFlight = true;
       userPaused = false;
+      hasBufferedThisConnect = false;
+      slowStartThisConnect = slowStart;
       audio._liveUi?.setConnectingUi?.(bustCache ? 'Reconnecting…' : 'Connecting…');
 
       // A lock-screen/CarPlay nexttrack press only grants iOS a brief autoplay
@@ -498,11 +510,16 @@ const RadioApp = {
       const playStartedAt = Date.now();
       return audio.play().then(
         () => {
+          if (myGeneration !== connectGeneration) return;
           if (skipReset && typeof AlchemyDiag !== 'undefined') {
             AlchemyDiag.log('play-resolved', { src, msSincePlayCall: Date.now() - playStartedAt });
           }
         },
         (err) => {
+          // A newer connectStream() call for a different station already
+          // took over and aborted this one (e.g. rapid station switching) --
+          // that's expected, not a real failure, so don't treat it as one.
+          if (myGeneration !== connectGeneration) return;
           if (skipReset && typeof AlchemyDiag !== 'undefined') {
             AlchemyDiag.log('play-rejected', {
               src,
@@ -514,7 +531,9 @@ const RadioApp = {
           throw err;
         },
       ).finally(() => {
-        connectInFlight = false;
+        if (myGeneration === connectGeneration) {
+          connectInFlight = false;
+        }
       });
     };
 
@@ -570,14 +589,35 @@ const RadioApp = {
     const armStallWatch = () => {
       clearStallWatch();
       if (audio.dataset.wantLive !== '1' || audio.paused || !streamLive) return;
+      // A brand-new lock-screen/CarPlay-triggered connection that hasn't
+      // buffered yet gets a much longer grace period than an established
+      // stream that stalled mid-playback: while backgrounded, the initial
+      // connect can legitimately take well over 12s, and the old single 12s
+      // timeout would tear the element down (audio.load()) while a still-
+      // viable play() was pending, aborting it with AbortError instead of
+      // letting it finish connecting. Scoped to slowStart connects only —
+      // a foreground tap with no data yet should still fail fast at 12s,
+      // since we have no evidence foreground connects are ever this slow,
+      // and someone actively flipping through stations deserves a prompt
+      // "this one's not working" signal rather than a longer wait.
+      const timeoutMs = !hasBufferedThisConnect && slowStartThisConnect ? 30000 : 12000;
       stallTimer = setTimeout(() => {
         if (audio.dataset.wantLive !== '1' || audio.paused || !streamLive) return;
         if (audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
           armStallWatch();
           return;
         }
+        if (typeof AlchemyDiag !== 'undefined') {
+          AlchemyDiag.log('stall-watch-gaveup', {
+            timeoutMs,
+            hasBufferedThisConnect,
+            slowStartThisConnect,
+            readyState: audio.readyState,
+            networkState: audio.networkState,
+          });
+        }
         markStreamOffline('Stream interrupted');
-      }, 12000);
+      }, timeoutMs);
     };
 
     const updateTimer = () => {
@@ -698,6 +738,7 @@ const RadioApp = {
       reconnectAttempt = 0;
       clearTimeout(reconnectTimer);
       lastProgressAt = Date.now();
+      hasBufferedThisConnect = true;
       this.applySavedLiveVolume(audio);
       audio._liveUi?.setPlayingUi?.(true);
       armStallWatch();

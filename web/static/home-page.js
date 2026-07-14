@@ -300,7 +300,7 @@ const AlchemyHome = {
 
   readStationsCache() {
     try {
-      const raw = sessionStorage.getItem(this._stationsCacheKey);
+      const raw = localStorage.getItem(this._stationsCacheKey);
       if (!raw) return null;
       const data = JSON.parse(raw);
       return Array.isArray(data) ? data : null;
@@ -312,7 +312,7 @@ const AlchemyHome = {
   writeStationsCache(stations) {
     try {
       if (stations?.length) {
-        sessionStorage.setItem(this._stationsCacheKey, JSON.stringify(stations));
+        localStorage.setItem(this._stationsCacheKey, JSON.stringify(stations));
         if (typeof GlobalLivePlayer !== 'undefined') {
           GlobalLivePlayer._stationList = stations;
         }

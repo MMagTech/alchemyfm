@@ -179,9 +179,16 @@ async def ensure_queue_fresh(db: Session, station: Station) -> None:
 
 
 def _normalize_metadata(s: str) -> str:
-    """Loose match for Icecast titles vs queue rows (spacing, commas, quotes)."""
+    """Loose match for Icecast titles vs queue rows (spacing, commas, quotes).
+
+    Icecast's in-stream metadata sometimes mangles a curly apostrophe into a
+    literal "*" (charset/encoding mismatch on the wire) -- e.g. "Play'n It
+    Raw" arrives as "Play*n It Raw". Mapping "*" the same way as the other
+    quote characters below keeps that track matching its queue row, so
+    item_id (and therefore cover art) still resolves.
+    """
     s = s.strip().lower()
-    for ch in ("\u2018", "\u2019", "\u2032", "`", "\u201c", "\u201d"):
+    for ch in ("\u2018", "\u2019", "\u2032", "`", "\u201c", "\u201d", "*"):
         s = s.replace(ch, "'")
     s = re.sub(r"[,.\-–—:;!?]", " ", s)
     return re.sub(r"\s+", " ", s).strip()
