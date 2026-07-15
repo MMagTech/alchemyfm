@@ -43,10 +43,10 @@ def write_icecast_config(max_listeners: int, source_slots: int = 10) -> Path:
     </mount>
     <fileserve>1</fileserve>
     <paths>
-        <basedir>/usr/share/icecast2</basedir>
+        <basedir>/usr/share/icecast</basedir>
         <logdir>/data/logs</logdir>
-        <webroot>/usr/share/icecast2/web</webroot>
-        <adminroot>/usr/share/icecast2/admin</adminroot>
+        <webroot>/usr/share/icecast/web</webroot>
+        <adminroot>/usr/share/icecast/admin</adminroot>
         <alias source="/" destination="/status.xsl"/>
     </paths>
     <logging>
