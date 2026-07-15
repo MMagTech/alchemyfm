@@ -638,6 +638,12 @@ header h1.site-wordmark {
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1;
+  /* The long-press debug gesture (setupDebugGesture) needs iOS's native
+     text-selection callout/magnifier suppressed here -- preventDefault on
+     selectstart/contextmenu in JS isn't enough on its own to stop it. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .site-wordmark-name {
