@@ -23,6 +23,11 @@ services:
       ICECAST_RELAY_PASSWORD: ${ICECAST_SOURCE_PASSWORD:-hackme}
       ICECAST_MAX_CLIENTS: ${ICECAST_MAX_CLIENTS:-100}
       ICECAST_MAX_SOURCES: ${ICECAST_MAX_SOURCES:-20}
+    volumes:
+      # Same shared volume as backend/liquidsoap -- icecast.xml's
+      # <logdir>/data/logs</logdir> otherwise writes to an ephemeral path
+      # inside the container, lost on every restart/recreation.
+      - /mnt/user/appdata/alchemyfm/data:/data
     networks:
       - proxy
     labels:
