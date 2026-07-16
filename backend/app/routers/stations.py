@@ -242,25 +242,39 @@ def get_station_artwork(slug: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{slug}", response_model=StationDetail)
-async def get_station(
-    slug: str, request: Request, response: Response, db: Session = Depends(get_db)
-):
+async def get_station(slug: str, request: Request, response: Response):
+    """Polled every ~750ms per active listener (mini-player/station page).
+
+    Builds the DB-dependent StationDetail with a short-lived session, closed
+    before the Navidrome enrichment awaits below -- those are real network
+    calls to an external server (up to a 60s timeout each). Holding a
+    request-scoped Depends(get_db) session open across them, at this poll
+    frequency and multiplied by concurrent listeners, was enough on its own
+    to exhaust the connection pool and freeze every other endpoint (the
+    same class of bug as the /listen stream, just far more frequently hit).
+    """
     response.headers["Cache-Control"] = "no-store"
-    station = db.query(Station).filter(Station.slug == slug, Station.enabled.is_(True)).first()
-    if not station:
-        raise HTTPException(status_code=404, detail="Station not found")
-    mount = _normalize_mount(station.icecast_mount)
-    mount_stats = fetch_all_mount_stats()
-    parsed = mount_stats.get(mount)
-    detail = station_to_detail(
-        db,
-        station,
-        request,
-        listeners=parsed.listeners if parsed else 0,
-        on_air=mount in mount_stats,
-        mount_stats=mount_stats,
-    )
-    if detail.now_playing and get_broadcast_settings(db).artist_bio_enabled:
+    db = SessionLocal()
+    try:
+        station = db.query(Station).filter(Station.slug == slug, Station.enabled.is_(True)).first()
+        if not station:
+            raise HTTPException(status_code=404, detail="Station not found")
+        mount = _normalize_mount(station.icecast_mount)
+        mount_stats = fetch_all_mount_stats()
+        parsed = mount_stats.get(mount)
+        detail = station_to_detail(
+            db,
+            station,
+            request,
+            listeners=parsed.listeners if parsed else 0,
+            on_air=mount in mount_stats,
+            mount_stats=mount_stats,
+        )
+        artist_bio_enabled = get_broadcast_settings(db).artist_bio_enabled
+    finally:
+        db.close()
+
+    if detail.now_playing and artist_bio_enabled:
         detail.now_playing = await attach_artist_bio(detail.now_playing)
     if detail.now_playing:
         detail.now_playing = await attach_operator_heart(
