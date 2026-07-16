@@ -7,7 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import PlayHistory, QueueItem, QueueItemStatus, Station, StationPoolItem
+from app.database import PlayHistory, QueueItem, QueueItemStatus, SessionLocal, Station, StationPoolItem
 from app.services.icecast import fetch_mount_now_playing
 from app.services.navidrome import navidrome_client
 from app.services.refill import (
@@ -100,10 +100,19 @@ def _next_position(db: Session, station_id: int) -> int:
     return (current or 0) + 1
 
 
-async def extend_queue(db: Session, station: Station, count: int | None = None) -> int:
-    """Tiered refill into the station queue. Returns number added."""
+async def extend_queue(
+    db: Session, station: Station, count: int | None = None
+) -> tuple[int, Session, Station]:
+    """Tiered refill into the station queue.
+
+    Returns (number added, db, station) -- collect_refill_candidates and the
+    enrich_tracks call below each release the DB connection while awaiting
+    external AudioMuse/Navidrome calls, reopening a fresh session
+    afterward. Callers must continue with the returned (db, station), not
+    the ones they passed in, since either may have been replaced.
+    """
     if not station.enabled:
-        return 0
+        return 0, db, station
 
     target = count or station.queue_target
     blocked_ids = _recent_item_ids(db, station.id)
@@ -124,7 +133,7 @@ async def extend_queue(db: Session, station: Station, count: int | None = None) 
         db.query(func.count(PlayHistory.id)).filter(PlayHistory.station_id == station.id).scalar()
     ) or 0
 
-    filtered, _err = await collect_refill_candidates(
+    filtered, _err, db, station = await collect_refill_candidates(
         db,
         station,
         target,
@@ -137,9 +146,15 @@ async def extend_queue(db: Session, station: Station, count: int | None = None) 
 
     if not filtered:
         logger.warning("No new tracks to add for station %s", station.slug)
-        return 0
+        return 0, db, station
 
-    enriched = await navidrome_client.enrich_tracks(filtered)
+    db.close()
+    try:
+        enriched = await navidrome_client.enrich_tracks(filtered)
+    finally:
+        db = SessionLocal()
+        station = db.merge(station)
+
     position = _next_position(db, station.id)
     for idx, track in enumerate(enriched):
         db.add(
@@ -160,10 +175,11 @@ async def extend_queue(db: Session, station: Station, count: int | None = None) 
     from app.knowledge.scheduler import schedule_knowledge_lookahead
 
     schedule_knowledge_lookahead(station.id)
-    return len(enriched)
+    return len(enriched), db, station
 
 
-async def ensure_queue_fresh(db: Session, station: Station) -> None:
+async def ensure_queue_fresh(db: Session, station: Station) -> tuple[Session, Station]:
+    """Returns (db, station) -- see extend_queue: either may be replaced."""
     remaining = (
         db.query(QueueItem)
         .filter(
@@ -175,7 +191,8 @@ async def ensure_queue_fresh(db: Session, station: Station) -> None:
     if remaining < station.refresh_threshold:
         need = station.queue_target - remaining
         if need > 0:
-            await extend_queue(db, station, need)
+            _added, db, station = await extend_queue(db, station, need)
+    return db, station
 
 
 def _normalize_metadata(s: str) -> str:

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.auth import require_admin
-from app.database import QueueItem, QueueItemStatus, Station, get_db
+from app.database import QueueItem, QueueItemStatus, SessionLocal, Station, get_db
 from app.schemas import StationAdmin, StationCreate, StationUpdate
 from app.services.broadcast_settings import apply_broadcast_settings, get_broadcast_settings
 from app.services.liquidsoap import regenerate_liquidsoap_config
@@ -143,21 +143,29 @@ def admin_rebuild_m3u(station_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{station_id}/refresh-queue", response_model=StationAdmin)
-async def admin_refresh_queue(station_id: int, db: Session = Depends(get_db)):
-    station = db.query(Station).filter(Station.id == station_id).first()
-    if not station:
-        raise HTTPException(status_code=404, detail="Station not found")
-    need = max(station.queue_target - station.refresh_threshold, 1)
+async def admin_refresh_queue(station_id: int):
+    # extend_queue releases and reopens the session around slow external
+    # AudioMuse/Navidrome calls, so this doesn't use Depends(get_db) -- that
+    # would leave FastAPI closing the original (now-superseded) session
+    # while whatever extend_queue swapped db to afterward leaks.
+    db = SessionLocal()
     try:
-        await extend_queue(db, station, need)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    queued = (
-        db.query(QueueItem)
-        .filter(QueueItem.station_id == station.id, QueueItem.status == QueueItemStatus.queued)
-        .count()
-    )
-    return station_to_admin(db, station, queued)
+        station = db.query(Station).filter(Station.id == station_id).first()
+        if not station:
+            raise HTTPException(status_code=404, detail="Station not found")
+        need = max(station.queue_target - station.refresh_threshold, 1)
+        try:
+            _added, db, station = await extend_queue(db, station, need)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        queued = (
+            db.query(QueueItem)
+            .filter(QueueItem.station_id == station.id, QueueItem.status == QueueItemStatus.queued)
+            .count()
+        )
+        return station_to_admin(db, station, queued)
+    finally:
+        db.close()
 
 
 @router.post("/{station_id}/bootstrap", response_model=StationAdmin)

@@ -144,8 +144,16 @@ def _mock_navidrome_stream_url() -> Generator[None, None, None]:
 
 @pytest.fixture(autouse=True)
 def _mock_extend_queue() -> Generator[None, None, None]:
-    """Avoid live AudioMuse calls when internal callbacks trigger ensure_queue_fresh."""
-    with patch("app.services.queue.extend_queue", new=AsyncMock(return_value=None)):
+    """Avoid live AudioMuse calls when internal callbacks trigger ensure_queue_fresh.
+
+    extend_queue returns (added, db, station) -- echo back the same
+    (db, station) the caller passed in, simulating "no refill happened,
+    nothing changed" without touching the network.
+    """
+    async def _fake_extend_queue(db, station, count=None):
+        return 0, db, station
+
+    with patch("app.services.queue.extend_queue", side_effect=_fake_extend_queue):
         yield
 
 
