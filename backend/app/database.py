@@ -10,6 +10,7 @@ from sqlalchemy import (
     String,
     Text,
     create_engine,
+    event,
     text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
@@ -164,9 +165,37 @@ class BroadcastSettings(Base):
     log_level: Mapped[str] = mapped_column(String(16), default="INFO")
 
 
-connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
-engine = create_engine(settings.database_url, connect_args=connect_args)
+_is_sqlite = settings.database_url.startswith("sqlite")
+connect_args = {"check_same_thread": False} if _is_sqlite else {}
+
+# A handful of request paths legitimately hold a session open across a slow
+# external network call (Navidrome/AudioMuse enrichment during a queue
+# refill) rather than releasing it immediately -- narrowing every one of
+# those down is real, ongoing work, not something to rush. In the meantime,
+# a much larger pool than SQLAlchemy's default (5 + 10 overflow = 15) means
+# a handful of naturally slow requests can't exhaust the pool and freeze
+# every other endpoint (admin included) while they're in flight.
+engine = create_engine(
+    settings.database_url,
+    connect_args=connect_args,
+    pool_size=20,
+    max_overflow=40,
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+if _is_sqlite:
+
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
+        # WAL lets readers and writers proceed concurrently instead of one
+        # writer blocking everyone (SQLite's default rollback-journal mode);
+        # busy_timeout makes a connection that *does* need to wait for a
+        # lock retry for a bit instead of failing immediately with
+        # "database is locked".
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.close()
 
 
 def init_db() -> None:
