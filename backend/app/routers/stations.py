@@ -10,7 +10,7 @@ from app.rate_limit import limiter
 from app.services.broadcast_settings import get_broadcast_settings
 from app.services.icecast_config import stream_media_type
 from app.config import settings
-from app.database import Station, get_db
+from app.database import SessionLocal, Station, get_db
 from app.schemas import StationDetail, StationSummary
 from app.services.stream_urls import public_stream_url
 from app.services.icecast import _normalize_mount, fetch_all_mount_stats
@@ -131,7 +131,7 @@ async def listen_stream_head(slug: str, db: Session = Depends(get_db)):
 
 @router.get("/{slug}/listen")
 @limiter.limit("20/minute")
-async def listen_stream(slug: str, request: Request, db: Session = Depends(get_db)):
+async def listen_stream(slug: str, request: Request):
     """Same-origin stream for in-browser playback + visualizer.
 
     iOS Safari typically opens a short probe/Range connection to sniff the
@@ -140,36 +140,48 @@ async def listen_stream(slug: str, request: Request, db: Session = Depends(get_d
     lingering probe inflates the listener count. We detect client disconnects
     between chunks and tear the upstream connection down immediately so ghost
     connections drop from Icecast quickly.
+
+    Uses its own short-lived DB session instead of the request-scoped
+    Depends(get_db) session -- that dependency's cleanup doesn't run until
+    the whole response (including the streamed body) finishes, so it would
+    hold a pooled connection checked out for as long as the listener stays
+    tuned in, sometimes hours. A handful of concurrent listeners doing that
+    exhausts the pool and blocks every other endpoint (admin included) that
+    also needs a connection.
     """
-    station = db.query(Station).filter(Station.slug == slug, Station.enabled.is_(True)).first()
-    if not station:
-        raise HTTPException(status_code=404, detail="Station not found")
+    db = SessionLocal()
+    try:
+        station = db.query(Station).filter(Station.slug == slug, Station.enabled.is_(True)).first()
+        if not station:
+            raise HTTPException(status_code=404, detail="Station not found")
 
-    range_header = request.headers.get("range")
-    user_agent = request.headers.get("user-agent", "")
-    media_type = stream_media_type(get_broadcast_settings(db).encode_format)
+        range_header = request.headers.get("range")
+        user_agent = request.headers.get("user-agent", "")
+        media_type = stream_media_type(get_broadcast_settings(db).encode_format)
 
-    # Answer iOS/Safari's tiny sniff probe with a finite 206 so it closes the
-    # probe connection immediately, instead of leaving an endless 200 stream
-    # open (which registers as a duplicate Icecast listener). No upstream
-    # connection is opened for the probe at all.
-    probe_end = _probe_range_end(range_header)
-    if probe_end is not None:
-        logger.debug(
-            "listen probe slug=%s range=%s ua=%s", slug, range_header, user_agent[:80]
-        )
-        return Response(
-            content=bytes(probe_end + 1),
-            status_code=206,
-            media_type=media_type,
-            headers={
-                "Content-Range": f"bytes 0-{probe_end}/*",
-                "Accept-Ranges": "bytes",
-                "Cache-Control": "no-store",
-            },
-        )
+        # Answer iOS/Safari's tiny sniff probe with a finite 206 so it closes
+        # the probe connection immediately, instead of leaving an endless 200
+        # stream open (which registers as a duplicate Icecast listener). No
+        # upstream connection is opened for the probe at all.
+        probe_end = _probe_range_end(range_header)
+        if probe_end is not None:
+            logger.debug(
+                "listen probe slug=%s range=%s ua=%s", slug, range_header, user_agent[:80]
+            )
+            return Response(
+                content=bytes(probe_end + 1),
+                status_code=206,
+                media_type=media_type,
+                headers={
+                    "Content-Range": f"bytes 0-{probe_end}/*",
+                    "Accept-Ranges": "bytes",
+                    "Cache-Control": "no-store",
+                },
+            )
 
-    upstream = _icecast_internal_url(station)
+        upstream = _icecast_internal_url(station)
+    finally:
+        db.close()
     client = httpx.AsyncClient(timeout=httpx.Timeout(15.0, read=None))
     req = client.build_request("GET", upstream)
     resp = await client.send(req, stream=True)
