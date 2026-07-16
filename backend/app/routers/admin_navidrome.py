@@ -2,10 +2,9 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
 from app.auth import require_admin
-from app.database import get_db
+from app.database import SessionLocal
 from app.services.broadcast_settings import get_broadcast_settings
 from app.services.navidrome import navidrome_client
 
@@ -52,14 +51,18 @@ async def list_playlists():
 
 
 @router.post("/songs/{item_id}/heart", response_model=HeartResponse)
-async def set_song_heart(
-    item_id: str,
-    payload: HeartRequest,
-    db: Session = Depends(get_db),
-):
+async def set_song_heart(item_id: str, payload: HeartRequest):
+    # Short-lived session for the settings read only -- released before the
+    # Navidrome awaits below rather than held open for their duration (same
+    # class of bug fixed for /listen and /api/stations/{slug}).
+    db = SessionLocal()
+    try:
+        playlist_id = (get_broadcast_settings(db).default_navidrome_playlist_id or "").strip()
+    finally:
+        db.close()
+
     try:
         if payload.hearted:
-            playlist_id = (get_broadcast_settings(db).default_navidrome_playlist_id or "").strip()
             playlist_added = await navidrome_client.heart_song_with_playlist(
                 item_id, playlist_id or None
             )
