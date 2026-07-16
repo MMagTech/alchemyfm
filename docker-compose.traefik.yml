@@ -17,16 +17,20 @@ services:
   icecast:
     image: ghcr.io/mmagtech/alchemyfm-icecast:latest
     container_name: alchemyfm-icecast
-    environment:
-      ICECAST_SOURCE_PASSWORD: ${ICECAST_SOURCE_PASSWORD:-hackme}
-      ICECAST_ADMIN_PASSWORD: ${ICECAST_SOURCE_PASSWORD:-hackme}
-      ICECAST_RELAY_PASSWORD: ${ICECAST_SOURCE_PASSWORD:-hackme}
-      ICECAST_MAX_CLIENTS: ${ICECAST_MAX_CLIENTS:-100}
-      ICECAST_MAX_SOURCES: ${ICECAST_MAX_SOURCES:-20}
+    # No ICECAST_* env vars here on purpose: seed-config.sh (see icecast/
+    # Dockerfile) symlinks /etc/icecast.xml into this /data volume, so the
+    # backend's write_icecast_config() writes the exact file Icecast loads --
+    # admin-saved broadcast settings (max listeners, source slots, passwords)
+    # actually take effect on the next Icecast restart instead of landing in
+    # a file this container never reads. The base image's entrypoint.sh would
+    # otherwise sed-patch these env vars into /etc/icecast.xml via an
+    # in-place rename, which replaces the symlink with a plain file and
+    # silently breaks the persistence -- so it must never run here.
     volumes:
       # Same shared volume as backend/liquidsoap -- icecast.xml's
       # <logdir>/data/logs</logdir> otherwise writes to an ephemeral path
-      # inside the container, lost on every restart/recreation.
+      # inside the container, lost on every restart/recreation. Also where
+      # seed-config.sh finds/seeds the persisted icecast.xml (see above).
       - /mnt/user/appdata/alchemyfm/data:/data
     networks:
       - proxy
