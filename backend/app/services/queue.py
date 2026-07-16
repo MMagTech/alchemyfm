@@ -91,6 +91,30 @@ def _blocked_artists(db: Session, station: Station) -> set[str]:
     return {r[0].lower() for r in rows if r[0]}
 
 
+def prune_old_play_history(db: Session, *, older_than_hours: int = 24) -> int:
+    """PlayHistory grows forever otherwise -- every track played, on every
+    station, all day, with nothing to ever delete a row.
+
+    24 hours is a generous margin over what repeat-avoidance actually needs:
+    _recent_item_ids looks back 200 plays per station, and at a typical
+    ~3.5 min/track (this codebase's own fallback assumption -- see
+    _queue_buffer_minutes), 24 hours covers roughly 400 plays per station.
+    This assumes normal song-length tracks; a station built around much
+    longer tracks (a DJ mix, long-form ambient sets) could see fewer than
+    200 plays in 24 hours, in which case repeat-avoidance would silently
+    look back less far than intended for that station specifically. Revisit
+    with a per-station-play-count floor if that ever becomes a real config.
+    """
+    cutoff = datetime.utcnow() - timedelta(hours=older_than_hours)
+    deleted = (
+        db.query(PlayHistory)
+        .filter(PlayHistory.played_at < cutoff)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return deleted
+
+
 def _next_position(db: Session, station_id: int) -> int:
     current = (
         db.query(func.max(QueueItem.position))

@@ -103,6 +103,7 @@ async def _queue_refresh_loop() -> None:
 
 async def _backup_loop() -> None:
     from app.services.backup import create_backup, prune_old_backups
+    from app.services.queue import prune_old_play_history
 
     interval_sec = max(1, settings.backup_interval_hours) * 3600
     while True:
@@ -120,6 +121,20 @@ async def _backup_loop() -> None:
                 logger.info("Automatic backup created: %s", path.name)
         except Exception:
             logger.exception("Automatic backup failed")
+
+        # Independent of backup_auto_enabled -- play history should keep
+        # getting pruned even if a user turns off automatic backups.
+        try:
+            db = SessionLocal()
+            try:
+                deleted = prune_old_play_history(db)
+                if deleted:
+                    logger.info("Pruned %s play_history rows older than 24h", deleted)
+            finally:
+                db.close()
+        except Exception:
+            logger.exception("Play history pruning failed")
+
         await asyncio.sleep(interval_sec)
 
 
