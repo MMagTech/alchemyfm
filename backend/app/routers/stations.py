@@ -64,40 +64,45 @@ def _icecast_internal_url(station: Station) -> str:
 
 
 @router.get("", response_model=list[StationSummary])
-async def list_stations(
-    request: Request, response: Response, db: Session = Depends(get_db)
-):
+async def list_stations(request: Request, response: Response):
+    """Fetches Icecast mount stats before opening a DB session (rather than
+    using Depends(get_db)) so the await below doesn't hold a pooled
+    connection idle for however long Icecast takes to answer."""
     response.headers["Cache-Control"] = "no-store"
-    stations = (
-        db.query(Station)
-        .filter(Station.enabled.is_(True))
-        .order_by(
-            Station.featured.desc(),
-            Station.featured_order.asc(),
-            Station.sort_order.asc(),
-            Station.name.asc(),
-        )
-        .all()
-    )
-    mount_stats = fetch_all_mount_stats()
-    broadcast = get_broadcast_settings(db)
-    results = []
-    for s in stations:
-        mount = _normalize_mount(s.icecast_mount)
-        parsed = mount_stats.get(mount)
-        results.append(
-            station_to_summary(
-                db,
-                s,
-                request,
-                listeners=parsed.listeners if parsed else 0,
-                on_air=mount in mount_stats,
-                mount_stats=mount_stats,
-                list_mode=True,
-                broadcast=broadcast,
+    mount_stats = await fetch_all_mount_stats()
+    db = SessionLocal()
+    try:
+        stations = (
+            db.query(Station)
+            .filter(Station.enabled.is_(True))
+            .order_by(
+                Station.featured.desc(),
+                Station.featured_order.asc(),
+                Station.sort_order.asc(),
+                Station.name.asc(),
             )
+            .all()
         )
-    return results
+        broadcast = get_broadcast_settings(db)
+        results = []
+        for s in stations:
+            mount = _normalize_mount(s.icecast_mount)
+            parsed = mount_stats.get(mount)
+            results.append(
+                await station_to_summary(
+                    db,
+                    s,
+                    request,
+                    listeners=parsed.listeners if parsed else 0,
+                    on_air=mount in mount_stats,
+                    mount_stats=mount_stats,
+                    list_mode=True,
+                    broadcast=broadcast,
+                )
+            )
+        return results
+    finally:
+        db.close()
 
 
 @router.get("/{slug}/listen.m3u")
@@ -245,24 +250,26 @@ def get_station_artwork(slug: str, db: Session = Depends(get_db)):
 async def get_station(slug: str, request: Request, response: Response):
     """Polled every ~750ms per active listener (mini-player/station page).
 
-    Builds the DB-dependent StationDetail with a short-lived session, closed
-    before the Navidrome enrichment awaits below -- those are real network
-    calls to an external server (up to a 60s timeout each). Holding a
-    request-scoped Depends(get_db) session open across them, at this poll
-    frequency and multiplied by concurrent listeners, was enough on its own
-    to exhaust the connection pool and freeze every other endpoint (the
-    same class of bug as the /listen stream, just far more frequently hit).
+    Fetches Icecast mount stats *before* opening the DB session, for the
+    same reason the session itself is short-lived and closed before the
+    Navidrome enrichment awaits below: holding a pooled connection open
+    across a network await, at this poll frequency times concurrent
+    listeners, was enough on its own to exhaust the connection pool and
+    freeze every other endpoint. The Icecast call is also a genuine
+    `await` now (not a blocking call) -- see icecast.py -- since a
+    blocking call here would stall the single Uvicorn event loop for
+    every other in-flight request regardless of the DB pool.
     """
     response.headers["Cache-Control"] = "no-store"
+    mount_stats = await fetch_all_mount_stats()
     db = SessionLocal()
     try:
         station = db.query(Station).filter(Station.slug == slug, Station.enabled.is_(True)).first()
         if not station:
             raise HTTPException(status_code=404, detail="Station not found")
         mount = _normalize_mount(station.icecast_mount)
-        mount_stats = fetch_all_mount_stats()
         parsed = mount_stats.get(mount)
-        detail = station_to_detail(
+        detail = await station_to_detail(
             db,
             station,
             request,

@@ -33,7 +33,7 @@ from app.routers import (
 from app.knowledge.database import init_knowledge_db
 from app.knowledge.worker import start_knowledge_worker
 from app.services.broadcast_settings import apply_broadcast_settings, get_broadcast_settings
-from app.services.icecast import fetch_broadcast_totals
+from app.services.icecast import fetch_all_mount_stats, fetch_broadcast_totals
 from app.services.navidrome import navidrome_client
 from app.services.queue import ensure_queue_fresh, rebuild_all_station_m3u, sync_station_from_icecast
 from app.knowledge.database import KnowledgeSessionLocal
@@ -75,14 +75,19 @@ async def _queue_refresh_loop() -> None:
                     logger.exception("Knowledge settings read failed")
             try:
                 enabled = db.query(Station).filter(Station.enabled.is_(True)).all()
+                # Fetched once per tick and shared across every station below
+                # -- otherwise each station's sync_station_from_icecast call
+                # would fetch Icecast's full status-json separately, i.e. N
+                # Icecast round-trips per tick for N stations.
+                mount_stats = await fetch_all_mount_stats()
                 for station in enabled:
                     # ensure_queue_fresh may have swapped db/station to a new
                     # session on a prior iteration (releasing the connection
                     # around slow AudioMuse/Navidrome calls) -- re-attach
                     # this loop's own station reference before using it.
                     station = db.merge(station)
-                    _icecast_last_track[station.slug] = sync_station_from_icecast(
-                        db, station, _icecast_last_track.get(station.slug)
+                    _icecast_last_track[station.slug] = await sync_station_from_icecast(
+                        db, station, _icecast_last_track.get(station.slug), mount_stats=mount_stats
                     )
                     db, station = await ensure_queue_fresh(db, station)
                     if knowledge_active:
@@ -255,7 +260,7 @@ async def cover_art(item_id: str, size: int = Query(default=300, ge=64, le=1000)
 
 
 @app.get("/api/broadcast/stats", response_model=BroadcastStatsRead)
-def broadcast_stats():
+async def broadcast_stats():
     db = SessionLocal()
     try:
         mounts = [
@@ -268,7 +273,7 @@ def broadcast_stats():
         )
     finally:
         db.close()
-    totals = fetch_broadcast_totals(mounts, stream_bitrate_kbps=stream_bitrate)
+    totals = await fetch_broadcast_totals(mounts, stream_bitrate_kbps=stream_bitrate)
     return BroadcastStatsRead(**totals)
 
 

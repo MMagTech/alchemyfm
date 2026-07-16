@@ -95,11 +95,17 @@ def _parse_source(source: dict) -> IcecastMountStats | None:
     )
 
 
-def _fetch_icestats_sources() -> list[dict]:
+async def _fetch_icestats_sources() -> list[dict]:
+    """Uses httpx.AsyncClient, not the sync Client, on purpose: this (and
+    everything below that calls it) runs inside async route handlers that
+    share a single Uvicorn event loop. A blocking network call here would
+    stall that whole loop -- every other request, including already-open
+    audio streams -- for as long as Icecast takes to answer, independent of
+    and in addition to any DB-connection-pool exhaustion."""
     url = f"http://{settings.icecast_host}:{settings.icecast_port}/status-json.xsl"
     try:
-        with httpx.Client(timeout=5.0) as client:
-            response = client.get(url)
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(url)
             response.raise_for_status()
             data = response.json()
     except Exception as exc:
@@ -129,10 +135,10 @@ def _mount_keys_from_source(source: dict) -> list[str]:
     return keys
 
 
-def fetch_all_mount_stats() -> dict[str, IcecastMountStats]:
+async def fetch_all_mount_stats() -> dict[str, IcecastMountStats]:
     """Listener counts and metadata keyed by mount path (e.g. /hip_hop)."""
     stats: dict[str, IcecastMountStats] = {}
-    for source in _fetch_icestats_sources():
+    for source in await _fetch_icestats_sources():
         try:
             parsed = _parse_source(source)
         except Exception:
@@ -145,13 +151,13 @@ def fetch_all_mount_stats() -> dict[str, IcecastMountStats]:
     return stats
 
 
-def fetch_mount_now_playing(
+async def fetch_mount_now_playing(
     mount: str,
     mount_stats: dict[str, IcecastMountStats] | None = None,
 ) -> IcecastNowPlaying | None:
     """Read the current stream title from Icecast status-json."""
     mount = _normalize_mount(mount)
-    stats = mount_stats if mount_stats is not None else fetch_all_mount_stats()
+    stats = mount_stats if mount_stats is not None else await fetch_all_mount_stats()
     parsed = stats.get(mount)
     if not parsed or not (parsed.artist or parsed.title):
         return None
@@ -162,9 +168,9 @@ def fetch_mount_now_playing(
     )
 
 
-def fetch_broadcast_totals(mounts: list[str], stream_bitrate_kbps: int) -> dict[str, int]:
+async def fetch_broadcast_totals(mounts: list[str], stream_bitrate_kbps: int) -> dict[str, int]:
     """Sum live listeners and estimated outbound kbps for station mounts."""
-    mount_stats = fetch_all_mount_stats()
+    mount_stats = await fetch_all_mount_stats()
     listeners = 0
     outgoing_kbps = 0
     for mount in mounts:

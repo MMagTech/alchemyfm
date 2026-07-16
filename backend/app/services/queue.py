@@ -441,7 +441,7 @@ def _now_playing_from_item(
     return np
 
 
-def get_now_playing(
+async def get_now_playing(
     db: Session,
     station: Station,
     *,
@@ -452,7 +452,7 @@ def get_now_playing(
     # except Icecast's in-stream metadata can mangle punctuation (e.g. curly
     # apostrophes rendered as "*"). Once we can match the wire text to a
     # catalog row, prefer that row's clean title/artist for display.
-    ice = fetch_mount_now_playing(station.icecast_mount, mount_stats=mount_stats)
+    ice = await fetch_mount_now_playing(station.icecast_mount, mount_stats=mount_stats)
     if ice and (ice.artist or ice.title):
         artist, title = ice.artist, ice.title
         matched = _find_queue_item_for_metadata(db, station, artist, title)
@@ -498,11 +498,15 @@ def get_now_playing(
     return None
 
 
-def sync_station_from_icecast(
-    db: Session, station: Station, last_track: tuple[str, str] | None
+async def sync_station_from_icecast(
+    db: Session,
+    station: Station,
+    last_track: tuple[str, str] | None,
+    *,
+    mount_stats: dict | None = None,
 ) -> tuple[str, str] | None:
     """Update queue/history when Icecast reports a new track."""
-    ice = fetch_mount_now_playing(station.icecast_mount)
+    ice = await fetch_mount_now_playing(station.icecast_mount, mount_stats=mount_stats)
     if not ice or not ice.title.strip():
         return last_track
     current = (ice.artist, ice.title)

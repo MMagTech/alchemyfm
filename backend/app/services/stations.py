@@ -40,7 +40,7 @@ def _public_description(text: str) -> str:
     return (text or "")[:120]
 
 
-def station_to_summary(
+async def station_to_summary(
     db: Session,
     station: Station,
     request: Request | None = None,
@@ -59,7 +59,7 @@ def station_to_summary(
         artwork_url=public_artwork_url(station, request),
         enabled=station.enabled,
         featured=station.featured,
-        now_playing=get_now_playing(
+        now_playing=await get_now_playing(
             db,
             station,
             mount_stats=mount_stats,
@@ -74,7 +74,7 @@ def station_to_summary(
     )
 
 
-def station_to_detail(
+async def station_to_detail(
     db: Session,
     station: Station,
     request: Request | None = None,
@@ -83,7 +83,7 @@ def station_to_detail(
     *,
     mount_stats: dict | None = None,
 ) -> StationDetail:
-    summary = station_to_summary(
+    summary = await station_to_summary(
         db,
         station,
         request,
@@ -115,8 +115,10 @@ def _queue_buffer_minutes(db: Session, station_id: int) -> int:
     return max(0, round(total_sec / 60))
 
 
-def station_to_admin(db: Session, station: Station, queued_count: int) -> StationAdmin:
-    detail = station_to_detail(db, station)
+async def station_to_admin(
+    db: Session, station: Station, queued_count: int, *, mount_stats: dict | None = None
+) -> StationAdmin:
+    detail = await station_to_detail(db, station, mount_stats=mount_stats)
     return StationAdmin(
         **detail.model_dump(),
         id=station.id,
