@@ -114,68 +114,78 @@ async def extend_queue(
     if not station.enabled:
         return 0, db, station
 
-    target = count or station.queue_target
-    blocked_ids = _recent_item_ids(db, station.id)
-    blocked_artists = _blocked_artists(db, station)
-
-    queued_ids = {
-        r[0]
-        for r in db.query(QueueItem.item_id)
-        .filter(
-            QueueItem.station_id == station.id,
-            QueueItem.status.in_([QueueItemStatus.queued, QueueItemStatus.playing]),
-        )
-        .all()
-    }
-    exclude = blocked_ids | queued_ids
-
-    play_count = (
-        db.query(func.count(PlayHistory.id)).filter(PlayHistory.station_id == station.id).scalar()
-    ) or 0
-
-    filtered, _err, db, station = await collect_refill_candidates(
-        db,
-        station,
-        target,
-        exclude,
-        blocked_artists,
-        queued_ids,
-        play_count=play_count,
-    )
-    db.commit()
-
-    if not filtered:
-        logger.warning("No new tracks to add for station %s", station.slug)
-        return 0, db, station
-
-    db.close()
     try:
-        enriched = await navidrome_client.enrich_tracks(filtered)
-    finally:
-        db = SessionLocal()
-        station = db.merge(station)
+        target = count or station.queue_target
+        blocked_ids = _recent_item_ids(db, station.id)
+        blocked_artists = _blocked_artists(db, station)
 
-    position = _next_position(db, station.id)
-    for idx, track in enumerate(enriched):
-        db.add(
-            QueueItem(
-                station_id=station.id,
-                item_id=track.item_id,
-                title=track.title,
-                artist=track.artist,
-                duration_sec=track.duration_sec,
-                stream_url=navidrome_client.stream_url(track.item_id),
-                position=position + idx,
-                status=QueueItemStatus.queued,
+        queued_ids = {
+            r[0]
+            for r in db.query(QueueItem.item_id)
+            .filter(
+                QueueItem.station_id == station.id,
+                QueueItem.status.in_([QueueItemStatus.queued, QueueItemStatus.playing]),
             )
-        )
-    db.commit()
-    rebuild_m3u_from_db(db, station)
-    logger.info("Added %s tracks to station %s", len(enriched), station.slug)
-    from app.knowledge.scheduler import schedule_knowledge_lookahead
+            .all()
+        }
+        exclude = blocked_ids | queued_ids
 
-    schedule_knowledge_lookahead(station.id)
-    return len(enriched), db, station
+        play_count = (
+            db.query(func.count(PlayHistory.id))
+            .filter(PlayHistory.station_id == station.id)
+            .scalar()
+        ) or 0
+
+        filtered, _err, db, station = await collect_refill_candidates(
+            db,
+            station,
+            target,
+            exclude,
+            blocked_artists,
+            queued_ids,
+            play_count=play_count,
+        )
+        db.commit()
+
+        if not filtered:
+            logger.warning("No new tracks to add for station %s", station.slug)
+            return 0, db, station
+
+        db.close()
+        try:
+            enriched = await navidrome_client.enrich_tracks(filtered)
+        finally:
+            db = SessionLocal()
+            station = db.merge(station)
+
+        position = _next_position(db, station.id)
+        for idx, track in enumerate(enriched):
+            db.add(
+                QueueItem(
+                    station_id=station.id,
+                    item_id=track.item_id,
+                    title=track.title,
+                    artist=track.artist,
+                    duration_sec=track.duration_sec,
+                    stream_url=navidrome_client.stream_url(track.item_id),
+                    position=position + idx,
+                    status=QueueItemStatus.queued,
+                )
+            )
+        db.commit()
+        rebuild_m3u_from_db(db, station)
+        logger.info("Added %s tracks to station %s", len(enriched), station.slug)
+        from app.knowledge.scheduler import schedule_knowledge_lookahead
+
+        schedule_knowledge_lookahead(station.id)
+        return len(enriched), db, station
+    except Exception:
+        # db may have been swapped for a fresh session by a close/reopen
+        # cycle above right before this raised -- close whichever session
+        # is actually live now, since the caller's own db reference (from
+        # before this call) can no longer reach it.
+        db.close()
+        raise
 
 
 async def ensure_queue_fresh(db: Session, station: Station) -> tuple[Session, Station]:
@@ -638,62 +648,93 @@ def mark_track_started(db: Session, station: Station, artist: str, title: str) -
         schedule_now_playing_knowledge(station.id, knowledge_item_id)
 
 
-async def bootstrap_station(db: Session, station: Station) -> None:
+async def bootstrap_station(db: Session, station: Station) -> tuple[Session, Station]:
+    """(Re)builds a station's pool and queue from scratch.
+
+    Returns (db, station) -- like extend_queue, the fetch_bootstrap_batch and
+    enrich_tracks calls below each release the DB connection while awaiting
+    external AudioMuse/Navidrome calls, reopening a fresh session afterward.
+    Callers must continue with the returned (db, station), not the ones they
+    passed in, since either may have been replaced.
+    """
     from datetime import datetime
 
     from app.services.liquidsoap import regenerate_liquidsoap_config
 
-    db.query(QueueItem).filter(QueueItem.station_id == station.id).delete()
-    db.query(StationPoolItem).filter(StationPoolItem.station_id == station.id).delete()
+    try:
+        db.query(QueueItem).filter(QueueItem.station_id == station.id).delete()
+        db.query(StationPoolItem).filter(StationPoolItem.station_id == station.id).delete()
 
-    station_dir(station.slug)
-    queue_m3u_path(station.slug).write_text("#EXTM3U\n", encoding="utf-8")
+        station_dir(station.slug)
+        queue_m3u_path(station.slug).write_text("#EXTM3U\n", encoding="utf-8")
 
-    batch = await fetch_bootstrap_batch(station)
-    if not batch:
-        raise ValueError(
-            f"No tracks imported for station {station.slug} — "
-            f"check {station.source_type} programming and AudioMuse analysis. "
-            f"Alchemy FM calls AudioMuse at {settings.audiomuse_url} during bootstrap "
-            "(Test connection only verifies login, not programming import)."
-        )
+        db.commit()
+        db.close()
+        try:
+            batch = await fetch_bootstrap_batch(station)
+        finally:
+            db = SessionLocal()
+            station = db.merge(station)
 
-    import_batch_to_pool(db, station, batch)
-    station.identity_seed_item_id = ""
-    station.identity_anchor_id = ""
-    establish_station_identity(station, batch)
-    station.source_last_ok_at = datetime.utcnow()
-    station.source_last_error = ""
-    db.commit()
-
-    to_queue = filter_track_refs(batch, set(), set(), station.queue_target)
-    enriched = await navidrome_client.enrich_tracks(to_queue)
-    position = 1
-    for idx, track in enumerate(enriched):
-        db.add(
-            QueueItem(
-                station_id=station.id,
-                item_id=track.item_id,
-                title=track.title,
-                artist=track.artist,
-                duration_sec=track.duration_sec,
-                stream_url=navidrome_client.stream_url(track.item_id),
-                position=position + idx,
-                status=QueueItemStatus.queued,
+        if not batch:
+            raise ValueError(
+                f"No tracks imported for station {station.slug} — "
+                f"check {station.source_type} programming and AudioMuse analysis. "
+                f"Alchemy FM calls AudioMuse at {settings.audiomuse_url} during bootstrap "
+                "(Test connection only verifies login, not programming import)."
             )
-        )
-    db.commit()
-    rebuild_m3u_from_db(db, station)
-    logger.info(
-        "Bootstrapped station %s: pool=%s tracks, queue=%s",
-        station.slug,
-        len(batch),
-        len(enriched),
-    )
-    regenerate_liquidsoap_config(db)
-    from app.knowledge.scheduler import schedule_knowledge_lookahead
 
-    schedule_knowledge_lookahead(station.id)
+        import_batch_to_pool(db, station, batch)
+        station.identity_seed_item_id = ""
+        station.identity_anchor_id = ""
+        establish_station_identity(station, batch)
+        station.source_last_ok_at = datetime.utcnow()
+        station.source_last_error = ""
+        db.commit()
+
+        to_queue = filter_track_refs(batch, set(), set(), station.queue_target)
+        db.close()
+        try:
+            enriched = await navidrome_client.enrich_tracks(to_queue)
+        finally:
+            db = SessionLocal()
+            station = db.merge(station)
+
+        position = 1
+        for idx, track in enumerate(enriched):
+            db.add(
+                QueueItem(
+                    station_id=station.id,
+                    item_id=track.item_id,
+                    title=track.title,
+                    artist=track.artist,
+                    duration_sec=track.duration_sec,
+                    stream_url=navidrome_client.stream_url(track.item_id),
+                    position=position + idx,
+                    status=QueueItemStatus.queued,
+                )
+            )
+        db.commit()
+        rebuild_m3u_from_db(db, station)
+        logger.info(
+            "Bootstrapped station %s: pool=%s tracks, queue=%s",
+            station.slug,
+            len(batch),
+            len(enriched),
+        )
+        regenerate_liquidsoap_config(db)
+        from app.knowledge.scheduler import schedule_knowledge_lookahead
+
+        schedule_knowledge_lookahead(station.id)
+        return db, station
+    except Exception:
+        # db may have been swapped for a fresh session by a close/reopen
+        # cycle above right before this raised (including the ValueError
+        # for an empty batch) -- close whichever session is actually live
+        # now, since the caller's own db reference (from before this call)
+        # can no longer reach it.
+        db.close()
+        raise
 
 
 def delete_station_files(slug: str) -> None:

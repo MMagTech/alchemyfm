@@ -44,18 +44,25 @@ def admin_list_stations(db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=StationAdmin, status_code=201)
-async def admin_create_station(payload: StationCreate, db: Session = Depends(get_db)):
+async def admin_create_station(payload: StationCreate):
+    # create_station_record may bootstrap the new station's queue, which
+    # releases and reopens the session around external AudioMuse/Navidrome
+    # calls -- so this doesn't use Depends(get_db) (see admin_refresh_queue).
+    db = SessionLocal()
     try:
-        station = await create_station_record(db, payload)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    apply_broadcast_settings(db, get_broadcast_settings(db))
-    queued = (
-        db.query(QueueItem)
-        .filter(QueueItem.station_id == station.id, QueueItem.status == QueueItemStatus.queued)
-        .count()
-    )
-    return station_to_admin(db, station, queued)
+        try:
+            db, station = await create_station_record(db, payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        apply_broadcast_settings(db, get_broadcast_settings(db))
+        queued = (
+            db.query(QueueItem)
+            .filter(QueueItem.station_id == station.id, QueueItem.status == QueueItemStatus.queued)
+            .count()
+        )
+        return station_to_admin(db, station, queued)
+    finally:
+        db.close()
 
 
 @router.put("/{station_id}", response_model=StationAdmin)
@@ -169,17 +176,24 @@ async def admin_refresh_queue(station_id: int):
 
 
 @router.post("/{station_id}/bootstrap", response_model=StationAdmin)
-async def admin_bootstrap(station_id: int, db: Session = Depends(get_db)):
-    station = db.query(Station).filter(Station.id == station_id).first()
-    if not station:
-        raise HTTPException(status_code=404, detail="Station not found")
+async def admin_bootstrap(station_id: int):
+    # bootstrap_station releases and reopens the session around external
+    # AudioMuse/Navidrome calls, so this doesn't use Depends(get_db) (see
+    # admin_refresh_queue).
+    db = SessionLocal()
     try:
-        await bootstrap_station(db, station)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    queued = (
-        db.query(QueueItem)
-        .filter(QueueItem.station_id == station.id, QueueItem.status == QueueItemStatus.queued)
-        .count()
-    )
-    return station_to_admin(db, station, queued)
+        station = db.query(Station).filter(Station.id == station_id).first()
+        if not station:
+            raise HTTPException(status_code=404, detail="Station not found")
+        try:
+            db, station = await bootstrap_station(db, station)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        queued = (
+            db.query(QueueItem)
+            .filter(QueueItem.station_id == station.id, QueueItem.status == QueueItemStatus.queued)
+            .count()
+        )
+        return station_to_admin(db, station, queued)
+    finally:
+        db.close()

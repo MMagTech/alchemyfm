@@ -140,7 +140,10 @@ def station_to_admin(db: Session, station: Station, queued_count: int) -> Statio
     )
 
 
-async def create_station_record(db: Session, payload: StationCreate) -> Station:
+async def create_station_record(db: Session, payload: StationCreate) -> tuple[Session, Station]:
+    """Returns (db, station) -- bootstrap_station below may release and reopen
+    the DB session around external AudioMuse/Navidrome calls, so callers must
+    continue with the returned (db, station), not the ones they passed in."""
     slug = _unique_slug(db, payload.name, payload.slug)
     mount = payload.icecast_mount
     if db.query(Station).filter(Station.icecast_mount == mount).first():
@@ -174,13 +177,13 @@ async def create_station_record(db: Session, payload: StationCreate) -> Station:
     db.refresh(station)
 
     if payload.bootstrap_queue and station.enabled:
-        await bootstrap_station(db, station)
+        db, station = await bootstrap_station(db, station)
         if payload.identity_seed_item_id:
             station.identity_seed_item_id = payload.identity_seed_item_id
         if payload.identity_anchor_id:
             station.identity_anchor_id = payload.identity_anchor_id
         db.commit()
-    return station
+    return db, station
 
 
 # Featured cap scales with catalog size so it always fills whole rows of 3:
