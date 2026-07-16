@@ -5,6 +5,7 @@ from app.auth import require_admin
 from app.database import QueueItem, QueueItemStatus, SessionLocal, Station, get_db
 from app.schemas import StationAdmin, StationCreate, StationUpdate
 from app.services.broadcast_settings import apply_broadcast_settings, get_broadcast_settings
+from app.services.icecast import fetch_all_mount_stats
 from app.services.liquidsoap import regenerate_liquidsoap_config
 from app.services.queue import bootstrap_station, delete_station_files, extend_queue, rebuild_m3u_from_db
 from app.services.station_artwork import delete_artwork, save_artwork
@@ -18,48 +19,64 @@ router = APIRouter(
 
 
 @router.get("", response_model=list[StationAdmin])
-def admin_list_stations(db: Session = Depends(get_db)):
-    stations = (
-        db.query(Station)
-        .order_by(
-            Station.featured.desc(),
-            Station.featured_order.asc(),
-            Station.sort_order.asc(),
-            Station.name.asc(),
-        )
-        .all()
-    )
-    result: list[StationAdmin] = []
-    for station in stations:
-        queued = (
-            db.query(QueueItem)
-            .filter(
-                QueueItem.station_id == station.id,
-                QueueItem.status == QueueItemStatus.queued,
+async def admin_list_stations():
+    # Fetch Icecast mount stats once, up front, and share it across every
+    # station below -- station_to_admin/get_now_playing fetch it themselves
+    # when it's not passed in, which with N stations and no sharing meant N
+    # separate Icecast round-trips for one page load of the admin list.
+    mount_stats = await fetch_all_mount_stats()
+    db = SessionLocal()
+    try:
+        stations = (
+            db.query(Station)
+            .order_by(
+                Station.featured.desc(),
+                Station.featured_order.asc(),
+                Station.sort_order.asc(),
+                Station.name.asc(),
             )
-            .count()
+            .all()
         )
-        result.append(station_to_admin(db, station, queued))
-    return result
+        result: list[StationAdmin] = []
+        for station in stations:
+            queued = (
+                db.query(QueueItem)
+                .filter(
+                    QueueItem.station_id == station.id,
+                    QueueItem.status == QueueItemStatus.queued,
+                )
+                .count()
+            )
+            result.append(await station_to_admin(db, station, queued, mount_stats=mount_stats))
+        return result
+    finally:
+        db.close()
 
 
 @router.post("", response_model=StationAdmin, status_code=201)
-async def admin_create_station(payload: StationCreate, db: Session = Depends(get_db)):
+async def admin_create_station(payload: StationCreate):
+    # create_station_record may bootstrap the new station's queue, which
+    # releases and reopens the session around external AudioMuse/Navidrome
+    # calls -- so this doesn't use Depends(get_db) (see admin_refresh_queue).
+    db = SessionLocal()
     try:
-        station = await create_station_record(db, payload)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    apply_broadcast_settings(db, get_broadcast_settings(db))
-    queued = (
-        db.query(QueueItem)
-        .filter(QueueItem.station_id == station.id, QueueItem.status == QueueItemStatus.queued)
-        .count()
-    )
-    return station_to_admin(db, station, queued)
+        try:
+            db, station = await create_station_record(db, payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        apply_broadcast_settings(db, get_broadcast_settings(db))
+        queued = (
+            db.query(QueueItem)
+            .filter(QueueItem.station_id == station.id, QueueItem.status == QueueItemStatus.queued)
+            .count()
+        )
+        return await station_to_admin(db, station, queued)
+    finally:
+        db.close()
 
 
 @router.put("/{station_id}", response_model=StationAdmin)
-def admin_update_station(
+async def admin_update_station(
     station_id: int, payload: StationUpdate, db: Session = Depends(get_db)
 ):
     station = db.query(Station).filter(Station.id == station_id).first()
@@ -75,7 +92,7 @@ def admin_update_station(
         .filter(QueueItem.station_id == station.id, QueueItem.status == QueueItemStatus.queued)
         .count()
     )
-    return station_to_admin(db, station, queued)
+    return await station_to_admin(db, station, queued)
 
 
 @router.post("/{station_id}/artwork", response_model=StationAdmin)
@@ -97,11 +114,11 @@ async def admin_upload_artwork(
         .filter(QueueItem.station_id == station.id, QueueItem.status == QueueItemStatus.queued)
         .count()
     )
-    return station_to_admin(db, station, queued)
+    return await station_to_admin(db, station, queued)
 
 
 @router.delete("/{station_id}/artwork", response_model=StationAdmin)
-def admin_delete_artwork(station_id: int, db: Session = Depends(get_db)):
+async def admin_delete_artwork(station_id: int, db: Session = Depends(get_db)):
     station = db.query(Station).filter(Station.id == station_id).first()
     if not station:
         raise HTTPException(status_code=404, detail="Station not found")
@@ -113,7 +130,7 @@ def admin_delete_artwork(station_id: int, db: Session = Depends(get_db)):
         .filter(QueueItem.station_id == station.id, QueueItem.status == QueueItemStatus.queued)
         .count()
     )
-    return station_to_admin(db, station, queued)
+    return await station_to_admin(db, station, queued)
 
 
 @router.delete("/{station_id}", status_code=204)
@@ -129,7 +146,7 @@ def admin_delete_station(station_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{station_id}/rebuild-m3u", response_model=StationAdmin)
-def admin_rebuild_m3u(station_id: int, db: Session = Depends(get_db)):
+async def admin_rebuild_m3u(station_id: int, db: Session = Depends(get_db)):
     station = db.query(Station).filter(Station.id == station_id).first()
     if not station:
         raise HTTPException(status_code=404, detail="Station not found")
@@ -139,7 +156,7 @@ def admin_rebuild_m3u(station_id: int, db: Session = Depends(get_db)):
         .filter(QueueItem.station_id == station.id, QueueItem.status == QueueItemStatus.queued)
         .count()
     )
-    return station_to_admin(db, station, queued)
+    return await station_to_admin(db, station, queued)
 
 
 @router.post("/{station_id}/refresh-queue", response_model=StationAdmin)
@@ -163,23 +180,30 @@ async def admin_refresh_queue(station_id: int):
             .filter(QueueItem.station_id == station.id, QueueItem.status == QueueItemStatus.queued)
             .count()
         )
-        return station_to_admin(db, station, queued)
+        return await station_to_admin(db, station, queued)
     finally:
         db.close()
 
 
 @router.post("/{station_id}/bootstrap", response_model=StationAdmin)
-async def admin_bootstrap(station_id: int, db: Session = Depends(get_db)):
-    station = db.query(Station).filter(Station.id == station_id).first()
-    if not station:
-        raise HTTPException(status_code=404, detail="Station not found")
+async def admin_bootstrap(station_id: int):
+    # bootstrap_station releases and reopens the session around external
+    # AudioMuse/Navidrome calls, so this doesn't use Depends(get_db) (see
+    # admin_refresh_queue).
+    db = SessionLocal()
     try:
-        await bootstrap_station(db, station)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    queued = (
-        db.query(QueueItem)
-        .filter(QueueItem.station_id == station.id, QueueItem.status == QueueItemStatus.queued)
-        .count()
-    )
-    return station_to_admin(db, station, queued)
+        station = db.query(Station).filter(Station.id == station_id).first()
+        if not station:
+            raise HTTPException(status_code=404, detail="Station not found")
+        try:
+            db, station = await bootstrap_station(db, station)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        queued = (
+            db.query(QueueItem)
+            .filter(QueueItem.station_id == station.id, QueueItem.status == QueueItemStatus.queued)
+            .count()
+        )
+        return await station_to_admin(db, station, queued)
+    finally:
+        db.close()
