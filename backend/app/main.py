@@ -76,10 +76,15 @@ async def _queue_refresh_loop() -> None:
             try:
                 enabled = db.query(Station).filter(Station.enabled.is_(True)).all()
                 for station in enabled:
+                    # ensure_queue_fresh may have swapped db/station to a new
+                    # session on a prior iteration (releasing the connection
+                    # around slow AudioMuse/Navidrome calls) -- re-attach
+                    # this loop's own station reference before using it.
+                    station = db.merge(station)
                     _icecast_last_track[station.slug] = sync_station_from_icecast(
                         db, station, _icecast_last_track.get(station.slug)
                     )
-                    await ensure_queue_fresh(db, station)
+                    db, station = await ensure_queue_fresh(db, station)
                     if knowledge_active:
                         schedule_knowledge_lookahead(station.id)
             finally:

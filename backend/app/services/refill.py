@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import (
     ContinuationMode,
+    SessionLocal,
     SourceType,
     Station,
     StationPoolItem,
@@ -170,10 +171,19 @@ async def collect_refill_candidates(
     queued_ids: set[str],
     *,
     play_count: int,
-) -> tuple[list[TrackRef], str | None]:
+) -> tuple[list[TrackRef], str | None, Session, Station]:
     """
-    Tiered refill. Returns (candidates, source_error).
-    Tiers: programming batch → pool reuse → anchor → similar seed → similar last.
+    Tiered refill. Returns (candidates, source_error, db, station).
+
+    This runs on every single track change, on every station, all day,
+    independent of whether anyone is listening. Each tier below can make an
+    external AudioMuse network call, and holding one DB session/connection
+    open across all of them (as this used to) was enough on its own to
+    exhaust the connection pool under normal operation. Each network await
+    now commits and releases the connection first, then reopens a fresh
+    session and reattaches `station` to it afterward -- callers must use
+    the returned (db, station), not the ones they passed in, since either
+    may have been replaced.
     """
     collected: list[TrackRef] = []
     source_error: str | None = None
@@ -193,9 +203,23 @@ async def collect_refill_candidates(
             collected.extend(picked)
             local_exclude |= {r.item_id for r in picked}
 
+    async def fetch_without_holding_db(coro):
+        """Commit + release the connection before an external network
+        call, then hand back a fresh session with `station` reattached --
+        guaranteed even if the awaited call raises, so every tier below
+        can keep using `db`/`station` normally afterward."""
+        nonlocal db, station
+        db.commit()
+        db.close()
+        try:
+            return await coro
+        finally:
+            db = SessionLocal()
+            station = db.merge(station)
+
     # Tier 0 — new recommendation batch (best effort; failure is OK)
     try:
-        batch = await fetch_programming_batch(station, max(target * 3, 60))
+        batch = await fetch_without_holding_db(fetch_programming_batch(station, max(target * 3, 60)))
         if batch:
             import_batch_to_pool(db, station, batch)
             station.source_last_ok_at = datetime.utcnow()
@@ -225,7 +249,7 @@ async def collect_refill_candidates(
         ContinuationMode.source_only,
         ContinuationMode.programming_only,
     ):
-        return collected, source_error
+        return collected, source_error, db, station
 
     # Tier 2 — alchemy anchor (station identity)
     anchor_id = station.identity_anchor_id or (
@@ -233,8 +257,8 @@ async def collect_refill_candidates(
     )
     if need_more() > 0 and anchor_id:
         try:
-            anchor_batch = await audiomuse_client.fetch_tracks(
-                SourceType.alchemy_anchor.value, anchor_id, need_more() * 3
+            anchor_batch = await fetch_without_holding_db(
+                audiomuse_client.fetch_tracks(SourceType.alchemy_anchor.value, anchor_id, need_more() * 3)
             )
             import_batch_to_pool(db, station, anchor_batch)
             append_tier(anchor_batch, "anchor")
@@ -247,7 +271,9 @@ async def collect_refill_candidates(
     )
     if need_more() > 0 and seed:
         try:
-            similar = await audiomuse_client.fetch_similar_tracks(seed, need_more() * 3)
+            similar = await fetch_without_holding_db(
+                audiomuse_client.fetch_similar_tracks(seed, need_more() * 3)
+            )
             import_batch_to_pool(db, station, similar)
             append_tier(similar, "similar-seed")
         except Exception as exc:
@@ -261,13 +287,15 @@ async def collect_refill_candidates(
         last_id = last_played_item_id(db, station.id) or seed
         if last_id:
             try:
-                drift = await audiomuse_client.fetch_similar_tracks(last_id, need_more() * 3)
+                drift = await fetch_without_holding_db(
+                    audiomuse_client.fetch_similar_tracks(last_id, need_more() * 3)
+                )
                 import_batch_to_pool(db, station, drift)
                 append_tier(drift, "similar-last")
             except Exception as exc:
                 logger.warning("Station %s: similar-last tier failed: %s", station.slug, exc)
 
-    return collected, source_error
+    return collected, source_error, db, station
 
 
 async def fetch_bootstrap_batch(station: Station) -> list[TrackRef]:
