@@ -11,6 +11,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/app ./app
 COPY web /web
 
+# Baked in at build time so /api/health can report exactly what's running --
+# otherwise there's no way to tell from the outside whether a redeploy
+# actually picked up a given fix.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=${GIT_SHA}
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
 

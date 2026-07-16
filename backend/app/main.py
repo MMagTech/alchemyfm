@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -54,6 +55,7 @@ def _html_page(name: str) -> FileResponse:
 
 
 _icecast_last_track: dict[str, tuple[str, str] | None] = {}
+_started_at = datetime.now(timezone.utc)
 
 
 async def _queue_refresh_loop() -> None:
@@ -279,6 +281,8 @@ def health():
         "stations_enabled": count,
         "knowledge_feature": settings.knowledge_feature,
         "default_theme": default_theme,
+        "git_sha": settings.git_sha,
+        "started_at": _started_at.isoformat(),
     }
 
 
