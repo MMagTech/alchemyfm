@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Float, Integer, String, Text, create_engine, text
+from sqlalchemy import DateTime, Enum, Float, Integer, String, Text, create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from app.config import settings
@@ -83,18 +83,32 @@ class KnowledgeJob(KnowledgeBase):
     last_error: Mapped[str] = mapped_column(Text, default="")
 
 
-_knowledge_connect_args = (
-    {"check_same_thread": False}
-    if settings.knowledge_database_url.startswith("sqlite")
-    else {}
-)
+_knowledge_is_sqlite = settings.knowledge_database_url.startswith("sqlite")
+_knowledge_connect_args = {"check_same_thread": False} if _knowledge_is_sqlite else {}
+
+# Same hardening as radio.db's engine (app/database.py): a pool this small
+# (SQLAlchemy's default 5 + 10 overflow) is exactly what let the
+# track_started/listen/get_station bugs freeze the app, and knowledge.db's
+# admin "test connection" endpoint has the identical held-session-across-a
+# -network-await shape.
 knowledge_engine = create_engine(
     settings.knowledge_database_url,
     connect_args=_knowledge_connect_args,
+    pool_size=20,
+    max_overflow=40,
 )
 KnowledgeSessionLocal = sessionmaker(
     bind=knowledge_engine, autoflush=False, autocommit=False
 )
+
+if _knowledge_is_sqlite:
+
+    @event.listens_for(knowledge_engine, "connect")
+    def _set_knowledge_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.close()
 
 
 def init_knowledge_db() -> None:
