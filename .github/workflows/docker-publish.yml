@@ -86,3 +86,5 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}

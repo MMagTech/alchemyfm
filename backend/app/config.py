@@ -7,6 +7,10 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:////data/radio.db"
     data_dir: str = "/data"
 
+    # Baked into the image at build time (docker-publish.yml's GIT_SHA
+    # build-arg) -- lets /api/health confirm what's actually deployed.
+    git_sha: str = "unknown"
+
     audiomuse_url: str = "http://localhost:8000"
     audiomuse_api_token: str = ""
 

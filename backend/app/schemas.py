@@ -144,6 +144,8 @@ class HealthResponse(BaseModel):
     stations_enabled: int
     knowledge_feature: bool = False
     default_theme: str = "violet"
+    git_sha: str = "unknown"
+    started_at: str
 
 
 class BroadcastStatsRead(BaseModel):
