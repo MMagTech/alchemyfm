@@ -318,6 +318,49 @@ def test_cloud_summarize_passes_max_chars_into_system_prompt():
     assert "under 300 characters" in system
 
 
+def test_purge_clears_every_job_including_failed_and_done():
+    """A stale `failed` row otherwise keeps 'last job error' alive after a purge."""
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.knowledge.cache import purge_all_cache
+    from app.knowledge.database import (
+        KnowledgeBase,
+        KnowledgeJob,
+        KnowledgeJobStatus,
+        TrackKnowledge,
+        TrackKnowledgeStatus,
+    )
+
+    engine = create_engine("sqlite://")
+    KnowledgeBase.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    now = datetime.utcnow()
+    db.add(
+        TrackKnowledge(
+            item_id="a",
+            status=TrackKnowledgeStatus.ready,
+            payload_json="{}",
+            created_at=now,
+            updated_at=now,
+            expires_at=now + timedelta(days=1),
+        )
+    )
+    for st in KnowledgeJobStatus:  # pending, running, done, failed, cancelled
+        db.add(KnowledgeJob(item_id="a", station_id=0, status=st))
+    db.commit()
+    assert db.query(KnowledgeJob).count() == len(list(KnowledgeJobStatus))
+
+    deleted = purge_all_cache(db)
+
+    assert deleted == 1
+    assert db.query(TrackKnowledge).count() == 0
+    assert db.query(KnowledgeJob).count() == 0
+    db.close()
+
+
 def test_validate_facts_drops_low_confidence_and_sourceless():
     facts = [
         {"category": "song_fact", "text": "Good", "confidence": 0.9,

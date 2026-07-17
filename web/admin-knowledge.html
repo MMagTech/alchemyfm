@@ -122,7 +122,7 @@
 
             <div class="form-actions">
               <button type="submit" class="btn">Save Settings</button>
-              <button type="button" class="btn btn-danger" id="purge-cache-btn">Clear Knowledge Cache</button>
+              <button type="button" class="btn btn-danger" id="purge-cache-btn">Clear Knowledge</button>
             </div>
           </form>
         </section>
@@ -316,8 +316,10 @@
             </dd>
             <dt>Providers</dt>
             <dd>Search uses MusicBrainz, Wikipedia, and DuckDuckGo (free). A language model is required: local Ollama (<code>OLLAMA_URL</code>, <code>OLLAMA_MODEL</code>) by default, or an OpenAI-compatible cloud provider by setting <code>KNOWLEDGE_LLM_PROVIDER=openai</code> with <code>KNOWLEDGE_LLM_BASE_URL</code>, <code>KNOWLEDGE_LLM_MODEL</code>, and <code>KNOWLEDGE_LLM_API_KEY</code>. Optional SearXNG via <code>SEARXNG_URL</code>. Restart backend after <code>.env</code> changes.</dd>
-            <dt>Clear Cache</dt>
-            <dd>Removes all cached facts and cancels pending jobs. Use Active mode to rebuild.</dd>
+            <dt>Clear Knowledge</dt>
+            <dd>Removes all cached facts and the whole job history, including past failures. Use Active mode to rebuild.</dd>
+            <dt>Cached Facts</dt>
+            <dd>Browse what has been enriched, filter by status, read the stored facts, and re-run a single track with Refresh.</dd>
           </dl>
         </section>
         <section class="admin-help-section">
@@ -353,14 +355,14 @@
           <path d="M6 7l1 14h10l1-14"/>
         </svg>
       </div>
-      <h3 id="knowledge-purge-title" class="admin-dialog-title">Clear Knowledge Cache?</h3>
+      <h3 id="knowledge-purge-title" class="admin-dialog-title">Clear Knowledge?</h3>
       <p id="knowledge-purge-desc" class="admin-dialog-lede">
-        Deletes all cached facts and cancels pending enrichment jobs.
-        Settings and provider URLs are kept. You can re-enrich tracks after switching back to Active.
+        Deletes every cached fact and the entire job history, including past failures.
+        Settings and providers are kept. In Active mode, tracks re-enrich automatically as they come up in the queue.
       </p>
       <div class="admin-dialog-actions">
         <button type="button" class="btn btn-secondary" data-purge-dismiss>Cancel</button>
-        <button type="button" class="btn btn-danger" id="knowledge-purge-confirm">Clear Cache</button>
+        <button type="button" class="btn btn-danger" id="knowledge-purge-confirm">Clear Knowledge</button>
       </div>
     </div>
   </div>
@@ -611,8 +613,10 @@
       if (!await openPurgeDialog()) return;
       try {
         const r = await adminFetchJSON('/api/admin/knowledge/purge', { method: 'POST' });
-        RadioApp.showAdminToast(`Cleared ${r.deleted} cache entries.`, 'success', 5000, 'knowledge-purge');
+        RadioApp.showAdminToast(`Cleared ${r.deleted} track${r.deleted === 1 ? '' : 's'} and job history.`, 'success', 5000, 'knowledge-purge');
         loadSettings();
+        cacheOffset = 0;
+        loadCache();
       } catch (err) {
         RadioApp.showAdminToast(err.message, 'error', 8000, 'knowledge-purge');
       }
