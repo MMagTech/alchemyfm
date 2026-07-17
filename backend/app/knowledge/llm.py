@@ -22,6 +22,7 @@ async def summarize(
     track: dict,
     snippets: list[dict],
     max_facts: int,
+    max_chars: int = 200,
 ) -> list[dict]:
     if effective_llm_provider(row) == "openai":
         return await cloud.summarize_facts(
@@ -31,6 +32,7 @@ async def summarize(
             track,
             snippets,
             max_facts,
+            max_chars,
         )
     return await ollama.summarize_facts(
         effective_ollama_url(row),
@@ -38,6 +40,7 @@ async def summarize(
         track,
         snippets,
         max_facts,
+        max_chars,
     )
 
 

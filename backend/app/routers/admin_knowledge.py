@@ -38,6 +38,7 @@ from app.knowledge.settings import (
 from app.knowledge.worker import request_ollama_gpu_release
 from app.schemas import (
     KnowledgeCacheEntry,
+    KnowledgeCacheFact,
     KnowledgeCacheList,
     KnowledgePurgeResponse,
     KnowledgeSettingsRead,
@@ -189,13 +190,19 @@ def refresh_track_knowledge(item_id: str, db: Session = Depends(get_knowledge_db
 def list_knowledge_cache(
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
+    status: str | None = Query(default=None),
     db: Session = Depends(get_knowledge_db),
 ):
     _require_feature()
-    total = db.query(TrackKnowledge).count()
+    query = db.query(TrackKnowledge)
+    if status:
+        try:
+            query = query.filter(TrackKnowledge.status == TrackKnowledgeStatus(status))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid status") from exc
+    total = query.count()
     rows = (
-        db.query(TrackKnowledge)
-        .order_by(TrackKnowledge.updated_at.desc())
+        query.order_by(TrackKnowledge.updated_at.desc())
         .offset(offset)
         .limit(limit)
         .all()
@@ -216,6 +223,16 @@ def list_knowledge_cache(
                 album=row.album,
                 year=row.year,
                 fact_count=len(facts),
+                facts=[
+                    KnowledgeCacheFact(
+                        category=str(f.get("category") or ""),
+                        text=str(f.get("text") or ""),
+                        confidence=float(f.get("confidence") or 0),
+                    )
+                    for f in facts
+                    if isinstance(f, dict)
+                ],
+                failure_reason=row.failure_reason or "",
                 updated_at=row.updated_at,
                 expires_at=row.expires_at,
             )

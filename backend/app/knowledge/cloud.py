@@ -21,6 +21,7 @@ async def summarize_facts(
     track: dict,
     snippets: list[dict],
     max_facts: int,
+    max_chars: int = 200,
 ) -> list[dict]:
     if not base_url:
         raise RuntimeError("Cloud LLM base URL is not configured")
@@ -36,7 +37,10 @@ async def summarize_facts(
         "model": model,
         "response_format": {"type": "json_object"},
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT.format(max_facts=max_facts)},
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT.format(max_facts=max_facts, max_chars=max_chars),
+            },
             {"role": "user", "content": build_user_prompt(track, snippets)},
         ],
     }

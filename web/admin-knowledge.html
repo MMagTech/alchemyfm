@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/icons/favicon.ico?v=2" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png?v=2">
   <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png?v=2">
-  <link rel="stylesheet" href="/static/style.css?v=142">
+  <link rel="stylesheet" href="/static/style.css?v=143">
   <link rel="stylesheet" href="/static/themes.css?v=2">
   <link rel="stylesheet" href="/static/admin-mobile.css?v=13" media="(max-width: 640px)">
   <script src="/static/themes.js?v=14"></script>
@@ -210,6 +210,31 @@
             </div>
           </article>
         </div>
+      </section>
+
+      <section class="admin-panel admin-knowledge-cache">
+        <details id="cache-details">
+          <summary class="knowledge-cache-summary">
+            <h2>Cached Facts</h2>
+            <span class="hint" id="cache-summary-count">—</span>
+          </summary>
+          <div class="knowledge-cache-body">
+            <div class="knowledge-cache-toolbar">
+              <div class="knowledge-cache-filters" role="group" aria-label="Filter by status">
+                <button type="button" class="btn btn-sm is-active" data-status="">All</button>
+                <button type="button" class="btn btn-sm" data-status="ready">Ready</button>
+                <button type="button" class="btn btn-sm" data-status="no_facts">No Facts</button>
+                <button type="button" class="btn btn-sm" data-status="failed">Failed</button>
+              </div>
+              <div class="knowledge-cache-pager">
+                <button type="button" class="btn btn-sm" id="cache-prev">Prev</button>
+                <span class="hint" id="cache-range">—</span>
+                <button type="button" class="btn btn-sm" id="cache-next">Next</button>
+              </div>
+            </div>
+            <div class="knowledge-cache-list" id="cache-list"></div>
+          </div>
+        </details>
       </section>
     </div>
   </main>
@@ -447,6 +472,105 @@
         el.textContent = s.llm_ok ? `✓ ${s.llm_message}` : `✗ ${s.llm_message}`;
       } catch (err) {
         el.textContent = err.message;
+      }
+    });
+
+    // --- Cached facts browser -------------------------------------------
+    const CACHE_PAGE_SIZE = 25;
+    let cacheStatus = '';
+    let cacheOffset = 0;
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s ?? '';
+      return d.innerHTML;
+    }
+
+    function renderCache(data) {
+      const list = document.getElementById('cache-list');
+      const total = data.total || 0;
+      document.getElementById('cache-summary-count').textContent =
+        total ? `${total} track${total === 1 ? '' : 's'}` : 'none yet';
+      if (!data.items.length) {
+        list.innerHTML = '<p class="hint">No cached tracks for this filter yet.</p>';
+        document.getElementById('cache-range').textContent = '0 of 0';
+      } else {
+        const from = cacheOffset + 1;
+        const to = cacheOffset + data.items.length;
+        document.getElementById('cache-range').textContent = `${from}–${to} of ${total}`;
+        list.innerHTML = data.items.map(e => {
+          const facts = (e.facts || []).map(f =>
+            `<li><span class="knowledge-fact-cat">${escapeHtml(f.category)}</span> ${escapeHtml(f.text)}</li>`
+          ).join('');
+          const body = e.failure_reason
+            ? `<p class="knowledge-cache-error">${escapeHtml(e.failure_reason)}</p>`
+            : (facts ? `<ul class="knowledge-fact-list">${facts}</ul>` : '<p class="hint">No facts stored.</p>');
+          return `
+            <details class="knowledge-cache-row">
+              <summary>
+                <span class="knowledge-cache-track">${escapeHtml(e.title)}</span>
+                <span class="knowledge-cache-artist">${escapeHtml(e.artist)}</span>
+                <span class="knowledge-cache-badge is-${escapeHtml(e.status)}">${escapeHtml(e.status)}</span>
+                <span class="hint">${e.fact_count} fact${e.fact_count === 1 ? '' : 's'}</span>
+              </summary>
+              <div class="knowledge-cache-row-body">
+                ${body}
+                <button type="button" class="btn btn-sm" data-refresh="${escapeHtml(e.item_id)}">Refresh Track</button>
+              </div>
+            </details>`;
+        }).join('');
+      }
+      document.getElementById('cache-prev').disabled = cacheOffset === 0;
+      document.getElementById('cache-next').disabled = cacheOffset + CACHE_PAGE_SIZE >= total;
+    }
+
+    async function loadCache() {
+      if (!document.getElementById('cache-details').open) return;
+      const qs = new URLSearchParams({ offset: cacheOffset, limit: CACHE_PAGE_SIZE });
+      if (cacheStatus) qs.set('status', cacheStatus);
+      try {
+        renderCache(await adminFetchJSON('/api/admin/knowledge/cache?' + qs));
+      } catch (err) {
+        document.getElementById('cache-list').innerHTML =
+          `<p class="hint">${escapeHtml(err.message)}</p>`;
+      }
+    }
+
+    document.getElementById('cache-details').addEventListener('toggle', loadCache);
+
+    document.querySelector('.knowledge-cache-filters').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-status]');
+      if (!btn) return;
+      document.querySelectorAll('.knowledge-cache-filters [data-status]')
+        .forEach(b => b.classList.toggle('is-active', b === btn));
+      cacheStatus = btn.dataset.status;
+      cacheOffset = 0;
+      loadCache();
+    });
+
+    document.getElementById('cache-prev').addEventListener('click', () => {
+      cacheOffset = Math.max(0, cacheOffset - CACHE_PAGE_SIZE);
+      loadCache();
+    });
+    document.getElementById('cache-next').addEventListener('click', () => {
+      cacheOffset += CACHE_PAGE_SIZE;
+      loadCache();
+    });
+
+    document.getElementById('cache-list').addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-refresh]');
+      if (!btn) return;
+      btn.disabled = true;
+      btn.textContent = 'Queued…';
+      try {
+        await adminFetchJSON('/api/admin/knowledge/refresh/' + encodeURIComponent(btn.dataset.refresh), {
+          method: 'POST',
+        });
+        RadioApp.showAdminToast('Track queued for re-enrichment.', 'success', 4000, 'knowledge');
+      } catch (err) {
+        RadioApp.showAdminToast(err.message, 'error', 8000, 'knowledge');
+        btn.disabled = false;
+        btn.textContent = 'Refresh Track';
       }
     });
 

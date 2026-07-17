@@ -305,6 +305,12 @@ class KnowledgePurgeResponse(BaseModel):
     deleted: int
 
 
+class KnowledgeCacheFact(BaseModel):
+    category: str
+    text: str
+    confidence: float
+
+
 class KnowledgeCacheEntry(BaseModel):
     item_id: str
     status: str
@@ -313,6 +319,8 @@ class KnowledgeCacheEntry(BaseModel):
     album: str
     year: int | None = None
     fact_count: int
+    facts: list[KnowledgeCacheFact] = []
+    failure_reason: str = ""
     updated_at: datetime
     expires_at: datetime
 

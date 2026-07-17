@@ -191,8 +191,8 @@ def test_llm_dispatches_to_cloud_when_provider_openai(monkeypatch):
     monkeypatch.setattr(app_settings, "knowledge_llm_api_key", "sk-test")
     calls = {}
 
-    async def fake_cloud(base, key, model, track, snippets, max_facts):
-        calls["cloud"] = (base, key, model, max_facts)
+    async def fake_cloud(base, key, model, track, snippets, max_facts, max_chars):
+        calls["cloud"] = (base, key, model, max_facts, max_chars)
         return [{"category": "song_fact"}]
 
     async def fake_ollama(*a, **k):
@@ -202,10 +202,10 @@ def test_llm_dispatches_to_cloud_when_provider_openai(monkeypatch):
     monkeypatch.setattr(cloud, "summarize_facts", fake_cloud)
     monkeypatch.setattr(ollama, "summarize_facts", fake_ollama)
 
-    out = asyncio.run(llm.summarize(None, {"title": "T"}, [{"snippet": "s"}], 3))
+    out = asyncio.run(llm.summarize(None, {"title": "T"}, [{"snippet": "s"}], 3, 300))
     assert out == [{"category": "song_fact"}]
     assert "ollama" not in calls
-    assert calls["cloud"] == ("https://x/v1", "sk-test", "gpt-5-nano", 3)
+    assert calls["cloud"] == ("https://x/v1", "sk-test", "gpt-5-nano", 3, 300)
 
 
 def test_llm_defaults_to_ollama(monkeypatch):
@@ -216,16 +216,16 @@ def test_llm_defaults_to_ollama(monkeypatch):
         calls["cloud"] = True
         return []
 
-    async def fake_ollama(base, model, track, snippets, max_facts):
-        calls["ollama"] = (base, model)
+    async def fake_ollama(base, model, track, snippets, max_facts, max_chars):
+        calls["ollama"] = (base, model, max_chars)
         return []
 
     monkeypatch.setattr(cloud, "summarize_facts", fake_cloud)
     monkeypatch.setattr(ollama, "summarize_facts", fake_ollama)
 
-    asyncio.run(llm.summarize(None, {"title": "T"}, [{"snippet": "s"}], 3))
+    asyncio.run(llm.summarize(None, {"title": "T"}, [{"snippet": "s"}], 3, 300))
     assert "cloud" not in calls
-    assert "ollama" in calls
+    assert calls["ollama"][2] == 300
 
 
 @respx.mock
@@ -291,6 +291,31 @@ def test_cloud_summarize_requires_key():
         assert "API key" in str(exc)
     else:
         raise AssertionError("expected RuntimeError for missing API key")
+
+
+def test_prompt_carries_max_chars_and_bans_metadata_facts():
+    """The model must know its length budget and what counts as non-trivia."""
+    rendered = ollama.SYSTEM_PROMPT.format(max_facts=3, max_chars=300)
+    assert "under 300 characters" in rendered
+    assert "{" not in rendered.replace('{{', '').replace('}}', '') or '"facts"' in rendered
+    for banned in ("running time", "track number", "active years", "lineup"):
+        assert banned in rendered.lower()
+
+
+@respx.mock
+def test_cloud_summarize_passes_max_chars_into_system_prompt():
+    route = respx.post("https://api.example.com/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": '{"facts":[]}'}}]})
+    )
+    asyncio.run(
+        cloud.summarize_facts(
+            "https://api.example.com/v1", "sk", "m",
+            {"title": "T"}, [{"title": "t", "url": "https://u", "snippet": "s"}],
+            3, 300,
+        )
+    )
+    system = json.loads(route.calls.last.request.content)["messages"][0]["content"]
+    assert "under 300 characters" in system
 
 
 def test_validate_facts_drops_low_confidence_and_sourceless():

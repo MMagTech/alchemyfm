@@ -8,23 +8,30 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You write short, surprising music trivia for radio listeners, grounded strictly in the provided snippets.
 
-Priority: facts about the exact track (title + artist) first, then its album, then the artist.
+Pick the most INTERESTING facts available, from wherever they come. A great fact about the album or the artist beats a dull one about the exact track. Never manufacture a weak fact about the track just to cover the track itself.
 
 What makes a GOOD fact (aim for these):
-- Specific, concrete detail a casual fan would not already know: how it was written or recorded, who produced it, what it samples or interpolates, an unusual instrument or technique, chart records, awards, notable covers or media placements, the story behind it.
-- Prefer detail from Composition/Recording/Background/Production/"credits"/"writers"/sample sections.
+- Specific, concrete detail a casual fan would not already know: how it was written or recorded, who produced it and how, what it samples or interpolates, an unusual instrument or technique, chart records, awards, notable covers or media placements, the story behind it.
+- Prefer detail from Composition/Recording/Background/Production/Legacy/sample sections.
 
-What makes a WEAK fact (AVOID unless genuinely notable):
-- Restating the obvious: "released as a single in <year>", "written by <artist>", "the Nth track on the album", plain running time, or generic "is a song by <artist>". Skip these unless the snippet frames them as remarkable (e.g. a record-breaking chart run).
+NEVER return these as facts on their own -- this is catalogue metadata, not trivia:
+- A track's running time or duration ("listed at 3:19").
+- Which album a track appears on, or its track number.
+- Bare songwriting/composer credits with no story ("credited as written by X", "the songwriting credits list five writers").
+- An artist's active years, origin country, or formation date ("active 1997-present, originate from the United States").
+- Band lineup or roster listings ("X on vocals, Y on drums").
+- "<Title> is a song by <Artist>" restatements.
+Use such details ONLY as supporting context inside a fact that is interesting for some other reason, or when a snippet itself frames them as remarkable (a record-breaking chart run, a surprising credit).
 
 Rules:
 - Use ONLY information explicitly stated in the snippets. Do not invent, guess, or combine unrelated snippets.
-- Each fact should stand on its own and be genuinely interesting; do not pad to reach the maximum count.
+- Each fact must stand on its own and be genuinely interesting. Do not pad to reach the maximum count -- one strong fact beats one strong plus two filler.
+- Each fact MUST be under {max_chars} characters. Write a complete sentence that fits within that budget; never start a thought you cannot finish inside it.
 - Focus on music: songwriting, production, collaborators, samples, charts, awards, cultural impact. Skip gossip, rumors, crime, and personal drama unless clearly about this track in the snippets.
 - Categories: song_fact, artist_fact, album_fact, producer_fact, sample_fact. Use producer_fact for production credits and sample_fact for samples/interpolations when the snippets support them.
 - Each fact needs confidence 0.0-1.0 and source URLs copied exactly from the snippet URLs.
 - Confidence: 0.85+ if verbatim in a snippet; 0.65+ if clearly supported; omit below 0.65.
-- Return up to {max_facts} distinct facts (different angles, no repeats). Fewer strong facts beats more weak ones.
+- Return up to {max_facts} distinct facts (different angles, no repeats).
 - JSON only: {{"facts":[{{"category":"...","text":"...","confidence":0.8,"sources":[{{"url":"...","title":"..."}}]}}]}}
 - If nothing reliable and interesting, return {{"facts":[]}}."""
 
@@ -61,6 +68,7 @@ async def summarize_facts(
     track: dict,
     snippets: list[dict],
     max_facts: int,
+    max_chars: int = 200,
 ) -> list[dict]:
     if not base_url:
         raise RuntimeError("Ollama URL is not configured")
@@ -75,7 +83,10 @@ async def summarize_facts(
         # Unload weights from GPU immediately after each job — do not hold VRAM.
         "keep_alive": 0,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT.format(max_facts=max_facts)},
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT.format(max_facts=max_facts, max_chars=max_chars),
+            },
             {"role": "user", "content": user_prompt},
         ],
     }

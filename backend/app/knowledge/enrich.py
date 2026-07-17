@@ -100,7 +100,15 @@ async def enrich_item(item_id: str, settings: KnowledgeSettings) -> tuple[TrackK
 
         raw_facts = await summarize_facts(
 
-            settings, track, all_snippets, settings.max_facts_per_track
+            settings,
+
+            track,
+
+            all_snippets,
+
+            settings.max_facts_per_track,
+
+            settings.max_fact_chars,
 
         )
 
