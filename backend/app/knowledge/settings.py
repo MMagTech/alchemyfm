@@ -43,6 +43,32 @@ def effective_ollama_model(_row: KnowledgeSettings | None = None) -> str:
     return settings.ollama_model or "llama3.2:3b"
 
 
+def effective_llm_provider(_row: KnowledgeSettings | None = None) -> str:
+    """"ollama" (local) or "openai" (OpenAI-compatible cloud). Env-only."""
+    provider = (settings.knowledge_llm_provider or "ollama").strip().lower()
+    return provider if provider in ("ollama", "openai") else "ollama"
+
+
+def effective_llm_base_url(_row: KnowledgeSettings | None = None) -> str:
+    return (settings.knowledge_llm_base_url or "").strip().rstrip("/")
+
+
+def effective_llm_model(_row: KnowledgeSettings | None = None) -> str:
+    return (settings.knowledge_llm_model or "").strip()
+
+
+def effective_llm_api_key() -> str:
+    """Secret — read from env only, never stored in the DB or returned by the API."""
+    return (settings.knowledge_llm_api_key or "").strip()
+
+
+def effective_model_label(row: KnowledgeSettings | None = None) -> str:
+    """Model name recorded in the cache payload, provider-aware."""
+    if effective_llm_provider(row) == "openai":
+        return effective_llm_model(row) or "openai"
+    return effective_ollama_model(row)
+
+
 def get_knowledge_settings(db: Session) -> KnowledgeSettings:
     row = db.query(KnowledgeSettings).filter(KnowledgeSettings.id == 1).first()
     if row:

@@ -168,7 +168,7 @@
         <div class="admin-panel-head">
           <div>
             <h2>Providers</h2>
-            <p class="admin-lede">Search uses free public APIs. Ollama and optional SearXNG are set in <code>.env</code> — restart the backend after changing those.</p>
+            <p class="admin-lede">Search uses free public APIs. The language model (local Ollama or an OpenAI-compatible cloud provider) and optional SearXNG are set in <code>.env</code> — restart the backend after changing those.</p>
           </div>
         </div>
         <div class="knowledge-provider-grid">
@@ -198,14 +198,15 @@
 
           <article class="knowledge-provider-card">
             <div class="knowledge-provider-card-head">
-              <h3 class="knowledge-provider-name">Ollama</h3>
+              <h3 class="knowledge-provider-name">Language Model</h3>
               <span class="knowledge-provider-badge is-required">Required</span>
             </div>
-            <code class="knowledge-provider-value" id="display-ollama-url">—</code>
-            <p class="knowledge-provider-meta">Model: <code id="display-ollama-model">—</code></p>
+            <p class="knowledge-provider-meta">Provider: <code id="display-llm-provider">—</code></p>
+            <code class="knowledge-provider-value" id="display-llm-url">—</code>
+            <p class="knowledge-provider-meta">Model: <code id="display-llm-model">—</code></p>
             <div class="knowledge-provider-card-actions">
-              <button type="button" class="btn btn-sm" id="test-ollama-btn">Test Ollama</button>
-              <span class="hint" id="ollama-test-result"></span>
+              <button type="button" class="btn btn-sm" id="test-llm-btn">Test Model</button>
+              <span class="hint" id="llm-test-result"></span>
             </div>
           </article>
         </div>
@@ -289,7 +290,7 @@
               <strong>Active</strong> — enrich upcoming queue tracks in the background.
             </dd>
             <dt>Providers</dt>
-            <dd>Search uses MusicBrainz, Wikipedia, and DuckDuckGo (free). Ollama is required (<code>OLLAMA_URL</code>, <code>OLLAMA_MODEL</code>). Optional SearXNG via <code>SEARXNG_URL</code>. Restart backend after <code>.env</code> changes.</dd>
+            <dd>Search uses MusicBrainz, Wikipedia, and DuckDuckGo (free). A language model is required: local Ollama (<code>OLLAMA_URL</code>, <code>OLLAMA_MODEL</code>) by default, or an OpenAI-compatible cloud provider by setting <code>KNOWLEDGE_LLM_PROVIDER=openai</code> with <code>KNOWLEDGE_LLM_BASE_URL</code>, <code>KNOWLEDGE_LLM_MODEL</code>, and <code>KNOWLEDGE_LLM_API_KEY</code>. Optional SearXNG via <code>SEARXNG_URL</code>. Restart backend after <code>.env</code> changes.</dd>
             <dt>Clear Cache</dt>
             <dd>Removes all cached facts and cancels pending jobs. Use Active mode to rebuild.</dd>
           </dl>
@@ -365,8 +366,12 @@
         form[key].value = s[key];
       }
       document.getElementById('display-searxng-url').textContent = s.searxng_url || 'Not set (optional)';
-      document.getElementById('display-ollama-url').textContent = s.ollama_url || 'Not set in .env';
-      document.getElementById('display-ollama-model').textContent = s.ollama_model || 'Not set in .env';
+      const cloud = s.llm_provider === 'openai';
+      document.getElementById('display-llm-provider').textContent = cloud ? 'OpenAI-compatible' : 'Ollama (local)';
+      document.getElementById('display-llm-url').textContent =
+        (cloud ? s.llm_base_url : s.ollama_url) || 'Not set in .env';
+      document.getElementById('display-llm-model').textContent =
+        (cloud ? s.llm_model : s.ollama_model) || 'Not set in .env';
       document.getElementById('stat-cache').textContent = s.cache_entries;
       document.getElementById('stat-ready').textContent = s.cache_ready;
       document.getElementById('stat-pending').textContent = s.jobs_pending;
@@ -434,12 +439,12 @@
       }
     });
 
-    document.getElementById('test-ollama-btn').addEventListener('click', async () => {
-      const el = document.getElementById('ollama-test-result');
+    document.getElementById('test-llm-btn').addEventListener('click', async () => {
+      const el = document.getElementById('llm-test-result');
       el.textContent = 'Testing…';
       try {
         const s = await adminFetchJSON('/api/admin/knowledge?test=1');
-        el.textContent = s.ollama_ok ? `✓ ${s.ollama_message}` : `✗ ${s.ollama_message}`;
+        el.textContent = s.llm_ok ? `✓ ${s.llm_message}` : `✗ ${s.llm_message}`;
       } catch (err) {
         el.textContent = err.message;
       }

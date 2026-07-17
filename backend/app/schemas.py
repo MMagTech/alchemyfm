@@ -269,6 +269,9 @@ class KnowledgeSettingsRead(BaseModel):
     searxng_url: str
     ollama_url: str
     ollama_model: str
+    llm_provider: str = "ollama"
+    llm_base_url: str = ""
+    llm_model: str = ""
     providers_from_env: bool = True
     search_ok: bool | None = None
     search_message: str = ""
@@ -276,6 +279,8 @@ class KnowledgeSettingsRead(BaseModel):
     searxng_message: str = ""
     ollama_ok: bool | None = None
     ollama_message: str = ""
+    llm_ok: bool | None = None
+    llm_message: str = ""
     cache_entries: int = 0
     cache_ready: int = 0
     jobs_pending: int = 0

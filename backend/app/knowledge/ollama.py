@@ -6,21 +6,27 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You extract short music trivia for radio listeners from the provided snippets only.
+SYSTEM_PROMPT = """You write short, surprising music trivia for radio listeners, grounded strictly in the provided snippets.
 
-Priority: facts about the exact track (title + artist) first. MusicBrainz recording snippets are valid for song_fact (featured artists, length, which album it appears on).
+Priority: facts about the exact track (title + artist) first, then its album, then the artist.
+
+What makes a GOOD fact (aim for these):
+- Specific, concrete detail a casual fan would not already know: how it was written or recorded, who produced it, what it samples or interpolates, an unusual instrument or technique, chart records, awards, notable covers or media placements, the story behind it.
+- Prefer detail from Composition/Recording/Background/Production/"credits"/"writers"/sample sections.
+
+What makes a WEAK fact (AVOID unless genuinely notable):
+- Restating the obvious: "released as a single in <year>", "written by <artist>", "the Nth track on the album", plain running time, or generic "is a song by <artist>". Skip these unless the snippet frames them as remarkable (e.g. a record-breaking chart run).
 
 Rules:
-- Use ONLY information explicitly stated in the snippets. Do not invent or guess.
-- If a detail is directly stated, include it. Do not infer across snippets unless the link is explicit.
-- Prefer song_fact when snippets support it. Use album_fact or artist_fact only when nothing track-specific is available.
-- Focus on music: release, collaborators, production, samples, charts. Skip gossip, rumors, crime, and personal drama unless clearly about this track in the snippets.
-- Categories: song_fact, artist_fact, album_fact, producer_fact, sample_fact.
+- Use ONLY information explicitly stated in the snippets. Do not invent, guess, or combine unrelated snippets.
+- Each fact should stand on its own and be genuinely interesting; do not pad to reach the maximum count.
+- Focus on music: songwriting, production, collaborators, samples, charts, awards, cultural impact. Skip gossip, rumors, crime, and personal drama unless clearly about this track in the snippets.
+- Categories: song_fact, artist_fact, album_fact, producer_fact, sample_fact. Use producer_fact for production credits and sample_fact for samples/interpolations when the snippets support them.
 - Each fact needs confidence 0.0-1.0 and source URLs copied exactly from the snippet URLs.
-- Confidence: 0.85+ if verbatim in snippet; 0.65+ if clearly supported; omit below 0.65.
-- Return up to {max_facts} distinct facts (different angles, no repeats).
+- Confidence: 0.85+ if verbatim in a snippet; 0.65+ if clearly supported; omit below 0.65.
+- Return up to {max_facts} distinct facts (different angles, no repeats). Fewer strong facts beats more weak ones.
 - JSON only: {{"facts":[{{"category":"...","text":"...","confidence":0.8,"sources":[{{"url":"...","title":"..."}}]}}]}}
-- If nothing reliable, return {{"facts":[]}}."""
+- If nothing reliable and interesting, return {{"facts":[]}}."""
 
 
 def _extract_json(text: str) -> dict:
@@ -35,6 +41,20 @@ def _extract_json(text: str) -> dict:
     raise ValueError("No JSON object in model response")
 
 
+def build_user_prompt(track: dict, snippets: list[dict]) -> str:
+    """Shared user prompt for both the local (Ollama) and cloud summarizers."""
+    snippet_block = "\n\n".join(
+        f"Title: {s['title']}\nURL: {s['url']}\nSnippet: {s['snippet']}"
+        for s in snippets[:12]
+    )
+    return (
+        f"Listeners are hearing \"{track.get('title')}\" by {track.get('artist')} right now.\n"
+        f"Album: {track.get('album') or 'unknown'}\n"
+        f"Year: {track.get('year') or 'unknown'}\n\n"
+        f"Search snippets:\n{snippet_block}"
+    )
+
+
 async def summarize_facts(
     base_url: str,
     model: str,
@@ -47,16 +67,7 @@ async def summarize_facts(
     if not snippets:
         return []
 
-    snippet_block = "\n\n".join(
-        f"Title: {s['title']}\nURL: {s['url']}\nSnippet: {s['snippet']}"
-        for s in snippets[:12]
-    )
-    user_prompt = (
-        f"Listeners are hearing \"{track.get('title')}\" by {track.get('artist')} right now.\n"
-        f"Album: {track.get('album') or 'unknown'}\n"
-        f"Year: {track.get('year') or 'unknown'}\n\n"
-        f"Search snippets:\n{snippet_block}"
-    )
+    user_prompt = build_user_prompt(track, snippets)
     payload = {
         "model": model,
         "stream": False,

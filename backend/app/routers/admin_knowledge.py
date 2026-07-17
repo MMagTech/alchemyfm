@@ -15,7 +15,7 @@ from app.knowledge.database import (
     TrackKnowledgeStatus,
     get_knowledge_db,
 )
-from app.knowledge.ollama import test_connection as test_ollama
+from app.knowledge.llm import test_connection as test_llm
 from app.knowledge.scheduler import (
     enqueue_refresh,
     schedule_all_stations_lookahead,
@@ -24,6 +24,9 @@ from app.knowledge.scheduler import (
 from app.knowledge.searxng import test_connection as test_searxng
 from app.knowledge.sources import test_connection as test_search_sources
 from app.knowledge.settings import (
+    effective_llm_base_url,
+    effective_llm_model,
+    effective_llm_provider,
     effective_ollama_model,
     effective_ollama_url,
     effective_searxng_url,
@@ -68,6 +71,9 @@ def _build_settings_read(db: Session, row, last_err) -> KnowledgeSettingsRead:
         searxng_url=effective_searxng_url(row),
         ollama_url=effective_ollama_url(row),
         ollama_model=effective_ollama_model(row),
+        llm_provider=effective_llm_provider(row),
+        llm_base_url=effective_llm_base_url(row),
+        llm_model=effective_llm_model(row),
         providers_from_env=True,
         cache_entries=db.query(TrackKnowledge).count(),
         cache_ready=db.query(TrackKnowledge)
@@ -101,11 +107,12 @@ def _last_failed_job(db: Session) -> KnowledgeJob | None:
 @router.get("", response_model=KnowledgeSettingsRead)
 async def read_knowledge_settings(test: bool = Query(default=False)):
     """Doesn't use Depends(get_knowledge_db): the test=true branch awaits
-    SearXNG/Ollama connection checks, which are real network calls (Ollama
-    especially, if it's cold-loading a model). Holding a request-scoped
-    session open across those -- on an engine that, unlike radio.db's,
-    never got its pool widened -- risks exhausting the knowledge DB pool
-    for the same reason the track_started/listen/get_station fixes exist.
+    SearXNG/LLM connection checks, which are real network calls (Ollama
+    especially, if it's cold-loading a model; a cloud provider likewise, over
+    the internet). Holding a request-scoped session open across those -- on an
+    engine that, unlike radio.db's, never got its pool widened -- risks
+    exhausting the knowledge DB pool for the same reason the
+    track_started/listen/get_station fixes exist.
     """
     db = KnowledgeSessionLocal()
     try:
@@ -113,8 +120,7 @@ async def read_knowledge_settings(test: bool = Query(default=False)):
         row = get_knowledge_settings(db)
         base = _build_settings_read(db, row, _last_failed_job(db))
         searxng_url = effective_searxng_url(row)
-        ollama_url = effective_ollama_url(row)
-        ollama_model = effective_ollama_model(row)
+        llm_provider = effective_llm_provider(row)
     finally:
         db.close()
 
@@ -124,7 +130,11 @@ async def read_knowledge_settings(test: bool = Query(default=False)):
     searxng_ok, searxng_msg = (None, "")
     if searxng_url:
         searxng_ok, searxng_msg = await test_searxng(searxng_url)
-    ollama_ok, ollama_msg = await test_ollama(ollama_url, ollama_model)
+    # test_llm() resolves the backend from env only -- no DB row -- so it is
+    # safe to await here, after the session above has been closed.
+    llm_ok, llm_msg = await test_llm()
+    # Keep the legacy ollama_* fields populated only when Ollama is the backend.
+    ollama_ok, ollama_msg = (llm_ok, llm_msg) if llm_provider == "ollama" else (None, "")
     return base.model_copy(
         update={
             "search_ok": search_ok,
@@ -133,6 +143,8 @@ async def read_knowledge_settings(test: bool = Query(default=False)):
             "searxng_message": searxng_msg or "",
             "ollama_ok": ollama_ok,
             "ollama_message": ollama_msg or "",
+            "llm_ok": llm_ok,
+            "llm_message": llm_msg or "",
         }
     )
 

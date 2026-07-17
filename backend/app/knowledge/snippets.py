@@ -56,6 +56,6 @@ def merge_snippets(
             {
                 "url": url,
                 "title": title[:200],
-                "snippet": snippet[:500],
+                "snippet": snippet[:600],
             }
         )
