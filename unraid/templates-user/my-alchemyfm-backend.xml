@@ -47,4 +47,8 @@
   <Config Name="OLLAMA_URL" Target="OLLAMA_URL" Default="" Mode="" Description="Optional Ollama URL for knowledge." Type="Variable" Display="advanced" Required="false" Mask="false"/>
   <Config Name="OLLAMA_MODEL" Target="OLLAMA_MODEL" Default="" Mode="" Description="Ollama model name." Type="Variable" Display="advanced" Required="false" Mask="false"/>
   <Config Name="SEARXNG_URL" Target="SEARXNG_URL" Default="" Mode="" Description="Optional SearXNG URL." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="KNOWLEDGE_LLM_PROVIDER" Target="KNOWLEDGE_LLM_PROVIDER" Default="ollama" Mode="" Description="Knowledge language model backend: ollama (local, default) or openai (any OpenAI-compatible endpoint)." Type="Variable" Display="advanced" Required="false" Mask="false">ollama</Config>
+  <Config Name="KNOWLEDGE_LLM_BASE_URL" Target="KNOWLEDGE_LLM_BASE_URL" Default="" Mode="" Description="Cloud LLM base URL when provider is openai (e.g. https://api.openai.com/v1)." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="KNOWLEDGE_LLM_MODEL" Target="KNOWLEDGE_LLM_MODEL" Default="" Mode="" Description="Cloud LLM model name when provider is openai (e.g. gpt-5-mini)." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="KNOWLEDGE_LLM_API_KEY" Target="KNOWLEDGE_LLM_API_KEY" Default="" Mode="" Description="Cloud LLM API key when provider is openai." Type="Variable" Display="advanced" Required="false" Mask="true"/>
 </Container>

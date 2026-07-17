@@ -55,6 +55,10 @@ services:
       SEARXNG_URL: ${SEARXNG_URL:-}
       OLLAMA_URL: ${OLLAMA_URL:-}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-}
+      KNOWLEDGE_LLM_PROVIDER: ${KNOWLEDGE_LLM_PROVIDER:-ollama}
+      KNOWLEDGE_LLM_BASE_URL: ${KNOWLEDGE_LLM_BASE_URL:-}
+      KNOWLEDGE_LLM_MODEL: ${KNOWLEDGE_LLM_MODEL:-}
+      KNOWLEDGE_LLM_API_KEY: ${KNOWLEDGE_LLM_API_KEY:-}
     volumes:
       - radio-data:/data
       - ./web:/web:ro
