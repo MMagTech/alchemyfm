@@ -1827,7 +1827,9 @@ main {
 /* Cached facts browser (admin Knowledge) */
 .knowledge-cache-summary {
   display: flex;
-  align-items: center;
+  /* baseline, not center: the count is a small label sitting next to a much
+     larger heading, and centering leaves it visibly floating off the text. */
+  align-items: baseline;
   gap: 0.6rem;
   cursor: pointer;
   list-style: none;
