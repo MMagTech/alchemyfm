@@ -28,7 +28,7 @@ def _parse_topics(topics: list, heading: str, limit: int) -> list[Snippet]:
                     {
                         "url": url,
                         "title": str(sub.get("Name") or heading or "DuckDuckGo")[:200],
-                        "snippet": text[:500],
+                        "snippet": text,  # merge_snippets clips
                     }
                 )
                 if len(snippets) >= limit:
@@ -44,7 +44,7 @@ def _parse_topics(topics: list, heading: str, limit: int) -> list[Snippet]:
                 {
                     "url": url,
                     "title": str(topic.get("Name") or heading or "DuckDuckGo")[:200],
-                    "snippet": text[:500],
+                    "snippet": text,  # merge_snippets clips
                 }
             )
             if len(snippets) >= limit:
@@ -89,7 +89,7 @@ async def fetch_snippets(track: dict[str, Any], *, limit: int = 5) -> list[Snipp
             {
                 "url": abstract_url,
                 "title": f"{heading} — DuckDuckGo",
-                "snippet": abstract[:500],
+                "snippet": abstract,  # merge_snippets clips
             }
         )
 

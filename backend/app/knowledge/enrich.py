@@ -175,7 +175,7 @@ def _bio_snippets(track: dict, artist_info) -> list[dict]:
         {
             "url": url,
             "title": f"{artist} — artist biography",
-            "snippet": biography[:600],
+            "snippet": biography,  # merge_snippets clips (see snippets.clip)
         }
     ]
 

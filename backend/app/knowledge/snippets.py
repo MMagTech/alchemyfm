@@ -34,6 +34,22 @@ def set_cached(track: dict[str, Any], snippets: list[Snippet], sources: list[str
     _cache[track_cache_key(track)] = (time.monotonic(), [dict(s) for s in snippets], list(sources))
 
 
+SNIPPET_CHARS = 600
+
+
+def clip(text: str, limit: int = SNIPPET_CHARS) -> str:
+    """Shorten text without handing the model a half-written word.
+
+    A bare text[:limit] stops dead with no signal, so the summarizer reads the
+    partial tail as complete -- a producer list cut at "...and Chink Sa" came
+    back as a fact naming "Chink Sa". Backing off to a word boundary and
+    marking the cut with an ellipsis tells the model the tail is unreliable.
+    """
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0].rstrip(" ,;:-") + "…"
+
+
 def merge_snippets(
     target: list[Snippet],
     seen_urls: set[str],
@@ -56,6 +72,8 @@ def merge_snippets(
             {
                 "url": url,
                 "title": title[:200],
-                "snippet": snippet[:600],
+                # Single clip point: sources hand over untrimmed text so this is
+                # the only place a snippet is shortened, and only one way.
+                "snippet": clip(snippet),
             }
         )

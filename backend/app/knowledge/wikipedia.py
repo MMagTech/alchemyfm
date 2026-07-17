@@ -124,7 +124,7 @@ def _article_snippets(article: dict, *, section_budget: int) -> list[Snippet]:
             {
                 "url": _page_url(title),
                 "title": f"{title} — Wikipedia",
-                "snippet": lead[:600],
+                "snippet": lead,  # merge_snippets clips (see snippets.clip)
             }
         )
     picked = 0
@@ -139,7 +139,7 @@ def _article_snippets(article: dict, *, section_budget: int) -> list[Snippet]:
                     {
                         "url": _page_url(title, header),
                         "title": f"{title} — {header} (Wikipedia)",
-                        "snippet": body[:600],
+                        "snippet": body,  # merge_snippets clips (see snippets.clip)
                     }
                 )
                 picked += 1

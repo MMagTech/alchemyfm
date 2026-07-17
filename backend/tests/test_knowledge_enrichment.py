@@ -15,6 +15,7 @@ from app.config import settings as app_settings
 from app.knowledge import wikipedia, musicbrainz, ollama, enrich, cloud, llm
 from app.knowledge import settings as ksettings
 from app.knowledge.cache import validate_facts
+from app.knowledge.snippets import merge_snippets
 
 
 # --- Wikipedia section extraction -----------------------------------------
@@ -316,6 +317,34 @@ def test_cloud_summarize_passes_max_chars_into_system_prompt():
     )
     system = json.loads(route.calls.last.request.content)["messages"][0]["content"]
     assert "under 300 characters" in system
+
+
+def test_clip_marks_the_cut_and_never_leaves_a_half_name():
+    """A bare text[:limit] made the model report "Chink Sa" as a producer."""
+    from app.knowledge.snippets import clip
+
+    short = "Produced by Buckwild and Bink!"
+    assert clip(short, 600) == short  # under the limit: untouched, no ellipsis
+
+    text = "features production from Buckwild, Irv Gotti, Alchemist, Bink! and Chink Santana"
+    out = clip(text, 74)  # lands mid-"Santana"
+    assert out.endswith("…")  # the model can now see the tail is unreliable
+    assert not out.rstrip("…").endswith("Sa")  # no half-word fragment to misread
+    assert "Santana" not in out  # the full name is never implied
+    assert out.startswith("features production from Buckwild")  # the good part survives
+    # A multi-word name can still be half-visible ("...and Chink…"). The word
+    # boundary only stops gibberish; the ellipsis plus the prompt rule ("never
+    # state a detail sitting at the cut") is what stops the model using it.
+
+
+def test_merge_snippets_clips_long_source_text():
+    target, seen = [], set()
+    merge_snippets(
+        target, seen,
+        [{"url": "https://x", "title": "T", "snippet": "word " * 400}],  # 2000 chars
+    )
+    assert len(target[0]["snippet"]) <= 601  # 600 + the ellipsis
+    assert target[0]["snippet"].endswith("…")
 
 
 def test_purge_clears_every_job_including_failed_and_done():

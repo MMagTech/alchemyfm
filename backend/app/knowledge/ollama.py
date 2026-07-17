@@ -25,6 +25,7 @@ Use such details ONLY as supporting context inside a fact that is interesting fo
 
 Rules:
 - Use ONLY information explicitly stated in the snippets. Do not invent, guess, or combine unrelated snippets.
+- A snippet ending in "…" was cut short. Never state a name or detail that sits at the cut -- the text you can see may be only part of it.
 - Each fact must stand on its own and be genuinely interesting. Do not pad to reach the maximum count -- one strong fact beats one strong plus two filler.
 - Each fact MUST be under {max_chars} characters. Write a complete sentence that fits within that budget; never start a thought you cannot finish inside it.
 - Focus on music: songwriting, production, collaborators, samples, charts, awards, cultural impact. Skip gossip, rumors, crime, and personal drama unless clearly about this track in the snippets.
