@@ -29,9 +29,11 @@ async def summarize_facts(
     if not snippets:
         return []
 
+    # No temperature: reasoning-tier models (GPT-5 family) reject any value but
+    # their default and 400 the whole request. The default is fine here -- the
+    # prompt plus json_object already pin the output shape.
     payload = {
         "model": model,
-        "temperature": 0,
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT.format(max_facts=max_facts)},
@@ -46,7 +48,13 @@ async def summarize_facts(
         response = await client.post(
             f"{base_url.rstrip('/')}/chat/completions", json=payload, headers=headers
         )
-        response.raise_for_status()
+        if response.status_code >= 400:
+            # httpx's raise_for_status() reports only the status line; the
+            # provider explains what it actually rejected in the body, and that
+            # is what reaches the admin "Last job error" panel.
+            raise RuntimeError(
+                f"{response.status_code} from {base_url}: {response.text[:400]}"
+            )
         body = response.json()
     choices = body.get("choices") or []
     if not choices:

@@ -257,6 +257,31 @@ def test_cloud_summarize_parses_openai_response():
     assert sent["model"] == "gpt-5-nano"
     assert sent["response_format"] == {"type": "json_object"}
     assert "T" in sent["messages"][1]["content"]  # shared user prompt carries the track
+    # Reasoning-tier models 400 on any non-default temperature -- never send one.
+    assert "temperature" not in sent
+
+
+@respx.mock
+def test_cloud_summarize_surfaces_provider_error_body():
+    """A 400's body says what the provider rejected; raise_for_status() drops it."""
+    respx.post("https://api.example.com/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            400,
+            json={"error": {"message": "Unsupported value: 'temperature' does not support 0"}},
+        )
+    )
+    try:
+        asyncio.run(
+            cloud.summarize_facts(
+                "https://api.example.com/v1", "sk-abc", "gpt-5-mini",
+                {"title": "T"}, [{"title": "t", "url": "https://u", "snippet": "s"}], 3,
+            )
+        )
+    except RuntimeError as exc:
+        assert "400" in str(exc)
+        assert "temperature" in str(exc)  # the provider's reason reaches the admin panel
+    else:
+        raise AssertionError("expected RuntimeError carrying the response body")
 
 
 def test_cloud_summarize_requires_key():
