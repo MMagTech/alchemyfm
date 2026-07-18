@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "4.1.0"
+PLUGIN_VERSION = "4.1.1"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -8280,10 +8280,21 @@ def _home_page():
                 except ChannelDesignerError as exc:
                     flashes.add(str(exc), "error", anchor="step-deploy")
                     scroll_anchor = "step-deploy"
-            elif action in ("preview", "push", "chat_preview"):
+            elif action in ("preview", "push", "chat_preview", "design_station"):
                 try:
                     for_deploy = action == "push"
-                    profile = profile_from_form(request.form, for_deploy=for_deploy)
+                    if action == "design_station":
+                        # Drafting from a description is exactly the case where the
+                        # form is still empty, so an incomplete Step 2 must not block
+                        # it -- fall back to a blank draft profile.
+                        try:
+                            profile = profile_from_form(request.form, for_deploy=False)
+                        except ChannelDesignerError:
+                            profile = _profile_from_values(
+                                {"programming_type": "clap_query", "name": ""}
+                            )
+                    else:
+                        profile = profile_from_form(request.form, for_deploy=for_deploy)
                     slug = profile["station"]["slug"]
                     if for_deploy:
                         profile = _merge_saved_programming_if_needed(profile, slug)
