@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "4.0.1"
+PLUGIN_VERSION = "4.1.0"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1098,6 +1098,161 @@ DAYPART_MOOD_PRESETS = (
     ("steady_relaxed", "Steady Relaxed — easy all day"),
     ("upbeat_days", "Upbeat Days — lively daytime, wind down after dark"),
 )
+
+
+def _llm_settings() -> dict[str, str] | None:
+    """Reuse AudioMuse's own configured LLM. None when it has none.
+
+    Imported lazily so the plugin still loads (and tests still run) on cores
+    that don't expose `config`. We never store LLM credentials ourselves --
+    whatever AudioMuse is pointed at is what we use.
+    """
+    try:
+        from plugin.api import config as core_config
+    except Exception:
+        return None
+    provider = str(getattr(core_config, "AI_MODEL_PROVIDER", "") or "").strip().upper()
+    if not provider or provider == "NONE":
+        return None
+    if provider == "OLLAMA":
+        return {
+            "provider": "OLLAMA",
+            "url": str(getattr(core_config, "OLLAMA_SERVER_URL", "") or ""),
+            "model": str(getattr(core_config, "OLLAMA_MODEL_NAME", "") or ""),
+            "key": "",
+        }
+    return {
+        "provider": provider,
+        "url": str(getattr(core_config, f"{provider}_SERVER_URL", "") or ""),
+        "model": str(getattr(core_config, f"{provider}_MODEL_NAME", "") or ""),
+        "key": str(getattr(core_config, f"{provider}_API_KEY", "") or ""),
+    }
+
+
+def _llm_generate_json(prompt: str, settings: dict[str, str], *, timeout: float = 90.0) -> str:
+    """Ask the configured provider for a JSON object and return the raw text."""
+    url = (settings.get("url") or "").strip()
+    model = (settings.get("model") or "").strip()
+    if not url or not model:
+        raise ChannelDesignerError(
+            "AudioMuse has no LLM server/model configured — set one in AudioMuse settings."
+        )
+    headers = {"Content-Type": "application/json"}
+    # Ollama-style endpoints end in /api/generate regardless of the provider label.
+    if url.rstrip("/").endswith("/api/generate"):
+        payload = {"model": model, "prompt": prompt, "stream": False, "format": "json"}
+    else:
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "response_format": {"type": "json_object"},
+        }
+        if settings.get("key"):
+            headers["Authorization"] = f"Bearer {settings['key']}"
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        raise ChannelDesignerError(f"LLM request failed: {exc}") from exc
+    if isinstance(data, dict):
+        if "response" in data:  # Ollama
+            return str(data.get("response") or "")
+        choices = data.get("choices")
+        if isinstance(choices, list) and choices:
+            message = (choices[0] or {}).get("message") or {}
+            return str(message.get("content") or "")
+    raise ChannelDesignerError("LLM returned an unrecognised response shape.")
+
+
+def _coerce_choice(value: Any, allowed: tuple[tuple[str, str], ...], default: str = "") -> str:
+    """Only accept values the UI actually offers — never trust the model blindly."""
+    candidate = str(value or "").strip().lower()
+    for key, _label in allowed:
+        if candidate == key:
+            return key
+    return default
+
+
+def design_station_from_prompt(prompt: str) -> dict[str, Any]:
+    """Turn a plain-language description into validated designer form values.
+
+    Every field is checked against the same vocabularies the form offers;
+    anything the model invents is dropped rather than written into a station.
+    Returns only the keys it could validate.
+    """
+    prompt = (prompt or "").strip()
+    if len(prompt) < 3:
+        raise ChannelDesignerError("Describe the station in a few words first.")
+    settings = _llm_settings()
+    if not settings:
+        raise ChannelDesignerError(
+            "AudioMuse has no AI provider configured, so Design Full Station is "
+            "unavailable. Set one in AudioMuse settings, or build the station by hand."
+        )
+
+    moods = ", ".join(k for k, _ in JOURNEY_END_MOODS)
+    curves = ", ".join(k for k, _ in DAYPART_PRESETS)
+    mood_arcs = ", ".join(k for k, _ in DAYPART_MOOD_PRESETS)
+    instruction = (
+        "You configure an internet radio station. Reply with ONLY a JSON object, no prose.\n"
+        "Keys and allowed values:\n"
+        '  "name": short station name (max 40 chars)\n'
+        '  "programming_type": one of clap_query, lyrics_query, journey\n'
+        '  "clap_query": short phrase describing how the music SOUNDS (if programming_type=clap_query)\n'
+        '  "lyrics_query": short phrase describing lyrical THEME (if programming_type=lyrics_query)\n'
+        f'  "journey_end_mood": one of {moods} (only if programming_type=journey)\n'
+        '  "ordering_enabled": true or false (smooth harmonic/tempo transitions)\n'
+        '  "daypart_enabled": true or false (vary energy by time of day)\n'
+        f'  "daypart_preset": one of {curves}\n'
+        f'  "daypart_mood_preset": one of {mood_arcs}\n'
+        f"Station description: {prompt}\n"
+    )
+    raw = _llm_generate_json(instruction, settings)
+    text = (raw or "").strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start:
+        raise ChannelDesignerError("The AI did not return usable JSON. Try rephrasing.")
+    try:
+        data = json.loads(text[start : end + 1])
+    except json.JSONDecodeError as exc:
+        raise ChannelDesignerError(f"The AI returned malformed JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ChannelDesignerError("The AI did not return a JSON object.")
+
+    out: dict[str, Any] = {}
+    name = str(data.get("name") or "").strip()
+    if name:
+        out["name"] = name[:60]
+
+    ptype = _coerce_choice(data.get("programming_type"), PROGRAMMING_TYPES)
+    if ptype in ("clap_query", "lyrics_query", "journey"):
+        out["programming_type"] = ptype
+        if ptype == "clap_query":
+            query = str(data.get("clap_query") or "").strip()
+            if len(query) >= 3:
+                out["clap_query"] = query[:200]
+        elif ptype == "lyrics_query":
+            query = str(data.get("lyrics_query") or "").strip()
+            if len(query) >= 3:
+                out["lyrics_query"] = query[:200]
+        else:
+            mood = _coerce_choice(data.get("journey_end_mood"), JOURNEY_END_MOODS, "relaxed")
+            out["journey_end_kind"] = "mood"
+            out["journey_start_kind"] = "song"
+            out["journey_end_mood"] = mood
+
+    out["ordering_enabled"] = bool(data.get("ordering_enabled"))
+    out["daypart_enabled"] = bool(data.get("daypart_enabled"))
+    if out["daypart_enabled"]:
+        out["daypart_preset"] = _coerce_choice(
+            data.get("daypart_preset"), DAYPART_PRESETS, "rise_and_settle"
+        )
+        out["daypart_mood_preset"] = _coerce_choice(
+            data.get("daypart_mood_preset"), DAYPART_MOOD_PRESETS, "off"
+        )
+    return out
 
 
 def _journey_from_form(form) -> dict[str, Any]:
@@ -5363,9 +5518,10 @@ def _chat_designer_fields_html(values: dict[str, Any], *, flash_html: str = "") 
         "<summary>"
         '<span class="afm-helper-badge">Helper</span>'
         '<span><span class="afm-collapsible-title">Chat Designer</span>'
-        '<span class="afm-collapsible-hint">Use <strong>before Step 2</strong> when you are not sure what to program. '
-        "<strong>Generate Playlist Preview</strong> sets Step 2 to a <strong>Sonic Vibe (CLAP)</strong> query from your "
-        "description and shows Preview Results — it does not deploy.</span></span>"
+        '<span class="afm-collapsible-hint">Optional helper — everything here can be set by hand. '
+        "<strong>Generate Playlist Preview</strong> sets Step 2 to a <strong>Sonic Vibe (CLAP)</strong> query and "
+        "shows Preview Results. <strong>Design Full Station</strong> fills in Steps 1, 2 and 5 as a draft you "
+        "review. Neither deploys.</span></span>"
         "</summary>"
         '<div class="afm-collapsible-body">'
         f"{flash_html}"
@@ -5388,6 +5544,10 @@ def _chat_designer_fields_html(values: dict[str, Any], *, flash_html: str = "") 
         + 'data-afm-loading-panel="chat-designer" data-afm-loading-no-scroll="true" '
         + 'data-afm-ajax-preview="true" data-loading-label="Generating…">'
         "Generate Playlist Preview</button>"
+        + "<button type='submit' name='afm_action' value='design_station' formnovalidate "
+        + 'class="afm-btn afm-btn-secondary" data-afm-loading="afm-chat-loading" '
+        + 'data-afm-loading-panel="chat-designer" data-loading-label="Designing…">'
+        "Design Full Station</button>"
         + "</div>"
         + f"<input type='hidden' name='design_notes' value='{html.escape(str(values.get('design_notes', '')))}'>"
         + "</div></details>"
@@ -8149,6 +8309,25 @@ def _home_page():
                             f"Chat preview — {result['track_count']} tracks. Tweak programming/filters, then deploy.",
                             "ok",
                             anchor="preview-results",
+                        )
+                    elif action == "design_station":
+                        prompt = (request.form.get("chat_prompt") or "").strip()
+                        drafted = design_station_from_prompt(prompt)
+                        # Draft only: prefill the form, never deploy. The operator
+                        # reviews every field and can override any of it.
+                        values.update(drafted)
+                        values["chat_designer_open"] = True
+                        values["chat_prompt"] = prompt
+                        scroll_anchor = "designer"
+                        filled = ", ".join(sorted(drafted.keys()))
+                        note = ""
+                        if drafted.get("programming_type") == "journey":
+                            note = " Journeys also need a start track — pick one in Search Seed Track."
+                        flashes.add(
+                            f"Drafted a station from your description ({filled}). "
+                            f"Review the steps below, then Preview and Deploy.{note}",
+                            "ok",
+                            anchor="designer",
                         )
                     elif action == "preview":
                         unfiltered = _merged_programming_tracks_unfiltered(profile, slug)

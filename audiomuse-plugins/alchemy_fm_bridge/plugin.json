@@ -5,20 +5,20 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy \u2014 preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "4.1.0",
+      "min_core_version": "2.5.0",
+      "changelog": "Journeys now support every endpoint find_path allows - start from a seed track or a Song Alchemy anchor, finish on a mood, track or anchor, with a mood_pct dial for how far toward a centroid the path travels. Daypart gains an optional mood arc layered on the energy curve, using the mood tags AudioMuse already returns. The Chat Designer gains a second button, Design Full Station, which turns one sentence into a draft of Steps 1, 2 and 5 using AudioMuse's own configured AI - entirely optional, every value validated against the form's own choices, and it never deploys. Settings page restyled to match the designer.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "eea2f6351680d156b3570ebd676b3cf2"
+    },
+    {
       "version": "4.0.1",
       "min_core_version": "2.5.0",
       "changelog": "Restyle the plugin settings page to match the Channel Designer. It never loaded the plugin stylesheet, so it rendered with raw browser defaults; the Backup & Restore panel now uses the same panels, fields and buttons as the rest of the plugin instead of inline styles. Cap the Your Stations list height once there are more than six stations so a large library no longer pushes the designer off-screen - nothing is hidden, the list scrolls in place, the filter still searches every station, and the heading now shows a station count.",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
       "checksum": "00a6acbf798cb41a463c66760bec5fd2"
-    },
-    {
-      "version": "4.0.0",
-      "min_core_version": "2.5.0",
-      "changelog": "Major release: station-intelligence features plus backup/restore. New Step 2 'Journey' programming type drifts a station from a start track toward an end mood across the day (AudioMuse find_path), looping each night. New Step 5 options: 'Smooth Transitions' orders each refill by harmonic/tempo compatibility (Camelot-style key + BPM), and 'Time-of-Day Energy (Daypart)' biases refills toward calmer or higher-energy tracks by the local hour. Settings gains Backup & Restore: download all channel designs and living pools as a JSON file (credentials excluded) and restore by merge-on-slug. The three playback features are executed by Alchemy FM on refill, so update the Alchemy FM backend to match this plugin.",
-      "imageUrl": "",
-      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": "66ace37e73b527ecd174cdb530793cc0"
     }
   ]
 }
