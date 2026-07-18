@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "4.0.0"
+PLUGIN_VERSION = "4.0.1"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -635,6 +635,8 @@ REFRESH_MODES = (
 LIVE_SOURCE_TYPES = frozenset(
     {"clap_query", "lyrics_query", "mood_centroid", "alchemy_anchor", "similar_seed", "journey"}
 )
+# Above this many stations the list scrolls in place instead of growing the page.
+STATIONS_SCROLL_THRESHOLD = 6
 PREVIEW_LIMIT_DEFAULT = 30
 BOOTSTRAP_TRACK_LIMIT_DEFAULT = 30
 CHAT_PLAYLIST_LIMIT = 60
@@ -4139,12 +4141,49 @@ html:not(.dark-mode) .afm-shell .afm-artist-suggestions {
   outline: none;
 }
 #bootstrap-opener { scroll-margin-top: 1rem; }
+/* Settings page */
+.afm-settings-form { display: block; }
+.afm-settings-actions {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+.afm-settings-restore {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border, rgba(148, 163, 184, 0.35));
+}
+.afm-settings-restore input[type="file"] {
+  flex: 1 1 16rem;
+  min-width: 0;
+  color: var(--muted, inherit);
+}
+
+/* Stations list — cap the height so a large library doesn't bury the designer */
+.afm-stations-scroll {
+  max-height: 22rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 0.5rem;
+}
+.afm-stations-count {
+  font-weight: 600;
+  color: var(--muted, inherit);
+}
+
 @media (max-width: 720px) {
   .afm-field-grid, .afm-field-grid-3 { grid-template-columns: 1fr; }
   .afm-edit-bar { padding: 0.9rem; }
   .afm-edit-actions { width: 100%; }
   .afm-table .afm-badge-row { flex-wrap: wrap; }
   .afm-row-actions { flex-wrap: wrap; }
+  .afm-stations-scroll { max-height: 16rem; }
 }
 </style>
 """
@@ -5799,6 +5838,8 @@ def _stations_section_html(editing_slug: str | None = None, *, flash_html: str =
         )
 
     title = "Other Stations" if editing_slug else "Your Stations"
+    count = len(stations)
+    count_html = f" <span class='afm-stations-count'>({count})</span>" if count else ""
     note = (
         "Switch Stations Without Losing Your Place — Each Opens in the Designer Above."
         if editing_slug
@@ -5810,10 +5851,15 @@ def _stations_section_html(editing_slug: str | None = None, *, flash_html: str =
             f'<a href="{html.escape(url_for("alchemy_fm_bridge.home", new="1") + "#designer")}" '
             'class="afm-btn afm-btn-primary">+ New Channel</a>'
         )
+    # Once the library gets long, cap the list height instead of letting it push
+    # the designer off-screen. Nothing is hidden -- the list scrolls in place and
+    # the filter above still searches every station.
+    if count > STATIONS_SCROLL_THRESHOLD:
+        table_html = f"<div class='afm-stations-scroll'>{table_html}</div>"
     return (
         f'<section class="afm-section" id="stations">'
         '<div class="afm-section-head">'
-        f"<div><h2 class='afm-section-title'>{html.escape(title)}</h2>"
+        f"<div><h2 class='afm-section-title'>{html.escape(title)}{count_html}</h2>"
         f"<p class='afm-section-note'>{html.escape(note)}</p></div>"
         f"{new_channel}"
         "</div>"
@@ -8330,57 +8376,93 @@ def settings():
     alchemyfm_username = get_setting("alchemyfm_username", "admin")
     audiomuse_api_token = get_setting("audiomuse_api_token", "")
     audiomuse_api_url = get_setting("audiomuse_api_url", "")
+    connection_panel = (
+        "<section class='afm-panel afm-step-panel'>"
+        + _panel_heading(
+            "Connection",
+            "Point the Channel Designer at your Alchemy FM broadcast instance.",
+        )
+        + "<form method='post' class='afm-settings-form'>"
+        + "<p>Credentials match <code>ADMIN_USERNAME</code> / <code>ADMIN_PASSWORD</code> in "
+        "Alchemy FM. "
+        + f"<a href='{html.escape(HELP_DOC_URL)}' target='_blank' rel='noopener noreferrer'>Help</a></p>"
+        + "<p class='hint'><strong>Cloudflare / public URL:</strong> If Alchemy FM is behind "
+        "Cloudflare, allow server-to-server access to <code>/api/admin/*</code> from your AudioMuse "
+        "host (WAF skip rule or bypass Bot Fight Mode). Otherwise use a LAN/direct URL that does not "
+        "go through Cloudflare (e.g. <code>http://192.168.1.100:8080</code>).</p>"
+        + "<div class='afm-field'>"
+        + _field_label("Alchemy FM URL", mandatory=True)
+        + f"<input name='alchemyfm_url' class='afm-text-input' required "
+        f"placeholder='https://alchemyfm.example.com' value='{html.escape(alchemyfm_url)}'>"
+        + "</div>"
+        + "<div class='afm-field'>"
+        + _field_label("Admin Username")
+        + f"<input name='alchemyfm_username' class='afm-text-input' value='{html.escape(alchemyfm_username)}'>"
+        + "</div>"
+        + "<div class='afm-field'>"
+        + _field_label("Admin Password")
+        + "<input name='alchemyfm_password' type='password' class='afm-text-input' "
+        "autocomplete='new-password' placeholder='Leave blank to keep current password'>"
+        + "</div>"
+        + "<div class='afm-field'>"
+        + _field_label("AudioMuse API Token (Optional)")
+        + f"<input name='audiomuse_api_token' type='password' class='afm-text-input' "
+        f"autocomplete='new-password' placeholder='Required if preview returns Unauthorized' "
+        f"value='{html.escape(audiomuse_api_token)}'>"
+        + "<p class='hint'>Copy from AudioMuse Settings → API. Needed for Preview/Deploy when API "
+        "auth is on and the worker/cron cannot reuse your browser session.</p>"
+        + "</div>"
+        + "<div class='afm-field'>"
+        + _field_label("AudioMuse API URL (Optional, for Worker/Cron)")
+        + f"<input name='audiomuse_api_url' class='afm-text-input' "
+        f"placeholder='Leave blank for Channel Designer' value='{html.escape(audiomuse_api_url)}'>"
+        + "<p class='hint'><strong>Leave blank</strong> for preview and deploy in the browser. "
+        "Only set this for living-channel cron (<code>on_song_analyzed</code>) — use your AudioMuse "
+        "LAN URL (e.g. <code>http://192.168.1.10:8387</code>), <em>not</em> the Alchemy FM URL.</p>"
+        + "</div>"
+        + "<div class='afm-settings-actions'>"
+        + "<button type='submit' class='afm-btn afm-btn-primary'>Save Settings</button>"
+        + "</div>"
+        + "</form>"
+        + "</section>"
+    )
+    backup_panel = (
+        "<section class='afm-panel afm-step-panel'>"
+        + _panel_heading(
+            "Backup &amp; Restore",
+            "Export your channel designs, or restore them from a file.",
+        )
+        + "<p class='hint'>Downloads every channel design and living pool as a JSON file. "
+        "<strong>Credentials are never included.</strong> Restoring merges by slug — a channel with "
+        "the same slug is overwritten, others are left untouched. Re-deploy restored channels to "
+        "re-link them to Alchemy FM.</p>"
+        + "<div class='afm-settings-actions'>"
+        + f"<a href='{html.escape(url_for('alchemy_fm_bridge.backup_export'))}' "
+        "class='afm-btn afm-btn-secondary'>&#8595; Download Backup</a>"
+        + "</div>"
+        + f"<form method='post' action='{html.escape(url_for('alchemy_fm_bridge.backup_restore'))}' "
+        "enctype='multipart/form-data' class='afm-settings-restore'>"
+        + "<input type='file' name='backup_file' accept='application/json,.json' required>"
+        + "<button type='submit' class='afm-btn afm-btn-secondary'>Restore from Backup</button>"
+        + "</form>"
+        + "</section>"
+    )
+    designer_href = html.escape(url_for("alchemy_fm_bridge.home"))
     body = (
-        "<form method='post' style='display:grid;gap:1rem;max-width:36rem;'>"
-        "<p>Connect to your Alchemy FM broadcast instance. Credentials match "
-        "<code>ADMIN_USERNAME</code> / <code>ADMIN_PASSWORD</code> in Alchemy FM. "
-        f"<a href='{html.escape(HELP_DOC_URL)}' target='_blank' rel='noopener noreferrer'>Help</a></p>"
-        "<p class='hint'><strong>Cloudflare / public URL:</strong> If Alchemy FM is behind Cloudflare, allow "
-        "server-to-server access to <code>/api/admin/*</code> from your AudioMuse host (WAF skip rule or "
-        "bypass Bot Fight Mode). Otherwise use a LAN/direct URL that does not go through Cloudflare "
-        "(e.g. <code>http://192.168.1.100:8080</code>).</p>"
-        "<div><label>Alchemy FM URL</label>"
-        f"<input name='alchemyfm_url' required placeholder='https://alchemyfm.example.com' "
-        f"value='{html.escape(alchemyfm_url)}'></div>"
-        "<div><label>Admin username</label>"
-        f"<input name='alchemyfm_username' value='{html.escape(alchemyfm_username)}'></div>"
-        "<div><label>Admin password</label>"
-        "<input name='alchemyfm_password' type='password' autocomplete='new-password' "
-        "placeholder='Leave blank to keep current password'></div>"
-        "<div><label>AudioMuse API token (optional)</label>"
-        f"<input name='audiomuse_api_token' type='password' autocomplete='new-password' "
-        f"placeholder='Required if preview returns Unauthorized' value='{html.escape(audiomuse_api_token)}'>"
-        "<p class='hint'>Copy from AudioMuse Settings → API. Needed for Preview/Deploy when API auth is on "
-        "and the worker/cron cannot reuse your browser session.</p></div>"
-        "<div><label>AudioMuse API URL (optional, for worker/cron)</label>"
-        f"<input name='audiomuse_api_url' placeholder='Leave blank for Channel Designer' "
-        f"value='{html.escape(audiomuse_api_url)}'>"
-        "<p class='hint'><strong>Leave blank</strong> for preview and deploy in the browser. "
-        "Only set this for living-channel cron (<code>on_song_analyzed</code>) — use your AudioMuse LAN URL "
-        "(e.g. <code>http://192.168.1.10:8387</code>), <em>not</em> the Alchemy FM URL.</p></div>"
-        "<button type='submit'>Save</button>"
-        "</form>"
-    )
-    backup_section = (
-        "<section style='margin-top:2rem;padding-top:1.25rem;"
-        "border-top:1px solid rgba(148,163,184,.35);max-width:36rem;'>"
-        "<h3 style='margin:0 0 .5rem;'>Backup &amp; Restore</h3>"
-        "<p class='hint'>Download all your channel designs and living pools as a JSON file, "
-        "or restore them from a backup. <strong>Credentials are never included.</strong> "
-        "Restoring merges by slug — a channel with the same slug is overwritten, others are "
-        "left untouched. Re-deploy restored channels to re-link them to Alchemy FM.</p>"
-        f"<p><a href='{html.escape(url_for('alchemy_fm_bridge.backup_export'))}' "
-        "style='display:inline-block;padding:.5rem .9rem;border:1px solid rgba(148,163,184,.5);"
-        "border-radius:.4rem;text-decoration:none;'>&#8595; Download Backup</a></p>"
-        f"<form method='post' action='{html.escape(url_for('alchemy_fm_bridge.backup_restore'))}' "
-        "enctype='multipart/form-data' "
-        "style='display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;'>"
-        "<input type='file' name='backup_file' accept='application/json,.json' required>"
-        "<button type='submit'>Restore from Backup</button>"
-        "</form>"
+        f"{_page_styles()}"
+        '<div class="afm-shell">'
+        '<section class="afm-section">'
+        '<div class="afm-section-head">'
+        "<div><h2 class='afm-section-title'>Alchemy FM Bridge Settings</h2>"
+        "<p class='afm-section-note'>Connection and maintenance for the Channel Designer.</p></div>"
+        f'<a href="{designer_href}" class="afm-btn afm-btn-primary">Open Channel Designer</a>'
+        "</div>"
+        f"{connection_panel}"
+        f"{backup_panel}"
         "</section>"
+        "</div>"
     )
-    return render_page(body + backup_section, title="Alchemy FM Bridge Settings")
+    return render_page(body, title="Alchemy FM Bridge Settings")
 
 
 def _patch_cron_scheduled_tasks_label() -> None:
