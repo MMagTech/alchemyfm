@@ -5,7 +5,7 @@
       "name": "Alchemy FM Channel Designer",
       "author": "MMagTech",
       "description": "Design live radio channels in AudioMuse (CLAP, lyrics, moods) and deploy to Alchemy FM.",
-      "pluginUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge/plugin.json"
+      "pluginUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/knowledge/audiomuse-plugins/alchemy_fm_bridge/plugin.json"
     }
   ]
 }

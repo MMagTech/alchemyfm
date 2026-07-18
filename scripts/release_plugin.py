@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -14,12 +16,47 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_DIR = REPO_ROOT / "audiomuse-plugins" / "alchemy_fm_bridge"
 INIT_PY = PLUGIN_DIR / "__init__.py"
 PLUGIN_JSON = PLUGIN_DIR / "plugin.json"
+MANIFEST_JSON = REPO_ROOT / "audiomuse-plugins" / "manifest.json"
 ZIP_PATH = REPO_ROOT / "audiomuse-plugins" / "alchemy_fm_bridge.zip"
-SOURCE_URL = (
-    "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/"
-    "audiomuse-plugins/alchemy_fm_bridge.zip"
-)
+RAW_BASE = "https://raw.githubusercontent.com/MMagTech/alchemyfm"
+DEFAULT_RELEASE_BRANCH = "master"
 MAX_CATALOG_VERSIONS = 2
+
+
+def release_branch() -> str:
+    """Branch whose raw URLs the catalog should point at.
+
+    AudioMuse downloads the plugin over raw.githubusercontent.com, so the URLs
+    have to name a branch. Deriving it from the current branch lets `master`
+    serve the stable channel and `knowledge` serve a beta channel, without
+    hand-editing URLs on every merge. Override with PLUGIN_RELEASE_BRANCH
+    (needed in CI, which checks out a detached HEAD).
+    """
+    override = os.environ.get("PLUGIN_RELEASE_BRANCH", "").strip()
+    if override:
+        return override
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        branch = result.stdout.strip()
+        if branch and branch != "HEAD":
+            return branch
+    except Exception:
+        pass
+    return DEFAULT_RELEASE_BRANCH
+
+
+def source_url(branch: str) -> str:
+    return f"{RAW_BASE}/{branch}/audiomuse-plugins/alchemy_fm_bridge.zip"
+
+
+def plugin_json_url(branch: str) -> str:
+    return f"{RAW_BASE}/{branch}/audiomuse-plugins/alchemy_fm_bridge/plugin.json"
 
 
 def md5_file(path: Path) -> str:
@@ -121,12 +158,45 @@ def catalog_is_current() -> bool:
     return latest.get("version") == version and latest.get("checksum") == checksum
 
 
+def sync_catalog_urls(branch: str) -> bool:
+    """Point the manifest and the newest catalog entry at this branch's raw URLs.
+
+    Older entries are left alone: they describe past releases, and on the stable
+    channel they still resolve to the branch that published them.
+    """
+    changed = False
+
+    if MANIFEST_JSON.is_file():
+        manifest = json.loads(MANIFEST_JSON.read_text(encoding="utf-8"))
+        wanted = plugin_json_url(branch)
+        for plugin in manifest.get("plugins") or []:
+            if isinstance(plugin, dict) and plugin.get("id") == "alchemy_fm_bridge":
+                if plugin.get("pluginUrl") != wanted:
+                    plugin["pluginUrl"] = wanted
+                    changed = True
+        if changed:
+            MANIFEST_JSON.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+    data = load_plugin_json()
+    latest = latest_catalog_entry(data)
+    if latest and latest.get("sourceUrl") != source_url(branch):
+        latest["sourceUrl"] = source_url(branch)
+        save_plugin_json(data)
+        changed = True
+
+    return changed
+
+
 def main() -> int:
     changelog = (
         sys.argv[1].strip()
         if len(sys.argv) > 1
         else "Automated plugin release from CI after tests passed."
     )
+
+    branch = release_branch()
+    if sync_catalog_urls(branch):
+        print(f"Pointed plugin catalog URLs at branch '{branch}'.")
 
     if catalog_is_current():
         print(
@@ -180,7 +250,7 @@ def main() -> int:
         "min_core_version": (latest or {}).get("min_core_version", "2.5.0"),
         "changelog": changelog,
         "imageUrl": "",
-        "sourceUrl": SOURCE_URL,
+        "sourceUrl": source_url(branch),
         "checksum": checksum,
     }
     versions = data.setdefault("versions", [])
