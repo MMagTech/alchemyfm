@@ -4,7 +4,9 @@ on:
   workflow_run:
     workflows: ["Test"]
     types: [completed]
-    branches: [master]
+    # master publishes :latest (stable); every other branch here publishes
+    # :test (beta). Add another branch to this list to have it publish :test too.
+    branches: [master, knowledge]
   push:
     tags: ["v*"]
   workflow_dispatch:
@@ -70,12 +72,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # On workflow_run, github.ref is the DEFAULT branch, not the branch that
+      # triggered the run -- so {{is_default_branch}} would be true for beta
+      # builds and tag them :latest. Resolve the real source branch instead.
+      - name: Resolve source branch
+        id: src
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "branch=${{ github.event.workflow_run.head_branch }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "branch=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: docker/metadata-action@v5
         id: meta
         with:
           images: ghcr.io/mmagtech/alchemyfm-${{ matrix.image }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ steps.src.outputs.branch == 'master' }}
+            type=raw,value=test,enable=${{ github.event_name != 'push' && steps.src.outputs.branch != 'master' }}
             type=sha,prefix=
             type=semver,pattern={{version}}
 
