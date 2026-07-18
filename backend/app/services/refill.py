@@ -56,8 +56,26 @@ def filter_track_refs(
 
 
 async def fetch_programming_batch(station: Station, count: int) -> list[TrackRef]:
-    """Best-effort batch from the station's AudioMuse programming source."""
-    return await audiomuse_client.fetch_tracks(
+    """Best-effort batch from the station's AudioMuse programming source.
+
+    Only safe to await while `station` is attached to a live session. When the
+    caller releases the DB across the await, use programming_fetch_args() to
+    snapshot the attributes first.
+    """
+    return await audiomuse_client.fetch_tracks(*programming_fetch_args(station, count))
+
+
+def programming_fetch_args(station: Station, count: int) -> tuple[str, str, int, str | None]:
+    """Snapshot the ORM attributes a programming fetch needs.
+
+    An `async def` body runs at await time, not at call time. Callers that hand
+    a coroutine to fetch_without_holding_db therefore execute it *after* the
+    session was committed and closed -- and commit expires attributes
+    (expire_on_commit defaults to True), so a lazy read there raises
+    DetachedInstanceError and the whole programming tier is lost. Reading the
+    values up front, while the session is still live, avoids that entirely.
+    """
+    return (
         station.source_type,
         station.source_ref,
         count,
@@ -222,7 +240,13 @@ async def collect_refill_candidates(
 
     # Tier 0 — new recommendation batch (best effort; failure is OK)
     try:
-        batch = await fetch_without_holding_db(fetch_programming_batch(station, max(target * 3, 60)))
+        # Snapshot the station's attributes while the session is still live:
+        # fetch_without_holding_db commits and closes before awaiting, and
+        # commit expires attributes, so reading them inside the coroutine would
+        # raise DetachedInstanceError and lose this tier on every refill.
+        batch = await fetch_without_holding_db(
+            audiomuse_client.fetch_tracks(*programming_fetch_args(station, max(target * 3, 60)))
+        )
         if batch:
             import_batch_to_pool(db, station, batch)
             station.source_last_ok_at = datetime.utcnow()
