@@ -13,6 +13,7 @@ from app.services.navidrome import navidrome_client
 from app.services.refill import (
     collect_refill_candidates,
     daypart_level_now,
+    daypart_mood_now,
     establish_station_identity,
     fetch_bootstrap_batch,
     filter_track_refs,
@@ -178,9 +179,11 @@ async def extend_queue(
 
         harmonic = harmonic_ordering_enabled(station)
         daypart_level = daypart_level_now(station)
+        daypart_mood = daypart_mood_now(station)
         # Over-collect when daypart is active so there's a surplus to select
-        # the hour's target energy from; otherwise gather exactly the target.
-        collect_target = target * DAYPART_OVERFETCH if daypart_level is not None else target
+        # the hour's target energy/mood from; otherwise gather exactly the target.
+        daypart_active = daypart_level is not None or bool(daypart_mood)
+        collect_target = target * DAYPART_OVERFETCH if daypart_active else target
 
         filtered, _err, db, station = await collect_refill_candidates(
             db,
@@ -200,7 +203,7 @@ async def extend_queue(
         # Optional daypart energy selection + smooth (harmonic/tempo) sequencing.
         # One AudioMuse score call feeds both; releases the DB across the network
         # call, like the enrich step below.
-        if harmonic or daypart_level is not None:
+        if harmonic or daypart_active:
             seed_id = last_played_item_id(db, station.id) if harmonic else None
             db.close()
             try:
@@ -210,6 +213,7 @@ async def extend_queue(
                     target,
                     harmonic=harmonic,
                     daypart_level=daypart_level,
+                    daypart_mood=daypart_mood,
                 )
             finally:
                 db = SessionLocal()

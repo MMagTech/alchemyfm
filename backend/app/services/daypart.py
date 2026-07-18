@@ -46,6 +46,75 @@ def target_energy(preset: str, hour: int) -> float:
     return curve[hour % 24]
 
 
+# Mood arcs, keyed to the tags AudioMuse ships in `other_features`
+# (danceable, aggressive, happy, party, relaxed, sad). Hour-of-day -> tag.
+MOOD_PRESETS: dict[str, tuple[str, ...]] = {
+    # Quiet nights, bright days, party evenings.
+    "calm_to_party": (
+        "relaxed", "relaxed", "relaxed", "relaxed", "relaxed", "relaxed",
+        "happy", "happy", "happy", "happy", "happy", "happy",
+        "happy", "happy", "danceable", "danceable", "danceable", "danceable",
+        "party", "party", "party", "party", "relaxed", "relaxed",
+    ),
+    # Easy all day — background listening.
+    "steady_relaxed": tuple(["relaxed"] * 24),
+    # Upbeat daytime, wind down after dark.
+    "upbeat_days": (
+        "relaxed", "relaxed", "relaxed", "relaxed", "relaxed", "relaxed",
+        "happy", "happy", "danceable", "danceable", "danceable", "danceable",
+        "danceable", "danceable", "danceable", "danceable", "happy", "happy",
+        "happy", "happy", "relaxed", "relaxed", "relaxed", "relaxed",
+    ),
+}
+
+# How much the mood tag counts vs energy when both are active.
+MOOD_WEIGHT = 0.4
+ENERGY_WEIGHT = 0.6
+
+
+def target_mood(preset: str, hour: int) -> str | None:
+    """Mood tag to favour at this hour, or None when the preset is unknown/off."""
+    curve = MOOD_PRESETS.get(preset)
+    if not curve:
+        return None
+    return curve[hour % 24]
+
+
+def parse_tag_scores(value) -> dict[str, float]:
+    """Parse AudioMuse's "tag:score,tag:score" strings into a dict."""
+    if not value:
+        return {}
+    if isinstance(value, dict):
+        out = {}
+        for k, v in value.items():
+            try:
+                out[str(k).strip().lower()] = float(v)
+            except (TypeError, ValueError):
+                continue
+        return out
+    scores: dict[str, float] = {}
+    for part in str(value).split(","):
+        tag, _, raw = part.partition(":")
+        tag = tag.strip().lower()
+        if not tag:
+            continue
+        try:
+            scores[tag] = float(raw)
+        except (TypeError, ValueError):
+            continue
+    return scores
+
+
+def _mood_score(score: dict | None, tag: str) -> float | None:
+    if not score or not tag:
+        return None
+    tags = parse_tag_scores(score.get("other_features"))
+    if tag in tags:
+        return tags[tag]
+    tags = parse_tag_scores(score.get("mood_vector"))
+    return tags.get(tag)
+
+
 def local_hour(tz_name: str) -> int:
     """Current hour (0-23) in the given IANA timezone, falling back to UTC."""
     from datetime import datetime, timezone
@@ -108,4 +177,61 @@ def select_by_energy(
         key=lambda i: abs(percentile(energies[i]) - target_level),
     )
     chosen = sorted(ranked[:count])  # keep original relative order among picks
+    return [items[i] for i in chosen]
+
+
+def select_by_daypart(
+    refs: Sequence[T],
+    scores_by_id: dict[str, dict],
+    count: int,
+    *,
+    energy_level: float | None = None,
+    mood_tag: str | None = None,
+    key_of=lambda r: r.item_id,
+) -> list[T]:
+    """Pick `count` tracks matching the hour's energy target and/or mood tag.
+
+    Energy is scored by percentile distance from the target (absolute values are
+    useless — AudioMuse compresses energy into a narrow band). Mood is scored by
+    the track's own value for the tag, also percentile-ranked so the two are
+    comparable. With only one dimension active this reduces to that dimension;
+    with neither, the batch is returned untouched.
+    """
+    items = list(refs)
+    if count <= 0:
+        return []
+    if len(items) <= count:
+        return items
+    if energy_level is None and not mood_tag:
+        return items[:count]
+    if mood_tag is None:
+        return select_by_energy(refs, scores_by_id, energy_level or 0.5, count, key_of=key_of)
+
+    energies = [_energy(scores_by_id.get(key_of(r))) for r in items]
+    moods = [_mood_score(scores_by_id.get(key_of(r)), mood_tag) for r in items]
+
+    known_e = sorted(e for e in energies if e is not None)
+    known_m = sorted(m for m in moods if m is not None)
+    if len(known_m) < 2 and len(known_e) < 2:
+        return items[:count]
+
+    def pct(value, pool):
+        if value is None or len(pool) < 2:
+            return 0.5
+        return bisect.bisect_left(pool, value) / (len(pool) - 1)
+
+    def cost(i: int) -> float:
+        # Energy: distance from target. Mood: distance from "as much as possible".
+        parts: list[tuple[float, float]] = []
+        if energy_level is not None and len(known_e) >= 2:
+            parts.append((ENERGY_WEIGHT, abs(pct(energies[i], known_e) - energy_level)))
+        if len(known_m) >= 2:
+            parts.append((MOOD_WEIGHT, 1.0 - pct(moods[i], known_m)))
+        if not parts:
+            return 0.5
+        total = sum(w for w, _ in parts)
+        return sum(w * d for w, d in parts) / total
+
+    ranked = sorted(range(len(items)), key=cost)
+    chosen = sorted(ranked[:count])
     return [items[i] for i in chosen]

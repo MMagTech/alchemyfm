@@ -126,6 +126,9 @@ class AudioMuseClient:
                     "key": row.get("key"),
                     "scale": row.get("scale"),
                     "energy": row.get("energy"),
+                    # "danceable:0.56,happy:0.63,..." — used for daypart mood bias
+                    "other_features": row.get("other_features"),
+                    "mood_vector": row.get("mood_vector"),
                 }
         return scores
 

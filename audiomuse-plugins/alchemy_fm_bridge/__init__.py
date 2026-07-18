@@ -1052,11 +1052,21 @@ DAYPART_PRESETS = (
 )
 
 
+# Mood arcs — keys must match backend app/services/daypart.py MOOD_PRESETS.
+DAYPART_MOOD_PRESETS = (
+    ("off", "Off — energy only"),
+    ("calm_to_party", "Calm → Party — quiet nights, bright days, party evenings"),
+    ("steady_relaxed", "Steady Relaxed — easy all day"),
+    ("upbeat_days", "Upbeat Days — lively daytime, wind down after dark"),
+)
+
+
 def _daypart_from_form(form) -> dict[str, Any]:
-    """Time-of-day energy config. Executed by the Alchemy FM backend on every refill."""
+    """Time-of-day energy/mood config. Executed by the backend on every refill."""
     return {
         "enabled": form.get("daypart_enabled") == "on",
         "preset": (form.get("daypart_preset") or "rise_and_settle").strip(),
+        "mood_preset": (form.get("daypart_mood_preset") or "off").strip(),
         "timezone": (form.get("daypart_timezone") or "").strip(),
     }
 
@@ -5503,6 +5513,7 @@ def _playback_rules_fields_html(values: dict[str, Any]) -> str:
     ordering_enabled = values.get("ordering_enabled", False)
     daypart_enabled = values.get("daypart_enabled", False)
     daypart_preset = str(values.get("daypart_preset", "rise_and_settle"))
+    daypart_mood_preset = str(values.get("daypart_mood_preset", "off"))
     daypart_timezone = str(values.get("daypart_timezone", ""))
     return (
         "<section class='afm-panel afm-step-panel'>"
@@ -5539,8 +5550,14 @@ def _playback_rules_fields_html(values: dict[str, Any]) -> str:
         "local hour, using AudioMuse energy analysis. Set it once — it runs itself.</p>"
         + "</div>"
         + "<div class='afm-field'>"
-        + _field_label("Daypart Curve")
+        + _field_label("Daypart Curve (Energy)")
         + f"<select name='daypart_preset' class='afm-select'>{_select_options(DAYPART_PRESETS, daypart_preset)}</select>"
+        + "</div>"
+        + "<div class='afm-field'>"
+        + _field_label("Daypart Mood Arc (Optional)")
+        + f"<select name='daypart_mood_preset' class='afm-select'>{_select_options(DAYPART_MOOD_PRESETS, daypart_mood_preset)}</select>"
+        + "<p class='hint'>Layers a mood on top of the energy curve, using AudioMuse mood tags "
+        "(relaxed, happy, danceable, party). Leave <strong>Off</strong> to bias by energy alone.</p>"
         + "</div>"
         + "<div class='afm-field'>"
         + _field_label("Station Timezone")
@@ -5927,6 +5944,7 @@ def _form_values_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
     daypart = profile.get("daypart") or {}
     values["daypart_enabled"] = bool(daypart.get("enabled"))
     values["daypart_preset"] = daypart.get("preset") or "rise_and_settle"
+    values["daypart_mood_preset"] = daypart.get("mood_preset") or "off"
     values["daypart_timezone"] = daypart.get("timezone") or ""
     if ptype == "clap_query":
         values["clap_query"] = programming.get("query") or ""

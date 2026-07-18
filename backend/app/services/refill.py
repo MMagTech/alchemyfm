@@ -15,7 +15,12 @@ from app.database import (
 )
 from app.schemas import TrackRef
 from app.services.audiomuse import audiomuse_client
-from app.services.daypart import local_hour, select_by_energy, target_energy
+from app.services.daypart import (
+    local_hour,
+    select_by_daypart,
+    target_energy,
+    target_mood,
+)
 from app.services.ordering import harmonic_order
 
 logger = logging.getLogger(__name__)
@@ -371,6 +376,19 @@ def daypart_level_now(station: Station) -> float | None:
     return target_energy(str(daypart.get("preset") or ""), hour)
 
 
+def daypart_mood_now(station: Station) -> str | None:
+    """Mood tag to favour for this station's current local hour, or None."""
+    profile = _station_profile(station)
+    daypart = profile.get("daypart")
+    if not isinstance(daypart, dict) or not daypart.get("enabled"):
+        return None
+    preset = str(daypart.get("mood_preset") or "").strip()
+    if not preset or preset == "off":
+        return None
+    hour = local_hour(str(daypart.get("timezone") or ""))
+    return target_mood(preset, hour)
+
+
 async def shape_refill_batch(
     refs: list[TrackRef],
     seed_id: str | None,
@@ -378,6 +396,7 @@ async def shape_refill_batch(
     *,
     harmonic: bool,
     daypart_level: float | None,
+    daypart_mood: str | None = None,
 ) -> list[TrackRef]:
     """Trim/sequence a refill batch by daypart energy and/or harmonic mixing.
 
@@ -388,7 +407,7 @@ async def shape_refill_batch(
     so a refill is never blocked. Caller must not hold a DB connection across
     this await.
     """
-    if not refs or (not harmonic and daypart_level is None):
+    if not refs or (not harmonic and daypart_level is None and not daypart_mood):
         return refs
     ids = [r.item_id for r in refs]
     if seed_id:
@@ -400,8 +419,14 @@ async def shape_refill_batch(
         return refs[:target] if len(refs) > target else refs
 
     result = refs
-    if daypart_level is not None:
-        result = select_by_energy(result, scores, daypart_level, target)
+    if daypart_level is not None or daypart_mood:
+        result = select_by_daypart(
+            result,
+            scores,
+            target,
+            energy_level=daypart_level,
+            mood_tag=daypart_mood,
+        )
     elif len(result) > target:
         result = result[:target]
 
