@@ -9,7 +9,7 @@
       "min_core_version": "2.5.0",
       "changelog": "Major release: station-intelligence features plus backup/restore. New Step 2 'Journey' programming type drifts a station from a start track toward an end mood across the day (AudioMuse find_path), looping each night. New Step 5 options: 'Smooth Transitions' orders each refill by harmonic/tempo compatibility (Camelot-style key + BPM), and 'Time-of-Day Energy (Daypart)' biases refills toward calmer or higher-energy tracks by the local hour. Settings gains Backup & Restore: download all channel designs and living pools as a JSON file (credentials excluded) and restore by merge-on-slug. The three playback features are executed by Alchemy FM on refill, so update the Alchemy FM backend to match this plugin.",
       "imageUrl": "",
-      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/knowledge/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
       "checksum": "66ace37e73b527ecd174cdb530793cc0"
     },
     {
