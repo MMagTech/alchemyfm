@@ -15,6 +15,8 @@ from app.database import (
 )
 from app.schemas import TrackRef
 from app.services.audiomuse import audiomuse_client
+from app.services.daypart import local_hour, select_by_energy, target_energy
+from app.services.ordering import harmonic_order
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +29,7 @@ LIVE_SOURCE_TYPES = frozenset(
         SourceType.mood_centroid.value,
         SourceType.alchemy_anchor.value,
         SourceType.similar_seed.value,
+        SourceType.journey.value,
     }
 )
 
@@ -296,6 +299,63 @@ async def collect_refill_candidates(
                 logger.warning("Station %s: similar-last tier failed: %s", station.slug, exc)
 
     return collected, source_error, db, station
+
+
+def harmonic_ordering_enabled(station: Station) -> bool:
+    """Whether this station opted into smooth (harmonic/tempo) refill ordering."""
+    profile = _station_profile(station)
+    ordering = profile.get("ordering")
+    return bool(isinstance(ordering, dict) and ordering.get("harmonic"))
+
+
+def daypart_level_now(station: Station) -> float | None:
+    """Target energy level [0,1] for this station's current local hour, or None."""
+    profile = _station_profile(station)
+    daypart = profile.get("daypart")
+    if not isinstance(daypart, dict) or not daypart.get("enabled"):
+        return None
+    hour = local_hour(str(daypart.get("timezone") or ""))
+    return target_energy(str(daypart.get("preset") or ""), hour)
+
+
+async def shape_refill_batch(
+    refs: list[TrackRef],
+    seed_id: str | None,
+    target: int,
+    *,
+    harmonic: bool,
+    daypart_level: float | None,
+) -> list[TrackRef]:
+    """Trim/sequence a refill batch by daypart energy and/or harmonic mixing.
+
+    A single AudioMuse score call (tempo/key/scale/energy) feeds both concerns:
+    daypart selects the tracks closest to the hour's target energy, then harmonic
+    ordering chains them into a smooth key/tempo sequence. Best-effort — any
+    failure or missing analysis falls back to the batch head trimmed to target,
+    so a refill is never blocked. Caller must not hold a DB connection across
+    this await.
+    """
+    if not refs or (not harmonic and daypart_level is None):
+        return refs
+    ids = [r.item_id for r in refs]
+    if seed_id:
+        ids = ids + [seed_id]
+    try:
+        scores = await audiomuse_client.fetch_scores(ids)
+    except Exception as exc:
+        logger.warning("Refill shaping: score fetch failed, keeping source order: %s", exc)
+        return refs[:target] if len(refs) > target else refs
+
+    result = refs
+    if daypart_level is not None:
+        result = select_by_energy(result, scores, daypart_level, target)
+    elif len(result) > target:
+        result = result[:target]
+
+    if harmonic:
+        seed_score = scores.get(seed_id) if seed_id else None
+        result = harmonic_order(result, scores, seed_score=seed_score)
+    return result
 
 
 async def fetch_bootstrap_batch(station: Station) -> list[TrackRef]:

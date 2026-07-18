@@ -12,11 +12,19 @@ from app.services.icecast import fetch_mount_now_playing
 from app.services.navidrome import navidrome_client
 from app.services.refill import (
     collect_refill_candidates,
+    daypart_level_now,
     establish_station_identity,
     fetch_bootstrap_batch,
     filter_track_refs,
+    harmonic_ordering_enabled,
     import_batch_to_pool,
+    last_played_item_id,
+    shape_refill_batch,
 )
+
+# When daypart is active, gather this multiple of the target so there is room
+# to select the tracks closest to the hour's target energy.
+DAYPART_OVERFETCH = 2
 from app.schemas import KnowledgeBlock, NowPlaying, TrackRef, TrackInfo
 
 logger = logging.getLogger(__name__)
@@ -160,10 +168,16 @@ async def extend_queue(
             .scalar()
         ) or 0
 
+        harmonic = harmonic_ordering_enabled(station)
+        daypart_level = daypart_level_now(station)
+        # Over-collect when daypart is active so there's a surplus to select
+        # the hour's target energy from; otherwise gather exactly the target.
+        collect_target = target * DAYPART_OVERFETCH if daypart_level is not None else target
+
         filtered, _err, db, station = await collect_refill_candidates(
             db,
             station,
-            target,
+            collect_target,
             exclude,
             blocked_artists,
             queued_ids,
@@ -174,6 +188,24 @@ async def extend_queue(
         if not filtered:
             logger.warning("No new tracks to add for station %s", station.slug)
             return 0, db, station
+
+        # Optional daypart energy selection + smooth (harmonic/tempo) sequencing.
+        # One AudioMuse score call feeds both; releases the DB across the network
+        # call, like the enrich step below.
+        if harmonic or daypart_level is not None:
+            seed_id = last_played_item_id(db, station.id) if harmonic else None
+            db.close()
+            try:
+                filtered = await shape_refill_batch(
+                    filtered,
+                    seed_id,
+                    target,
+                    harmonic=harmonic,
+                    daypart_level=daypart_level,
+                )
+            finally:
+                db = SessionLocal()
+                station = db.merge(station)
 
         db.close()
         try:

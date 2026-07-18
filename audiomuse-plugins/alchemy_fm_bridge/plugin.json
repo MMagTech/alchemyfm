@@ -5,20 +5,20 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy \u2014 preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "4.0.0",
+      "min_core_version": "2.5.0",
+      "changelog": "Major release: station-intelligence features plus backup/restore. New Step 2 'Journey' programming type drifts a station from a start track toward an end mood across the day (AudioMuse find_path), looping each night. New Step 5 options: 'Smooth Transitions' orders each refill by harmonic/tempo compatibility (Camelot-style key + BPM), and 'Time-of-Day Energy (Daypart)' biases refills toward calmer or higher-energy tracks by the local hour. Settings gains Backup & Restore: download all channel designs and living pools as a JSON file (credentials excluded) and restore by merge-on-slug. The three playback features are executed by Alchemy FM on refill, so update the Alchemy FM backend to match this plugin.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "66ace37e73b527ecd174cdb530793cc0"
+    },
+    {
       "version": "3.0.13",
       "min_core_version": "2.5.0",
       "changelog": "Add a Station Artwork picker to Step 1 so you can attach art before a station ever exists, not just afterward from the edit toolbar. Alchemy FM's artwork endpoint requires a station id, which doesn't exist until the first successful deploy, so the staged file uploads automatically the moment Deploy creates or updates the station; a failed upload is a warning, not a blocker on the rest of the deploy. Main designer form now uses multipart/form-data.",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
       "checksum": "64291ade39fd39ae9354cbf8ae8b32ce"
-    },
-    {
-      "version": "3.0.12",
-      "min_core_version": "2.5.0",
-      "changelog": "Clean up the 'Editing Station' toolbar layout: split the single crowded row of eleven controls and a raw file input into three groups (identity + navigation/save at top, a labeled 'Station Operations' row, a labeled 'Station Artwork' row). Restyled the artwork file picker as a proper button with a live-updating chosen-filename label instead of the unstyled native file input that was truncating its own text.",
-      "imageUrl": "",
-      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": "9eed7b2a8e1a56129a36a83575e8e402"
     }
   ]
 }

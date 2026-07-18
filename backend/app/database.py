@@ -30,6 +30,7 @@ class SourceType(str, enum.Enum):
     clap_query = "clap_query"
     lyrics_query = "lyrics_query"
     mood_centroid = "mood_centroid"
+    journey = "journey"
 
 
 class ContinuationMode(str, enum.Enum):

@@ -93,6 +93,42 @@ class AudioMuseClient:
         """AudioMuse sonic neighbors for a track — used to keep stations going."""
         return await self._from_similar_seed(item_id, count)
 
+    async def fetch_scores(self, item_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """Batch tempo/key/scale/energy for track ids via AudioMuse /api/sync.
+
+        One call for up to 500 ids. Returns {item_id: {tempo, key, scale, energy}}.
+        Embeddings are skipped to keep the payload small. Used by harmonic
+        ordering and (later) daypart biasing.
+        """
+        ids = [str(i) for i in item_ids if i]
+        if not ids:
+            return {}
+        data = await self._get(
+            "/api/sync",
+            params={
+                "ids": ",".join(ids),
+                "include_embeddings": "false",
+                "limit": len(ids),
+            },
+        )
+        tracks = data.get("tracks") if isinstance(data, dict) else None
+        scores: dict[str, dict[str, Any]] = {}
+        if isinstance(tracks, list):
+            for row in tracks:
+                if not isinstance(row, dict):
+                    continue
+                # /api/sync returns the track id under `id` (not `item_id`).
+                tid = row.get("id") or row.get("item_id")
+                if not tid:
+                    continue
+                scores[str(tid)] = {
+                    "tempo": row.get("tempo"),
+                    "key": row.get("key"),
+                    "scale": row.get("scale"),
+                    "energy": row.get("energy"),
+                }
+        return scores
+
     async def fetch_tracks(
         self,
         source_type: str,
@@ -122,7 +158,27 @@ class AudioMuseClient:
             if not mood or centroid_index is None:
                 raise ValueError("mood_centroid requires mood and centroid_index")
             return await self._from_mood_centroid(mood, int(centroid_index), count)
+        if source_type == "journey":
+            return await self._from_journey(programming, source_ref, count)
         raise ValueError(f"Unknown source type: {source_type}")
+
+    async def _from_journey(
+        self, programming: dict[str, Any], source_ref: str, count: int
+    ) -> list[TrackRef]:
+        """Clock-anchored journey: seed from the waypoint current for the hour."""
+        from app.services.journey import current_seed
+
+        journey = programming.get("journey") if isinstance(programming, dict) else None
+        journey = journey if isinstance(journey, dict) else {}
+        waypoints = [str(w) for w in (journey.get("waypoints") or []) if w]
+        seed = current_seed(waypoints, str(journey.get("timezone") or ""))
+        if not seed:
+            # No baked path (e.g. find_path failed at deploy) — fall back to the
+            # start track so the station still plays something on-vibe.
+            seed = str(journey.get("start_id") or source_ref or "").strip()
+        if not seed:
+            raise ValueError("journey has no waypoints or start track")
+        return await self._from_similar_seed(seed, count)
 
     async def _from_similar_seed(self, item_id: str, count: int) -> list[TrackRef]:
         data = await self._get(
