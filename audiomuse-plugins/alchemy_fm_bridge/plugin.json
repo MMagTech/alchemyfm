@@ -5,20 +5,20 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy \u2014 preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "4.1.2",
+      "min_core_version": "2.5.0",
+      "changelog": "Rename the Chat Designer buttons and refresh copy that went stale as features were added. 'Generate Playlist Preview' is now 'Suggest Programming' (it never produced a playlist - it sets a Step 2 query, and 'playlist' already means a Navidrome playlist elsewhere in this plugin) and 'Design Full Station' is now 'Draft Whole Station' (it fills Steps 1, 2 and 5, not everything). The panel hint described only the preview path even though it sat under both buttons. Step 2's explainer did not list the Journey type; Step 5's did not mention Smooth Transitions or Time-of-Day Energy at all. Panel subtitles and the build-a-station overview updated to match.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "86e5e14cfef4eb1b1f0681535a4c398b"
+    },
+    {
       "version": "4.1.1",
       "min_core_version": "2.5.0",
       "changelog": "Fix Design Full Station doing nothing. The new action was handled inside a branch gated to preview/push/chat_preview, so the button never reached its handler. It is now dispatched correctly, and drafting no longer requires a valid Step 2 first - which was the point, since you use it when the form is still empty.",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
       "checksum": "874522d0a1ccc3086d5939369d01fd66"
-    },
-    {
-      "version": "4.1.0",
-      "min_core_version": "2.5.0",
-      "changelog": "Journeys now support every endpoint find_path allows - start from a seed track or a Song Alchemy anchor, finish on a mood, track or anchor, with a mood_pct dial for how far toward a centroid the path travels. Daypart gains an optional mood arc layered on the energy curve, using the mood tags AudioMuse already returns. The Chat Designer gains a second button, Design Full Station, which turns one sentence into a draft of Steps 1, 2 and 5 using AudioMuse's own configured AI - entirely optional, every value validated against the form's own choices, and it never deploys. Settings page restyled to match the designer.",
-      "imageUrl": "",
-      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": "eea2f6351680d156b3570ebd676b3cf2"
     }
   ]
 }

@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "4.1.1"
+PLUGIN_VERSION = "4.1.2"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -1188,7 +1188,7 @@ def design_station_from_prompt(prompt: str) -> dict[str, Any]:
     settings = _llm_settings()
     if not settings:
         raise ChannelDesignerError(
-            "AudioMuse has no AI provider configured, so Design Full Station is "
+            "AudioMuse has no AI provider configured, so Draft Whole Station is "
             "unavailable. Set one in AudioMuse settings, or build the station by hand."
         )
 
@@ -3044,11 +3044,12 @@ def _designer_flow_overview_html(*, flash_html: str = "") -> str:
         + flash_html
         + "<ol class='afm-flow-steps'>"
         "<li><strong>Name It</strong> — What listeners see (mount, homepage).</li>"
-        "<li><strong>Program It</strong> — How AudioMuse finds music (CLAP, lyrics, mood, etc.). "
+        "<li><strong>Program It</strong> — How AudioMuse finds music (CLAP, lyrics, mood, journey, etc.). "
         "This is re-queried when the queue needs more tracks.</li>"
         "<li><strong>Preview It</strong> — Sanity-check tracks before anything goes on air.</li>"
         "<li><strong>Optional Extras</strong> — Filters, opener playlist, living pool (skip on first try).</li>"
-        "<li><strong>Playback Rules</strong> — What happens when the pool runs low.</li>"
+        "<li><strong>Playback Rules</strong> — What happens when the pool runs low, plus optional smooth "
+        "transitions and time-of-day energy.</li>"
         "<li><strong>Deploy</strong> — Creates or updates the station on Alchemy FM.</li>"
         "</ol>"
         "<p class='hint'>Chat Designer and Discover Channels (collapsed helpers below) prefill Step 2 only — nothing deploys until Step 6.</p>"
@@ -5069,7 +5070,8 @@ def _programming_fields_html(
         + _step_panel_heading(
             "Step 2",
             "Programming",
-            "Defines what music fits this station. Alchemy FM re-runs this query when the queue needs more tracks.",
+            "Defines what music fits this station. Alchemy FM re-runs this programming when the queue needs "
+            "more tracks.",
         )
         + _programming_explainer_html()
         + flash_html
@@ -5222,12 +5224,16 @@ def _station_identity_explainer_html() -> str:
 def _programming_explainer_html() -> str:
     return _collapsible_explainer_html(
         "<p><strong>What this controls:</strong> The core music identity of the station. Alchemy FM "
-        "<strong>re-runs this query</strong> when the on-air queue needs more tracks (with Step 5 playback rules).</p>"
+        "<strong>re-runs this programming</strong> when the on-air queue needs more tracks (with Step 5 "
+        "playback rules).</p>"
         "<p><strong>Sonic Vibe (CLAP):</strong> Describe how tracks <em>sound</em> — not lyrics.</p>"
         "<p><strong>Lyrics Theme:</strong> Search by meaning, story, or theme in lyrics.</p>"
         "<p><strong>Mood Cluster:</strong> Pick from your library analysis — mood + sub-cluster.</p>"
         "<p><strong>Song Alchemy Anchor:</strong> Search anchors as you type and pick one.</p>"
         "<p><strong>Similar to Seed Track:</strong> Search by title or artist as you type, then pick one library track.</p>"
+        "<p><strong>Journey:</strong> Drifts from a start (seed track or anchor) toward a destination "
+        "(mood, track or anchor) across the day, looping each night. Unlike the other types this does not "
+        "re-run one fixed query — it follows the clock along a path built at deploy.</p>"
         "<p><strong>Preview Size:</strong> How many tracks to fetch per preview run (Step 3).</p>"
     )
 
@@ -5312,6 +5318,12 @@ def _playback_rules_explainer_html() -> str:
         "expansion and no pool repeats. Stops when those are exhausted.</p>"
         "<p><strong>Stay in Source Pool:</strong> Reuses imported tracks and allows repeats before leaving "
         "the pool. No similar-track drift.</p>"
+        "<p><strong>Smooth Transitions:</strong> Orders each refill so neighbouring tracks share a "
+        "compatible key and tempo (Camelot-style mixing), using AudioMuse tempo/key analysis. Off = tracks "
+        "play in recommendation order.</p>"
+        "<p><strong>Time-of-Day Energy (Daypart):</strong> Biases each refill toward calmer or higher-energy "
+        "tracks depending on the station's local hour. The optional <strong>Mood Arc</strong> layers a mood "
+        "on top (relaxed mornings, party evenings). Both need a timezone; set once and they follow the clock.</p>"
     )
 
 
@@ -5518,15 +5530,15 @@ def _chat_designer_fields_html(values: dict[str, Any], *, flash_html: str = "") 
         "<summary>"
         '<span class="afm-helper-badge">Helper</span>'
         '<span><span class="afm-collapsible-title">Chat Designer</span>'
-        '<span class="afm-collapsible-hint">Optional helper — everything here can be set by hand. '
-        "<strong>Generate Playlist Preview</strong> sets Step 2 to a <strong>Sonic Vibe (CLAP)</strong> query and "
-        "shows Preview Results. <strong>Design Full Station</strong> fills in Steps 1, 2 and 5 as a draft you "
-        "review. Neither deploys.</span></span>"
+        '<span class="afm-collapsible-hint">Optional — everything here can be set by hand, '
+        "and neither button deploys.</span></span>"
         "</summary>"
         '<div class="afm-collapsible-body">'
         f"{flash_html}"
-        "<p class='hint'>Slow LLM call — requires AudioMuse chat/AI configured. Tweak Programming after preview, "
-        "then use Step 3 Preview Programming before deploy.</p>"
+        "<p class='hint'>Both call AudioMuse's configured AI and often take 30–90 seconds. "
+        "<strong>Suggest Programming</strong> turns your description into a Sonic Vibe (CLAP) query in "
+        "Step 2 and shows Preview Results. <strong>Draft Whole Station</strong> fills in Steps 1, 2 and 5 "
+        "for you to review — if it picks a Journey you will still need to choose a start track.</p>"
         + "<div class='afm-field'>"
         + _field_label("Describe Your Station")
         + f"<textarea name='chat_prompt' rows='3' class='afm-text-input' "
@@ -5534,7 +5546,7 @@ def _chat_designer_fields_html(values: dict[str, Any], *, flash_html: str = "") 
         + "</div>"
         + _action_loading_html(
             "afm-chat-loading",
-            title="Generating playlist preview…",
+            title="Asking AudioMuse AI…",
             detail="AudioMuse chat is running — often 30–90 seconds. Stay on this page.",
         )
         + '<p id="afm-chat-error" class="afm-flash afm-flash-error" hidden role="alert"></p>'
@@ -5542,12 +5554,12 @@ def _chat_designer_fields_html(values: dict[str, Any], *, flash_html: str = "") 
         + "<button type='submit' name='afm_action' value='chat_preview' formnovalidate "
         + 'class="afm-btn afm-btn-secondary" data-afm-loading="afm-chat-loading" '
         + 'data-afm-loading-panel="chat-designer" data-afm-loading-no-scroll="true" '
-        + 'data-afm-ajax-preview="true" data-loading-label="Generating…">'
-        "Generate Playlist Preview</button>"
+        + 'data-afm-ajax-preview="true" data-loading-label="Suggesting…">'
+        "Suggest Programming</button>"
         + "<button type='submit' name='afm_action' value='design_station' formnovalidate "
         + 'class="afm-btn afm-btn-secondary" data-afm-loading="afm-chat-loading" '
-        + 'data-afm-loading-panel="chat-designer" data-loading-label="Designing…">'
-        "Design Full Station</button>"
+        + 'data-afm-loading-panel="chat-designer" data-loading-label="Drafting…">'
+        "Draft Whole Station</button>"
         + "</div>"
         + f"<input type='hidden' name='design_notes' value='{html.escape(str(values.get('design_notes', '')))}'>"
         + "</div></details>"
@@ -5816,7 +5828,8 @@ def _playback_rules_fields_html(values: dict[str, Any]) -> str:
         + _step_panel_heading(
             "Step 5",
             "24/7 Playback Rules",
-            "Controls how Alchemy FM refills the queue when tracks run low — not the initial vibe (that is Step 2).",
+            "Controls how Alchemy FM refills the queue when tracks run low, and how those tracks are "
+            "sequenced — not the initial vibe (that is Step 2).",
         )
         + _playback_rules_explainer_html()
         + "<div class='afm-field'>"
