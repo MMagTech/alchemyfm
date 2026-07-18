@@ -1337,6 +1337,26 @@ def _track_mood_tags(track: dict[str, Any]) -> list[str]:
     return []
 
 
+def _genre_matches_any(track_genre: str, terms: list[str]) -> bool:
+    """Word-level genre match: "rock" matches "hard rock" and "classic rock"
+    but not "rockabilly". Exact-equality matching made include filters drop
+    every subgenre (and every track with no genre metadata) with no hint why.
+    """
+    if not track_genre:
+        return False
+    genre_words = set(re.split(r"[^a-z0-9&']+", track_genre))
+    for term in terms:
+        term = term.strip()
+        if not term:
+            continue
+        if term == track_genre:
+            return True
+        term_words = [w for w in re.split(r"[^a-z0-9&']+", term) if w]
+        if term_words and all(w in genre_words for w in term_words):
+            return True
+    return False
+
+
 def track_passes_filters(track: dict[str, Any], filters: dict[str, Any] | None) -> bool:
     if not _filters_active(filters):
         return True
@@ -1367,10 +1387,10 @@ def track_passes_filters(track: dict[str, Any], filters: dict[str, Any] | None) 
             return False
     genre = _track_genre(track)
     genre_include = filters.get("genre_include") or []
-    if genre_include and genre not in genre_include:
+    if genre_include and not _genre_matches_any(genre, genre_include):
         return False
     genre_exclude = filters.get("genre_exclude") or []
-    if genre_exclude and genre in genre_exclude:
+    if genre_exclude and _genre_matches_any(genre, genre_exclude):
         return False
     mood_include = filters.get("mood_include") or []
     if mood_include:
@@ -1532,19 +1552,27 @@ def _filter_feedback_report(
         if genre:
             genre_counts[genre] = genre_counts.get(genre, 0) + 1
     terms: list[dict[str, Any]] = []
+    no_genre_count = sum(1 for track in unfiltered if not _track_genre(track))
     for term in filters.get("genre_include") or []:
-        count = sum(1 for track in unfiltered if _track_genre(track) == term)
+        count = sum(
+            1 for track in unfiltered if _genre_matches_any(_track_genre(track), [term])
+        )
+        note = "matches Top Genre and its subgenres"
+        if no_genre_count:
+            note += f"; {no_genre_count} track(s) have no genre and never match"
         terms.append(
             {
                 "kind": "Genre Include",
                 "term": term,
                 "count": count,
                 "status": "ok" if count else "warn",
-                "note": "exact Top Genre match",
+                "note": note,
             }
         )
     for term in filters.get("genre_exclude") or []:
-        count = sum(1 for track in unfiltered if _track_genre(track) == term)
+        count = sum(
+            1 for track in unfiltered if _genre_matches_any(_track_genre(track), [term])
+        )
         terms.append(
             {
                 "kind": "Genre Exclude",
@@ -6083,7 +6111,51 @@ def _stations_section_html(editing_slug: str | None = None, *, flash_html: str =
 
     editing_slug = (editing_slug or "").strip().lower()
     local = _local_channels_by_slug()
-    if not stations:
+
+    # Saved designs with no deployed station (drafts from Suggest Programming,
+    # failed previews, deleted-station leftovers). Without their own rows they
+    # would be reachable only through the edit picker and impossible to delete.
+    remote_slugs = {str(s.get("slug") or "").strip().lower() for s in stations}
+    draft_rows: list[str] = []
+    for slug, local_row in sorted(local.items()):
+        if slug.strip().lower() in remote_slugs:
+            continue
+        try:
+            draft_profile = json.loads(local_row[2] or "{}") or None
+        except json.JSONDecodeError:
+            draft_profile = None
+        draft_name = str(local_row[0] or slug)
+        type_label, _detail, living, _has_saved = _programming_detail(draft_profile, {})
+        is_editing = slug.strip().lower() == editing_slug
+        row_class = ' class="is-editing"' if is_editing else ""
+        edit_href = html.escape(url_for("alchemy_fm_bridge.home", edit=slug) + "#designer")
+        confirm_msg = (
+            f"Delete saved design {draft_name} ({slug})? It was never deployed; "
+            "this removes the design permanently."
+        )
+        search_blob = html.escape(f"{draft_name} {slug} {type_label}".lower())
+        living_badge = '<span class="afm-badge afm-badge-living">Living</span>' if living else ""
+        draft_rows.append(
+            f"<tr{row_class} data-station-search='{search_blob}'>"
+            f"<td><div class='afm-station-primary'>{html.escape(draft_name)}</div>"
+            f"<div class='afm-station-meta'>{html.escape(slug)}</div></td>"
+            f"<td><span class='afm-programming-type'>{html.escape(type_label)}</span></td>"
+            f'<td class="afm-status-cell"><div class="afm-badge-row">'
+            '<span class="afm-badge afm-badge-off">Not Deployed</span>'
+            '<span class="afm-badge afm-badge-saved">Saved Design</span>'
+            f"{living_badge}</div></td>"
+            f'<td class="afm-actions-cell"><div class="afm-row-actions">'
+            f'<a href="{edit_href}" class="afm-btn afm-btn-secondary">Edit</a>'
+            f'<form method="post" style="margin:0;" onsubmit="return confirm({json.dumps(confirm_msg)});">'
+            f'<input type="hidden" name="afm_action" value="delete">'
+            f'<input type="hidden" name="station_id" value="0">'
+            f'<input type="hidden" name="delete_slug" value="{html.escape(slug)}">'
+            '<button type="submit" class="afm-btn afm-btn-danger">Delete</button>'
+            "</form></div></td>"
+            "</tr>"
+        )
+
+    if not stations and not draft_rows:
         table_html = (
             '<p class="afm-empty">No stations yet. Use the designer below to create your first channel.</p>'
         )
@@ -6149,6 +6221,7 @@ def _stations_section_html(editing_slug: str | None = None, *, flash_html: str =
                 "</form></div></td>"
                 "</tr>"
             )
+        rows.extend(draft_rows)
         table_html = (
             '<div class="afm-field" id="afm-stations-filter-wrap">'
             + '<label for="afm-stations-filter">Filter Stations</label>'
@@ -8136,15 +8209,26 @@ def _home_page():
             try:
                 station_id = int(request.form.get("station_id") or "0")
                 delete_slug = (request.form.get("delete_slug") or "").strip()
-                if station_id <= 0:
-                    raise ChannelDesignerError("Invalid station id for delete.")
-                _client().delete_station(station_id)
-                _delete_local_channel(delete_slug)
-                flashes.add(
-                    f"Deleted station '{delete_slug or station_id}' from Alchemy FM.",
-                    "ok",
-                    anchor="stations",
-                )
+                if station_id > 0:
+                    _client().delete_station(station_id)
+                    _delete_local_channel(delete_slug)
+                    flashes.add(
+                        f"Deleted station '{delete_slug or station_id}' from Alchemy FM.",
+                        "ok",
+                        anchor="stations",
+                    )
+                elif delete_slug:
+                    # Design that was never deployed (draft from Suggest
+                    # Programming, failed preview, ...) — nothing exists on
+                    # Alchemy FM, just remove the saved design.
+                    _delete_local_channel(delete_slug)
+                    flashes.add(
+                        f"Deleted saved design '{delete_slug}'.",
+                        "ok",
+                        anchor="stations",
+                    )
+                else:
+                    raise ChannelDesignerError("Nothing to delete — no station id or design slug.")
                 scroll_anchor = "stations"
                 logger.info("alchemy_fm_bridge deleted station id=%s slug=%s", station_id, delete_slug)
             except ChannelDesignerError as exc:
@@ -8450,6 +8534,13 @@ def _home_page():
                                     )
                         if deploy_warning:
                             flashes.add(deploy_warning, "warn", anchor="step-deploy")
+                        icecast_note = str(station.get("icecast_warning") or "").strip()
+                        if icecast_note:
+                            flashes.add(
+                                f"Deployed, but not on air yet: {icecast_note}",
+                                "warn",
+                                anchor="step-deploy",
+                            )
                         queued_note = (
                             f", {station.get('queued_count')} queued"
                             if station.get("queued_count") is not None
