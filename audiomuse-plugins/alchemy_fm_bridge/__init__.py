@@ -624,6 +624,17 @@ JOURNEY_END_MOODS = (
     ("sad", "Sad"),
 )
 
+# find_path allows only ONE endpoint to be a mood/anchor; the other must be a song.
+JOURNEY_START_KINDS = (
+    ("song", "Seed Track (from Search Seed Track above)"),
+    ("anchor", "Song Alchemy Anchor"),
+)
+JOURNEY_END_KINDS = (
+    ("mood", "Mood"),
+    ("song", "Seed Track"),
+    ("anchor", "Song Alchemy Anchor"),
+)
+
 REFRESH_MODES = (
     ("similar_to_last", "Similar to Last Played (Recommended)"),
     ("no_repeats", "No Repeats (Fresh Tracks First)"),
@@ -782,22 +793,45 @@ def preview_programming(profile: dict[str, Any]) -> list[dict[str, Any]]:
 def _journey_path_rows(journey: dict[str, Any]) -> list[dict[str, Any]]:
     """Call AudioMuse find_path for a journey's start->end mood, returning the
     ordered path rows (the drift spine)."""
-    start_id = str(journey.get("start_id") or "").strip()
-    end_mood = str(journey.get("end_mood") or "").strip().lower()
-    if not start_id:
-        raise ChannelDesignerError("Pick a start track for the journey (search Seed Track).")
-    if not end_mood:
-        raise ChannelDesignerError("Choose an end mood for the journey.")
-    max_steps = int(journey.get("max_steps") or 8)
-    data = audiomuse_get(
-        "/api/find_path",
-        params={
-            "start_song_id": start_id,
-            "end_mood": end_mood,
-            "max_steps": str(max_steps),
-            "path_space": "audio",
-        },
-    )
+    params: dict[str, str] = {
+        "max_steps": str(int(journey.get("max_steps") or 8)),
+        "path_space": "audio",
+    }
+
+    start_kind = str(journey.get("start_kind") or "song").strip().lower()
+    if start_kind == "anchor":
+        anchor = str(journey.get("start_anchor") or "").strip()
+        if not anchor:
+            raise ChannelDesignerError("Choose a start anchor for the journey.")
+        params["start_anchor"] = anchor
+    else:
+        start_id = str(journey.get("start_id") or "").strip()
+        if not start_id:
+            raise ChannelDesignerError("Pick a start track for the journey (search Seed Track).")
+        params["start_song_id"] = start_id
+
+    end_kind = str(journey.get("end_kind") or "mood").strip().lower()
+    if end_kind == "anchor":
+        anchor = str(journey.get("end_anchor") or "").strip()
+        if not anchor:
+            raise ChannelDesignerError("Choose a destination anchor for the journey.")
+        params["end_anchor"] = anchor
+    elif end_kind == "song":
+        end_song = str(journey.get("end_song_id") or "").strip()
+        if not end_song:
+            raise ChannelDesignerError("Pick a destination track for the journey.")
+        params["end_song_id"] = end_song
+    else:
+        end_mood = str(journey.get("end_mood") or "").strip().lower()
+        if not end_mood:
+            raise ChannelDesignerError("Choose a destination mood for the journey.")
+        params["end_mood"] = end_mood
+
+    # mood_pct only applies when an end resolves through a centroid.
+    if start_kind == "anchor" or end_kind in ("mood", "anchor"):
+        params["mood_pct"] = str(int(journey.get("mood_pct") or 100))
+
+    data = audiomuse_get("/api/find_path", params=params)
     path = data.get("path") if isinstance(data, dict) else None
     if not isinstance(path, list) or not path:
         raise ChannelDesignerError(
@@ -863,10 +897,15 @@ def _programming_source_ref(programming: dict[str, Any]) -> str:
         return seed_id
     if ptype == "journey":
         journey = programming.get("journey") or {}
-        start_id = str(journey.get("start_id") or "").strip()
-        if not start_id:
-            raise ChannelDesignerError("Pick a start track for the journey.")
-        return start_id
+        ref = str(
+            journey.get("start_id")
+            or journey.get("start_anchor")
+            or journey.get("end_song_id")
+            or ""
+        ).strip()
+        if not ref:
+            raise ChannelDesignerError("Set a start for the journey.")
+        return ref
     raise ChannelDesignerError(f"Unsupported programming type: {ptype}")
 
 
@@ -1059,6 +1098,53 @@ DAYPART_MOOD_PRESETS = (
     ("steady_relaxed", "Steady Relaxed — easy all day"),
     ("upbeat_days", "Upbeat Days — lively daytime, wind down after dark"),
 )
+
+
+def _journey_from_form(form) -> dict[str, Any]:
+    """Build a journey config, enforcing find_path's one-song-endpoint rule."""
+    start_kind = (form.get("journey_start_kind") or "song").strip().lower()
+    end_kind = (form.get("journey_end_kind") or "mood").strip().lower()
+    if start_kind != "song" and end_kind != "song":
+        raise ChannelDesignerError(
+            "A journey needs at least one end to be a track. Set Start or "
+            "Destination to Seed Track."
+        )
+
+    journey: dict[str, Any] = {
+        "start_kind": start_kind,
+        "end_kind": end_kind,
+        "max_steps": max(4, min(20, int(form.get("journey_max_steps") or 8))),
+        "mood_pct": max(0, min(100, int(form.get("journey_mood_pct") or 100))),
+        "timezone": (form.get("journey_timezone") or "").strip(),
+        "waypoints": [],
+    }
+
+    if start_kind == "anchor":
+        journey["start_anchor"] = (form.get("journey_start_anchor") or "").strip()
+        if not journey["start_anchor"]:
+            raise ChannelDesignerError("Choose a start anchor for the journey.")
+    else:
+        journey["start_id"] = _resolve_seed_id_from_form(form)
+        if not journey["start_id"]:
+            raise ChannelDesignerError(
+                "Pick a start track for the journey (search Seed Track)."
+            )
+
+    if end_kind == "mood":
+        journey["end_mood"] = (form.get("journey_end_mood") or "").strip().lower()
+        if not journey["end_mood"]:
+            raise ChannelDesignerError("Choose a destination mood for the journey.")
+    elif end_kind == "anchor":
+        journey["end_anchor"] = (form.get("journey_end_anchor") or "").strip()
+        if not journey["end_anchor"]:
+            raise ChannelDesignerError("Choose a destination anchor for the journey.")
+    else:
+        journey["end_song_id"] = (form.get("journey_end_song_id") or "").strip()
+        if not journey["end_song_id"]:
+            raise ChannelDesignerError(
+                "Pick a destination track for the journey, or paste a track item id."
+            )
+    return journey
 
 
 def _daypart_from_form(form) -> dict[str, Any]:
@@ -1788,21 +1874,7 @@ def profile_from_form(form, *, for_deploy: bool = False) -> dict[str, Any]:
                 "Pick a seed track from search results or paste a track item id."
             )
     elif ptype == "journey":
-        start_id = _resolve_seed_id_from_form(form)
-        if not start_id:
-            raise ChannelDesignerError(
-                "Pick a start track for the journey (search Seed Track)."
-            )
-        end_mood = (form.get("journey_end_mood") or "").strip().lower()
-        if not end_mood:
-            raise ChannelDesignerError("Choose an end mood for the journey.")
-        programming["journey"] = {
-            "start_id": start_id,
-            "end_mood": end_mood,
-            "max_steps": max(4, min(20, int(form.get("journey_max_steps") or 8))),
-            "timezone": (form.get("journey_timezone") or "").strip(),
-            "waypoints": [],
-        }
+        programming["journey"] = _journey_from_form(form)
     else:
         raise ChannelDesignerError(f"Unsupported programming type: {ptype}")
 
@@ -4306,14 +4378,25 @@ def _profile_from_values(values: dict[str, Any]) -> dict[str, Any]:
         if not programming["seed_id"]:
             programming["seed_id"] = _resolve_seed_id_from_form(values)
     elif ptype == "journey":
-        start_id = (values.get("seed_id") or "").strip() or _resolve_seed_id_from_form(values)
-        programming["journey"] = {
-            "start_id": start_id,
-            "end_mood": (values.get("journey_end_mood") or "").strip().lower(),
-            "max_steps": _parse_optional_int(values.get("journey_max_steps")) or 8,
-            "timezone": (values.get("journey_timezone") or "").strip(),
-            "waypoints": [],
-        }
+        try:
+            programming["journey"] = _journey_from_form(values)
+        except ChannelDesignerError:
+            # Values-mode is used for status rendering, where an incomplete
+            # journey is normal -- keep what is set and let _programming_incomplete
+            # flag it rather than raising mid-render.
+            programming["journey"] = {
+                "start_kind": (values.get("journey_start_kind") or "song").strip(),
+                "end_kind": (values.get("journey_end_kind") or "mood").strip(),
+                "start_id": (values.get("seed_id") or "").strip(),
+                "start_anchor": _text(values.get("journey_start_anchor")),
+                "end_mood": (values.get("journey_end_mood") or "").strip().lower(),
+                "end_anchor": _text(values.get("journey_end_anchor")),
+                "end_song_id": (values.get("journey_end_song_id") or "").strip(),
+                "max_steps": _parse_optional_int(values.get("journey_max_steps")) or 8,
+                "mood_pct": _parse_optional_int(values.get("journey_mood_pct")) or 100,
+                "timezone": (values.get("journey_timezone") or "").strip(),
+                "waypoints": [],
+            }
     slug = (
         (values.get("editing_slug") or values.get("slug") or values.get("draft_slug") or "").strip()
         or _slugify(values.get("name") or "")
@@ -4510,8 +4593,14 @@ def _programming_incomplete(programming: dict[str, Any]) -> bool:
         return not str(programming.get("seed_id") or "").strip()
     if ptype == "journey":
         journey = programming.get("journey") or {}
-        return not str(journey.get("start_id") or "").strip() or not str(
-            journey.get("end_mood") or ""
+        start_kind = str(journey.get("start_kind") or "song")
+        end_kind = str(journey.get("end_kind") or "mood")
+        start_key = "start_anchor" if start_kind == "anchor" else "start_id"
+        end_key = {"mood": "end_mood", "anchor": "end_anchor"}.get(end_kind, "end_song_id")
+        if start_kind != "song" and end_kind != "song":
+            return True  # find_path needs at least one track endpoint
+        return not str(journey.get(start_key) or "").strip() or not str(
+            journey.get(end_key) or ""
         ).strip()
     return False
 
@@ -4810,6 +4899,16 @@ def _programming_fields_html(
     anchor_sel_class = "afm-picker-selected is-set" if selected_anchor_id else "afm-picker-selected"
     anchor_sel_hidden = "" if selected_anchor_id else " hidden"
 
+    # Journey endpoint pickers
+    anchor_options = tuple(
+        [("", "— none —")]
+        + [(str(a.get("id")), str(a.get("name") or a.get("id"))) for a in anchor_list]
+    )
+    journey_start_kind = str(values.get("journey_start_kind", "song"))
+    journey_end_kind = str(values.get("journey_end_kind", "mood"))
+    journey_start_anchor = str(values.get("journey_start_anchor", ""))
+    journey_end_anchor = str(values.get("journey_end_anchor", ""))
+
     return (
         "<section class='afm-panel afm-programming-panel afm-step-panel' id='step-programming'>"
         + _step_panel_heading(
@@ -4871,6 +4970,7 @@ def _programming_fields_html(
         + f"<div id='field-seed' class='afm-field afm-seed-field afm-type-field'{hidden('similar_seed')}>"
         + _field_label("Search Seed Track")
         + f"<div class='afm-seed-search-field' id='afm-seed-track-picker' "
+        + "data-target-input='seed_id' data-set-type='similar_seed' "
         + f"data-track-search-url='{html.escape(track_search_url)}'>"
         + f"<input name='seed_search' id='seed_search' class='afm-text-input afm-seed-search-input' "
         + "autocomplete='off' role='combobox' aria-expanded='false' "
@@ -4886,11 +4986,47 @@ def _programming_fields_html(
         + f"value='{html.escape(str(values.get('seed_id', '')))}'>"
         + "</div></div>"
         + f"<div id='field-journey' class='afm-field afm-type-field'{hidden('journey')}>"
-        + "<p class='hint'>A <strong>journey</strong> drifts the station from your "
-        "<strong>start track</strong> (set it in <em>Search Seed Track</em> above) toward an "
-        "<strong>end mood</strong> across the day, looping each night. Set it once — it follows the clock.</p>"
-        + _field_label("End Mood", mandatory=True)
+        + "<p class='hint'>A <strong>journey</strong> drifts the station from a "
+        "<strong>start</strong> toward a <strong>destination</strong> across the day, looping each "
+        "night. Set it once — it follows the clock. AudioMuse requires at least one end to be a "
+        "track, so start and destination cannot both be a mood or anchor.</p>"
+        + _field_label("Start", mandatory=True)
+        + f"<select name='journey_start_kind' class='afm-select'>{_select_options(JOURNEY_START_KINDS, journey_start_kind)}</select>"
+        + "<p class='hint'>Choose <strong>Seed Track</strong> to start from the track picked in "
+        "<em>Search Seed Track</em> above, or <strong>Anchor</strong> to start from a saved vibe.</p>"
+        + "<div class='afm-field'>"
+        + _field_label("Start Anchor (When Start = Anchor)")
+        + f"<select name='journey_start_anchor' class='afm-select'>{_select_options(anchor_options, journey_start_anchor)}</select>"
+        + "</div>"
+        + _field_label("Destination", mandatory=True)
+        + f"<select name='journey_end_kind' class='afm-select'>{_select_options(JOURNEY_END_KINDS, journey_end_kind)}</select>"
+        + "<div class='afm-field'>"
+        + _field_label("Destination Mood (When Destination = Mood)")
         + f"<select name='journey_end_mood' class='afm-select'>{_select_options(JOURNEY_END_MOODS, str(values.get('journey_end_mood', '')))}</select>"
+        + "</div>"
+        + "<div class='afm-field'>"
+        + _field_label("Destination Anchor (When Destination = Anchor)")
+        + f"<select name='journey_end_anchor' class='afm-select'>{_select_options(anchor_options, journey_end_anchor)}</select>"
+        + "</div>"
+        + "<div class='afm-field'>"
+        + _field_label("Destination Track (When Destination = Seed Track)")
+        + f"<div class='afm-seed-search-field' id='afm-journey-end-picker' "
+        + "data-target-input='journey_end_song_id' "
+        + f"data-track-search-url='{html.escape(track_search_url)}'>"
+        + "<input name='journey_end_search' class='afm-text-input afm-seed-search-input' "
+        "autocomplete='off' role='combobox' aria-expanded='false' "
+        f"placeholder='Title or artist…' value='{html.escape(str(values.get('journey_end_search', '')))}'>"
+        + "<div class='afm-seed-track-results'></div>"
+        + "</div>"
+        + f"<input name='journey_end_song_id' class='afm-text-input' "
+        f"placeholder='Filled when you pick a search result' "
+        f"value='{html.escape(str(values.get('journey_end_song_id', '')))}'>"
+        + "</div>"
+        + "<label style='display:block;margin-top:.6rem;'>Mood / Anchor Travel (%)</label>"
+        + f"<input type='number' name='journey_mood_pct' min='0' max='100' "
+        f"value='{html.escape(str(values.get('journey_mood_pct', 100)))}'>"
+        + "<p class='hint'>How far toward the mood/anchor centroid the path travels. 100 = all the "
+        "way; lower values stay closer to the start. Ignored for track destinations.</p>"
         + "<label style='display:block;margin-top:.6rem;'>Path Length (Steps)</label>"
         + f"<input type='number' name='journey_max_steps' min='4' max='20' value='{html.escape(str(values.get('journey_max_steps', 8)))}'>"
         + "<p class='hint'>Waypoints from start to end mood. More = smoother, slower drift.</p>"
@@ -5966,8 +6102,14 @@ def _form_values_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
     elif ptype == "journey":
         journey = programming.get("journey") or {}
         values["seed_id"] = journey.get("start_id") or ""
+        values["journey_start_kind"] = journey.get("start_kind") or "song"
+        values["journey_end_kind"] = journey.get("end_kind") or "mood"
+        values["journey_start_anchor"] = _text(journey.get("start_anchor"))
+        values["journey_end_anchor"] = _text(journey.get("end_anchor"))
+        values["journey_end_song_id"] = journey.get("end_song_id") or ""
         values["journey_end_mood"] = journey.get("end_mood") or ""
         values["journey_max_steps"] = journey.get("max_steps") or 8
+        values["journey_mood_pct"] = journey.get("mood_pct", 100)
         values["journey_timezone"] = journey.get("timezone") or ""
     return values
 
@@ -7005,11 +7147,17 @@ def _page_script(
     }}
   }})();
 
-  (function initSeedTrackTypeahead() {{
-    const picker = document.getElementById('afm-seed-track-picker');
-    const input = document.getElementById('seed_search');
-    const results = document.getElementById('afm-seed-track-results');
-    const seedIdField = document.querySelector('input[name="seed_id"]');
+  /* One typeahead per .afm-seed-search-field, so a journey can have both a
+     start and a destination picker. Each container names the input it fills
+     (data-target-input) and, optionally, a programming type to switch to when
+     a track is picked (data-set-type) -- the journey pickers must NOT switch
+     the type, only the Similar-to-Seed one does. */
+  document.querySelectorAll('.afm-seed-search-field').forEach((picker) => {{
+    const input = picker.querySelector('.afm-seed-search-input');
+    const results = picker.querySelector('.afm-seed-track-results');
+    const targetName = picker.getAttribute('data-target-input') || 'seed_id';
+    const seedIdField = document.querySelector('input[name="' + targetName + '"]');
+    const setType = picker.getAttribute('data-set-type') || '';
     const typeSelect = document.getElementById('programming_type');
     if (!picker || !input || !results) return;
 
@@ -7039,8 +7187,8 @@ def _page_script(
       const title = track.title || 'Unknown';
       const artist = track.artist || 'Unknown';
       input.value = title + ' — ' + artist;
-      if (typeSelect) {{
-        typeSelect.value = 'similar_seed';
+      if (typeSelect && setType) {{
+        typeSelect.value = setType;
         typeSelect.dispatchEvent(new Event('change', {{ bubbles: true }}));
       }}
       clearResults();
@@ -7158,7 +7306,7 @@ def _page_script(
     if ((input.value || '').trim().length >= 2 && !(seedIdField && seedIdField.value)) {{
       runSearch(input.value);
     }}
-  }})();
+  }});
 
   (function initAnchorTypeahead() {{
     const picker = document.getElementById('afm-anchor-picker');
