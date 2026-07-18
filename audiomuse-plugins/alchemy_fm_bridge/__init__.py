@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "3.0.13"
+PLUGIN_VERSION = "4.0.0"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -601,6 +601,7 @@ PROGRAMMING_TYPES = (
     ("mood_centroid", "Mood Cluster"),
     ("alchemy_anchor", "Song Alchemy Anchor"),
     ("similar_seed", "Similar to Seed Track"),
+    ("journey", "Journey (Drift A→B Over the Day)"),
 )
 
 PROGRAMMING_TYPE_LABELS = {key: label for key, label in PROGRAMMING_TYPES}
@@ -609,7 +610,18 @@ PROGRAMMING_TYPE_LABELS.update(
         "clap_query": "Sonic Vibe (CLAP)",
         "lyrics_query": "Lyrics Theme",
         "mood_centroid": "Mood Cluster",
+        "journey": "Journey",
     }
+)
+
+# find_path end_mood values -> label. One journey endpoint must be a song (the
+# start seed); the other is one of these moods (AudioMuse find_path enum).
+JOURNEY_END_MOODS = (
+    ("relaxed", "Relaxed — wind down"),
+    ("danceable", "Danceable — warm up"),
+    ("happy", "Happy"),
+    ("aggressive", "Aggressive — high energy"),
+    ("sad", "Sad"),
 )
 
 REFRESH_MODES = (
@@ -621,7 +633,7 @@ REFRESH_MODES = (
 )
 
 LIVE_SOURCE_TYPES = frozenset(
-    {"clap_query", "lyrics_query", "mood_centroid", "alchemy_anchor", "similar_seed"}
+    {"clap_query", "lyrics_query", "mood_centroid", "alchemy_anchor", "similar_seed", "journey"}
 )
 PREVIEW_LIMIT_DEFAULT = 30
 BOOTSTRAP_TRACK_LIMIT_DEFAULT = 30
@@ -759,7 +771,49 @@ def preview_programming(profile: dict[str, Any]) -> list[dict[str, Any]]:
         )
         return _track_rows_from_results(data)
 
+    if ptype == "journey":
+        return _track_rows_from_results(_journey_path_rows(profile["programming"].get("journey") or {}))
+
     raise ChannelDesignerError(f"Unsupported programming type: {ptype}")
+
+
+def _journey_path_rows(journey: dict[str, Any]) -> list[dict[str, Any]]:
+    """Call AudioMuse find_path for a journey's start->end mood, returning the
+    ordered path rows (the drift spine)."""
+    start_id = str(journey.get("start_id") or "").strip()
+    end_mood = str(journey.get("end_mood") or "").strip().lower()
+    if not start_id:
+        raise ChannelDesignerError("Pick a start track for the journey (search Seed Track).")
+    if not end_mood:
+        raise ChannelDesignerError("Choose an end mood for the journey.")
+    max_steps = int(journey.get("max_steps") or 8)
+    data = audiomuse_get(
+        "/api/find_path",
+        params={
+            "start_song_id": start_id,
+            "end_mood": end_mood,
+            "max_steps": str(max_steps),
+            "path_space": "audio",
+        },
+    )
+    path = data.get("path") if isinstance(data, dict) else None
+    if not isinstance(path, list) or not path:
+        raise ChannelDesignerError(
+            "AudioMuse could not build a path from that start track to that mood. "
+            "Try a different start track, mood, or fewer steps."
+        )
+    return path
+
+
+def _journey_waypoint_ids(journey: dict[str, Any]) -> list[str]:
+    """Ordered waypoint track ids for a journey (the baked drift spine)."""
+    ids: list[str] = []
+    for row in _journey_path_rows(journey):
+        if isinstance(row, dict):
+            item_id = row.get("item_id") or row.get("id")
+            if item_id:
+                ids.append(str(item_id))
+    return ids
 
 
 def _merged_programming_tracks_unfiltered(
@@ -805,6 +859,12 @@ def _programming_source_ref(programming: dict[str, Any]) -> str:
         if not seed_id:
             raise ChannelDesignerError("Pick a seed track.")
         return seed_id
+    if ptype == "journey":
+        journey = programming.get("journey") or {}
+        start_id = str(journey.get("start_id") or "").strip()
+        if not start_id:
+            raise ChannelDesignerError("Pick a start track for the journey.")
+        return start_id
     raise ChannelDesignerError(f"Unsupported programming type: {ptype}")
 
 
@@ -972,6 +1032,30 @@ def _living_from_form(form) -> dict[str, Any]:
         "enabled": form.get("living_enabled") == "on",
         "auto_add_on_analyze": form.get("living_auto_add") == "on",
         "auto_refresh_alchemy": form.get("living_auto_refresh") == "on",
+    }
+
+
+def _ordering_from_form(form) -> dict[str, Any]:
+    """Playback sequencing rules. Executed by the Alchemy FM backend on every refill."""
+    return {
+        "harmonic": form.get("ordering_enabled") == "on",
+    }
+
+
+# Daypart energy curves — keys must match backend app/services/daypart.py PRESETS.
+DAYPART_PRESETS = (
+    ("rise_and_settle", "Rise & Settle — calm nights, peak evenings"),
+    ("morning_calm", "Morning Calm — gentle mornings, lively afternoons"),
+    ("late_night_energy", "Late-Night Energy — mellow days, peak after dark"),
+)
+
+
+def _daypart_from_form(form) -> dict[str, Any]:
+    """Time-of-day energy config. Executed by the Alchemy FM backend on every refill."""
+    return {
+        "enabled": form.get("daypart_enabled") == "on",
+        "preset": (form.get("daypart_preset") or "rise_and_settle").strip(),
+        "timezone": (form.get("daypart_timezone") or "").strip(),
     }
 
 
@@ -1571,12 +1655,22 @@ def channel_profile_to_alchemy_payload(profile: dict[str, Any], tracks: list[dic
     identity_seed_item_id = ""
     if ptype == "alchemy_anchor":
         identity_anchor_id = source_ref
-    elif ptype == "similar_seed":
+    elif ptype in ("similar_seed", "journey"):
         identity_seed_item_id = source_ref
     elif tracks:
         identity_seed_item_id = tracks[len(tracks) // 2]["item_id"]
 
     deploy_profile = dict(profile)
+
+    if ptype == "journey":
+        # Bake the ordered drift spine (find_path) into programming so the
+        # backend can pick the clock-current waypoint on every refill.
+        programming_copy = dict(deploy_profile.get("programming") or {})
+        journey_copy = dict(programming_copy.get("journey") or {})
+        journey_copy["waypoints"] = _journey_waypoint_ids(journey_copy)
+        programming_copy["journey"] = journey_copy
+        deploy_profile["programming"] = programming_copy
+
     bootstrap = deploy_profile.get("bootstrap") or {}
     if bootstrap.get("type") == "navidrome_playlist" and bootstrap.get("playlist_id"):
         try:
@@ -1681,6 +1775,22 @@ def profile_from_form(form, *, for_deploy: bool = False) -> dict[str, Any]:
             raise ChannelDesignerError(
                 "Pick a seed track from search results or paste a track item id."
             )
+    elif ptype == "journey":
+        start_id = _resolve_seed_id_from_form(form)
+        if not start_id:
+            raise ChannelDesignerError(
+                "Pick a start track for the journey (search Seed Track)."
+            )
+        end_mood = (form.get("journey_end_mood") or "").strip().lower()
+        if not end_mood:
+            raise ChannelDesignerError("Choose an end mood for the journey.")
+        programming["journey"] = {
+            "start_id": start_id,
+            "end_mood": end_mood,
+            "max_steps": max(4, min(20, int(form.get("journey_max_steps") or 8))),
+            "timezone": (form.get("journey_timezone") or "").strip(),
+            "waypoints": [],
+        }
     else:
         raise ChannelDesignerError(f"Unsupported programming type: {ptype}")
 
@@ -1689,6 +1799,8 @@ def profile_from_form(form, *, for_deploy: bool = False) -> dict[str, Any]:
         "refresh": {"mode": refresh_mode},
         "filters": _filters_from_form(form),
         "living": _living_from_form(form),
+        "ordering": _ordering_from_form(form),
+        "daypart": _daypart_from_form(form),
         "bootstrap": _bootstrap_from_form(form),
         "design_notes": (form.get("design_notes") or "").strip(),
         "station": station,
@@ -1878,6 +1990,137 @@ def _load_saved_channel(slug: str) -> tuple[dict[str, Any], list[str]] | None:
     except json.JSONDecodeError:
         return None
     return profile, [str(i) for i in preview_ids if i]
+
+
+BACKUP_FORMAT = "alchemy_fm_channel_designer_backup"
+BACKUP_VERSION = 1
+
+
+def _export_backup_data() -> dict[str, Any]:
+    """Serialize every channel design + living pool. Credentials are NOT included."""
+    from datetime import datetime, timezone
+
+    db = get_db()
+    cur = db.cursor()
+    channels_tbl = table("channels")
+    pool_tbl = table("channel_pool")
+    data: dict[str, Any] = {
+        "format": BACKUP_FORMAT,
+        "version": BACKUP_VERSION,
+        "plugin_version": PLUGIN_VERSION,
+        "exported_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "channels": [],
+        "pools": {},
+    }
+    try:
+        cur.execute(
+            "SELECT name, slug, profile_json, preview_ids_json, anchor_id "
+            "FROM " + channels_tbl + " ORDER BY slug"
+        )
+        for name, slug, profile_json, preview_ids_json, anchor_id in cur.fetchall():
+            data["channels"].append(
+                {
+                    "name": name,
+                    "slug": slug,
+                    "profile_json": profile_json,
+                    "preview_ids_json": preview_ids_json,
+                    "anchor_id": anchor_id,
+                }
+            )
+        cur.execute(
+            "SELECT channel_slug, item_id, source FROM " + pool_tbl
+            + " ORDER BY channel_slug, id"
+        )
+        for slug, item_id, source in cur.fetchall():
+            data["pools"].setdefault(slug, []).append({"item_id": item_id, "source": source})
+    finally:
+        cur.close()
+    return data
+
+
+def _restore_backup_data(data: Any) -> dict[str, int]:
+    """Merge a backup file back into the plugin tables (upsert channels by slug).
+
+    Existing channels with a matching slug are overwritten; channels not in the
+    file are left untouched (merge, not wipe). Malformed entries are skipped.
+    Returns counts of what was restored.
+    """
+    if not isinstance(data, dict) or data.get("format") != BACKUP_FORMAT:
+        raise ChannelDesignerError(
+            "That file is not an Alchemy FM Channel Designer backup."
+        )
+    channels_in = data.get("channels")
+    if not isinstance(channels_in, list) or not channels_in:
+        raise ChannelDesignerError("Backup file contains no channels.")
+
+    db = get_db()
+    cur = db.cursor()
+    channels_tbl = table("channels")
+    pool_tbl = table("channel_pool")
+    restored = 0
+    pool_items = 0
+    try:
+        for ch in channels_in:
+            if not isinstance(ch, dict):
+                continue
+            slug = str(ch.get("slug") or "").strip()
+            name = str(ch.get("name") or "").strip()
+            if not slug or not name:
+                continue
+            profile_json = ch.get("profile_json") or "{}"
+            preview_ids_json = ch.get("preview_ids_json") or "[]"
+            try:
+                json.loads(profile_json)
+                json.loads(preview_ids_json)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            anchor_id = ch.get("anchor_id")
+            cur.execute(
+                "INSERT INTO " + channels_tbl
+                + " (name, slug, profile_json, preview_ids_json, anchor_id) "
+                "VALUES (%s, %s, %s, %s, %s) "
+                "ON CONFLICT (slug) DO UPDATE SET "
+                "name = EXCLUDED.name, "
+                "profile_json = EXCLUDED.profile_json, "
+                "preview_ids_json = EXCLUDED.preview_ids_json, "
+                "anchor_id = EXCLUDED.anchor_id",
+                (
+                    name,
+                    slug,
+                    profile_json,
+                    preview_ids_json,
+                    int(anchor_id) if anchor_id else None,
+                ),
+            )
+            restored += 1
+
+        pools_in = data.get("pools")
+        if isinstance(pools_in, dict):
+            for slug, items in pools_in.items():
+                if not isinstance(items, list):
+                    continue
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    item_id = str(item.get("item_id") or "").strip()
+                    if not item_id:
+                        continue
+                    source = str(item.get("source") or "preview")
+                    cur.execute(
+                        "INSERT INTO " + pool_tbl
+                        + " (channel_slug, item_id, source, added_at) "
+                        "VALUES (%s, %s, %s, to_char(now(), 'YYYY-MM-DD HH24:MI:SS')) "
+                        "ON CONFLICT (channel_slug, item_id) DO NOTHING",
+                        (str(slug), item_id, source),
+                    )
+                    pool_items += 1
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        cur.close()
+    return {"channels": restored, "pool_items": pool_items}
 
 
 def _channel_slug_from_values(values: dict[str, Any], form: Any | None = None) -> str:
@@ -4013,6 +4256,15 @@ def _profile_from_values(values: dict[str, Any]) -> dict[str, Any]:
         programming["seed_id"] = (values.get("seed_id") or "").strip()
         if not programming["seed_id"]:
             programming["seed_id"] = _resolve_seed_id_from_form(values)
+    elif ptype == "journey":
+        start_id = (values.get("seed_id") or "").strip() or _resolve_seed_id_from_form(values)
+        programming["journey"] = {
+            "start_id": start_id,
+            "end_mood": (values.get("journey_end_mood") or "").strip().lower(),
+            "max_steps": _parse_optional_int(values.get("journey_max_steps")) or 8,
+            "timezone": (values.get("journey_timezone") or "").strip(),
+            "waypoints": [],
+        }
     slug = (
         (values.get("editing_slug") or values.get("slug") or values.get("draft_slug") or "").strip()
         or _slugify(values.get("name") or "")
@@ -4207,6 +4459,11 @@ def _programming_incomplete(programming: dict[str, Any]) -> bool:
         return not str(programming.get("anchor_id") or "").strip()
     if ptype == "similar_seed":
         return not str(programming.get("seed_id") or "").strip()
+    if ptype == "journey":
+        journey = programming.get("journey") or {}
+        return not str(journey.get("start_id") or "").strip() or not str(
+            journey.get("end_mood") or ""
+        ).strip()
     return False
 
 
@@ -4420,6 +4677,14 @@ def _programming_detail_from_values(values: dict[str, Any]) -> str:
     if ptype == "similar_seed":
         seed = (values.get("seed_id") or "").strip()
         return f"{label}: {seed or 'pick a seed track from search'}"
+    if ptype == "journey":
+        start = (values.get("seed_id") or "").strip()
+        end_mood = (values.get("journey_end_mood") or "").strip()
+        if not start:
+            return f"{label} — pick a start track (search Seed Track)"
+        if not end_mood:
+            return f"{label} — choose an end mood"
+        return f"{label}: {start} → {end_mood}"
     return label
 
 
@@ -4571,6 +4836,19 @@ def _programming_fields_html(
         + f"<input name='seed_id' class='afm-text-input' placeholder='Filled when you pick a search result' "
         + f"value='{html.escape(str(values.get('seed_id', '')))}'>"
         + "</div></div>"
+        + f"<div id='field-journey' class='afm-field afm-type-field'{hidden('journey')}>"
+        + "<p class='hint'>A <strong>journey</strong> drifts the station from your "
+        "<strong>start track</strong> (set it in <em>Search Seed Track</em> above) toward an "
+        "<strong>end mood</strong> across the day, looping each night. Set it once — it follows the clock.</p>"
+        + _field_label("End Mood", mandatory=True)
+        + f"<select name='journey_end_mood' class='afm-select'>{_select_options(JOURNEY_END_MOODS, str(values.get('journey_end_mood', '')))}</select>"
+        + "<label style='display:block;margin-top:.6rem;'>Path Length (Steps)</label>"
+        + f"<input type='number' name='journey_max_steps' min='4' max='20' value='{html.escape(str(values.get('journey_max_steps', 8)))}'>"
+        + "<p class='hint'>Waypoints from start to end mood. More = smoother, slower drift.</p>"
+        + "<label style='display:block;'>Station Timezone</label>"
+        + f"<input name='journey_timezone' placeholder='e.g. America/New_York' value='{html.escape(str(values.get('journey_timezone', '')))}'>"
+        + "<p class='hint'>IANA timezone for the daily arc (start at ~6am, destination at ~6pm). Blank = UTC.</p>"
+        + "</div>"
         + "<div class='afm-field'>"
         + _field_label("Preview Size")
         + f"<input type='number' name='preview_limit' min='10' max='80' value='{html.escape(str(values.get('preview_limit', PREVIEW_LIMIT_DEFAULT)))}'>"
@@ -5183,6 +5461,10 @@ def _preview_step_html(
 
 
 def _playback_rules_fields_html(values: dict[str, Any]) -> str:
+    ordering_enabled = values.get("ordering_enabled", False)
+    daypart_enabled = values.get("daypart_enabled", False)
+    daypart_preset = str(values.get("daypart_preset", "rise_and_settle"))
+    daypart_timezone = str(values.get("daypart_timezone", ""))
     return (
         "<section class='afm-panel afm-step-panel'>"
         + _step_panel_heading(
@@ -5205,7 +5487,28 @@ def _playback_rules_fields_html(values: dict[str, Any]) -> str:
         + "<div><label>Artist Separation (Min)</label>"
         + f"<input type='number' name='artist_separation_minutes' min='0' value='{html.escape(str(values.get('artist_separation_minutes', 90)))}'>"
         + "<p class='hint'>Min minutes before same artist</p></div>"
-        + "</div></section>"
+        + "</div>"
+        + "<div class='afm-check-group'>"
+        + "<label class='afm-check-label'><input type='checkbox' name='ordering_enabled'"
+        + f"{' checked' if ordering_enabled else ''}> Smooth Transitions — Order Refills by Harmonic &amp; Tempo Compatibility</label>"
+        + "<p class='hint'>Sequences each refill so adjacent tracks share a compatible key and tempo "
+        "(Camelot-style mixing), using AudioMuse tempo/key analysis. Off = tracks play in "
+        "recommendation order.</p>"
+        + "<label class='afm-check-label'><input type='checkbox' name='daypart_enabled'"
+        + f"{' checked' if daypart_enabled else ''}> Time-of-Day Energy (Daypart)</label>"
+        + "<p class='hint'>Biases each refill toward calmer or higher-energy tracks depending on the "
+        "local hour, using AudioMuse energy analysis. Set it once — it runs itself.</p>"
+        + "</div>"
+        + "<div class='afm-field'>"
+        + _field_label("Daypart Curve")
+        + f"<select name='daypart_preset' class='afm-select'>{_select_options(DAYPART_PRESETS, daypart_preset)}</select>"
+        + "</div>"
+        + "<div class='afm-field'>"
+        + _field_label("Station Timezone")
+        + f"<input name='daypart_timezone' placeholder='e.g. America/New_York' value='{html.escape(daypart_timezone)}'>"
+        + "<p class='hint'>IANA timezone name for daypart timing. Blank = UTC.</p>"
+        + "</div>"
+        + "</section>"
     )
 
 
@@ -5573,6 +5876,12 @@ def _form_values_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
     values["living_enabled"] = bool(living.get("enabled"))
     values["living_auto_add"] = bool(living.get("auto_add_on_analyze", living.get("enabled")))
     values["living_auto_refresh"] = bool(living.get("auto_refresh_alchemy", living.get("enabled")))
+    ordering = profile.get("ordering") or {}
+    values["ordering_enabled"] = bool(ordering.get("harmonic"))
+    daypart = profile.get("daypart") or {}
+    values["daypart_enabled"] = bool(daypart.get("enabled"))
+    values["daypart_preset"] = daypart.get("preset") or "rise_and_settle"
+    values["daypart_timezone"] = daypart.get("timezone") or ""
     if ptype == "clap_query":
         values["clap_query"] = programming.get("query") or ""
     elif ptype == "lyrics_query":
@@ -5590,6 +5899,12 @@ def _form_values_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
                     break
     elif ptype == "similar_seed":
         values["seed_id"] = programming.get("seed_id") or ""
+    elif ptype == "journey":
+        journey = programming.get("journey") or {}
+        values["seed_id"] = journey.get("start_id") or ""
+        values["journey_end_mood"] = journey.get("end_mood") or ""
+        values["journey_max_steps"] = journey.get("max_steps") or 8
+        values["journey_timezone"] = journey.get("timezone") or ""
     return values
 
 
@@ -5700,6 +6015,7 @@ def _page_script(
     mood_centroid: document.getElementById('field-mood'),
     alchemy_anchor: document.getElementById('field-anchor'),
     similar_seed: document.getElementById('field-seed'),
+    journey: document.getElementById('field-journey'),
   }};
   function syncType() {{
     if (!typeSelect) return;
@@ -5713,6 +6029,13 @@ def _page_script(
          Step 2 programming was lost on deploy. Hidden inactive fields are ignored
          server-side via programming_type. */
     }});
+    /* A journey reuses the seed-track picker for its start track, so show that
+       block for both similar_seed and journey. */
+    const seedEl = document.getElementById('field-seed');
+    if (seedEl && (t === 'journey' || t === 'similar_seed')) {{
+      seedEl.hidden = false;
+      seedEl.style.display = '';
+    }}
   }}
   function clusterLabel(meta, idx) {{
     const index = meta.index != null ? meta.index : idx;
@@ -7466,6 +7789,8 @@ def _home_page():
             values["living_enabled"] = request.form.get("living_enabled") == "on"
             values["living_auto_add"] = request.form.get("living_auto_add") == "on"
             values["living_auto_refresh"] = request.form.get("living_auto_refresh") == "on"
+            values["ordering_enabled"] = request.form.get("ordering_enabled") == "on"
+            values["daypart_enabled"] = request.form.get("daypart_enabled") == "on"
 
             values["bootstrap_enabled"] = request.form.get("bootstrap_enabled") == "on"
 
@@ -7929,6 +8254,62 @@ def _home_page():
     return render_page(body, title="Alchemy FM Channel Designer")
 
 
+def _backup_result_page(message: str, *, ok: bool) -> str:
+    tone = "#166534" if ok else "#991b1b"
+    settings_url = url_for("alchemy_fm_bridge.settings")
+    designer_url = url_for("alchemy_fm_bridge.home")
+    body = (
+        f"<p style='color:{tone};font-weight:600;'>{html.escape(message)}</p>"
+        f"<p><a href='{html.escape(settings_url)}'>Back to Settings</a> &middot; "
+        f"<a href='{html.escape(designer_url)}'>Open Channel Designer</a></p>"
+    )
+    return render_page(body, title="Channel Designer — Restore")
+
+
+@bp.route("/backup/export")
+def backup_export():
+    from flask import Response
+    from datetime import datetime, timezone
+
+    try:
+        data = _export_backup_data()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Channel Designer backup export failed")
+        return jsonify({"error": str(exc)}), 500
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    filename = f"alchemyfm-channels-{stamp}.json"
+    return Response(
+        json.dumps(data, indent=2),
+        mimetype="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@bp.route("/backup/restore", methods=["POST"])
+def backup_restore():
+    upload = request.files.get("backup_file")
+    if upload is None or not (upload.filename or "").strip():
+        return _backup_result_page("No backup file was selected.", ok=False)
+    try:
+        raw = upload.read().decode("utf-8")
+        data = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return _backup_result_page("That file is not valid JSON.", ok=False)
+    try:
+        summary = _restore_backup_data(data)
+    except ChannelDesignerError as exc:
+        return _backup_result_page(str(exc), ok=False)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Channel Designer backup restore failed")
+        return _backup_result_page(f"Restore failed: {exc}", ok=False)
+    msg = (
+        f"Restored {summary['channels']} channel(s) and "
+        f"{summary['pool_items']} living-pool item(s). "
+        "Re-deploy each restored channel to re-link it to Alchemy FM."
+    )
+    return _backup_result_page(msg, ok=True)
+
+
 @bp.route("/settings", methods=["GET", "POST"])
 def settings():
     if request.method == "POST":
@@ -7980,7 +8361,26 @@ def settings():
         "<button type='submit'>Save</button>"
         "</form>"
     )
-    return render_page(body, title="Alchemy FM Bridge Settings")
+    backup_section = (
+        "<section style='margin-top:2rem;padding-top:1.25rem;"
+        "border-top:1px solid rgba(148,163,184,.35);max-width:36rem;'>"
+        "<h3 style='margin:0 0 .5rem;'>Backup &amp; Restore</h3>"
+        "<p class='hint'>Download all your channel designs and living pools as a JSON file, "
+        "or restore them from a backup. <strong>Credentials are never included.</strong> "
+        "Restoring merges by slug — a channel with the same slug is overwritten, others are "
+        "left untouched. Re-deploy restored channels to re-link them to Alchemy FM.</p>"
+        f"<p><a href='{html.escape(url_for('alchemy_fm_bridge.backup_export'))}' "
+        "style='display:inline-block;padding:.5rem .9rem;border:1px solid rgba(148,163,184,.5);"
+        "border-radius:.4rem;text-decoration:none;'>&#8595; Download Backup</a></p>"
+        f"<form method='post' action='{html.escape(url_for('alchemy_fm_bridge.backup_restore'))}' "
+        "enctype='multipart/form-data' "
+        "style='display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;'>"
+        "<input type='file' name='backup_file' accept='application/json,.json' required>"
+        "<button type='submit'>Restore from Backup</button>"
+        "</form>"
+        "</section>"
+    )
+    return render_page(body + backup_section, title="Alchemy FM Bridge Settings")
 
 
 def _patch_cron_scheduled_tasks_label() -> None:
