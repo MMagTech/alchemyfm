@@ -28,7 +28,10 @@ source_password = "{source_password}"
 
 def make_station(~slug, ~mount, ~name, ~description) =
   playlist_path = "/data/stations/" ^ slug ^ "/queue.m3u"
-  src = playlist(id="pl-" ^ slug, reload_mode="watch", playlist_path)
+  # mode="normal" is load-bearing: playlist() defaults to "randomize", which
+  # shuffles the queue.m3u the backend just ordered (harmonic/daypart/journey
+  # sequencing) and makes every watch-reload jump to a random position.
+  src = playlist(id="pl-" ^ slug, mode="normal", reload_mode="watch", playlist_path)
 {crossfade_line}  def on_start(m) =
     artist = m["artist"] ?? ""
     title = m["title"] ?? ""

@@ -17,6 +17,7 @@ from app.services.backup import create_backup, prune_old_backups
 from app.services.broadcast_settings import (
     apply_broadcast_settings,
     get_broadcast_settings,
+    record_icecast_restarted,
     update_broadcast_settings,
 )
 from app.services.icecast_restart import icecast_restart_enabled, restart_icecast_container
@@ -97,11 +98,13 @@ def save_broadcast_settings(
 
 
 @router.post("/restart-icecast", response_model=IcecastRestartResponse)
-def restart_icecast():
+def restart_icecast(db: Session = Depends(get_db)):
     try:
         container_name = restart_icecast_container()
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    # The restarted Icecast now enforces whatever icecast.xml holds.
+    record_icecast_restarted(db)
     return IcecastRestartResponse(ok=True, container=container_name)
 
 

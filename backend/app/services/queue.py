@@ -676,14 +676,30 @@ def mark_track_started(db: Session, station: Station, artist: str, title: str) -
     if matched:
         knowledge_item_id = matched.item_id
         passed = True
+        swept = 0
         for item in pending:
             if item.id == matched.id:
                 item.status = QueueItemStatus.playing
                 passed = False
             elif passed:
                 item.status = QueueItemStatus.played
+                swept += 1
             else:
                 break
+        if swept > 3:
+            # With Liquidsoap playing queue.m3u in order, a track start should
+            # match at or near the queue head. A deep match means playback
+            # skipped queued tracks (e.g. a playlist reload landing off-head)
+            # and this sweep just discarded them unaired -- worth a trace.
+            logger.warning(
+                "Track start for '%s - %s' on station %s matched %s deep in the "
+                "queue; %s queued tracks marked played without airing",
+                artist,
+                title,
+                station.slug,
+                swept + 1,
+                swept,
+            )
         db.add(
             PlayHistory(
                 station_id=station.id,

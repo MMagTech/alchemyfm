@@ -164,6 +164,11 @@ class BroadcastSettings(Base):
     backup_keep_count: Mapped[int] = mapped_column(Integer, default=7)
     backup_auto_enabled: Mapped[bool] = mapped_column(default=True)
     log_level: Mapped[str] = mapped_column(String(16), default="INFO")
+    # The <sources> limit the RUNNING Icecast was last started with. Icecast
+    # only reads icecast.xml at startup, so the freshly written limit and the
+    # enforced one diverge until a restart; 0 means "unknown" and forces a
+    # sync on the next apply.
+    icecast_applied_sources: Mapped[int] = mapped_column(Integer, default=0)
 
 
 _is_sqlite = settings.database_url.startswith("sqlite")
@@ -305,6 +310,7 @@ def _migrate_db() -> None:
                 ("backup_keep_count", "INTEGER NOT NULL DEFAULT 7"),
                 ("backup_auto_enabled", "INTEGER NOT NULL DEFAULT 1"),
                 ("log_level", f"VARCHAR(16) NOT NULL DEFAULT '{settings.log_level}'"),
+                ("icecast_applied_sources", "INTEGER NOT NULL DEFAULT 0"),
             ):
                 if col not in cols:
                     conn.execute(text(f"ALTER TABLE broadcast_settings ADD COLUMN {col} {ddl}"))

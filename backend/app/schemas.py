@@ -137,6 +137,9 @@ class StationAdmin(StationDetail):
     created_at: datetime
     has_uploaded_artwork: bool = False
     external_artwork_url: str = ""
+    # Set when this create/update left Icecast short on source slots (the
+    # station is saved but cannot come on air until Icecast restarts).
+    icecast_warning: str = ""
 
 
 class HealthResponse(BaseModel):
