@@ -34,25 +34,54 @@ LIVE_SOURCE_TYPES = frozenset(
 )
 
 
+MAX_PER_ARTIST = 3
+
+
 def filter_track_refs(
     refs: list[TrackRef],
     exclude: set[str],
     blocked_artists: set[str],
     target: int,
+    *,
+    max_per_artist: int = MAX_PER_ARTIST,
 ) -> list[TrackRef]:
-    filtered: list[TrackRef] = []
-    seen_artists: set[str] = set()
-    for ref in refs:
-        if ref.item_id in exclude:
-            continue
-        artist_key = ref.artist.lower()
-        if artist_key in blocked_artists or artist_key in seen_artists:
-            continue
-        filtered.append(ref)
-        seen_artists.add(artist_key)
-        if len(filtered) >= target:
-            break
-    return filtered
+    """Pick up to `target` refs, loosening soft rules rather than starving.
+
+    Artist rules are preferences; repeating a track is not. So `exclude` (queued
+    or just-played ids) is never relaxed, while the artist constraints give way
+    one at a time. The first sweep is the old strict behaviour -- one track per
+    artist -- so a healthy station picks exactly what it always did, and the
+    later sweeps only run when that would return a short batch (thin library,
+    narrow filters, or a pool dominated by a few artists).
+    """
+    picked: list[TrackRef] = []
+    taken: set[str] = set()
+    per_artist: dict[str, int] = {}
+
+    def sweep(*, artist_cap: int | None, respect_separation: bool) -> None:
+        for ref in refs:
+            if len(picked) >= target:
+                return
+            if ref.item_id in exclude or ref.item_id in taken:
+                continue
+            artist_key = ref.artist.lower()
+            if respect_separation and artist_key in blocked_artists:
+                continue
+            if artist_cap is not None and per_artist.get(artist_key, 0) >= artist_cap:
+                continue
+            picked.append(ref)
+            taken.add(ref.item_id)
+            per_artist[artist_key] = per_artist.get(artist_key, 0) + 1
+
+    sweep(artist_cap=1, respect_separation=True)
+    if len(picked) < target:
+        sweep(artist_cap=max(1, max_per_artist), respect_separation=True)
+    if len(picked) < target:
+        sweep(artist_cap=None, respect_separation=True)
+    if len(picked) < target:
+        # Last resort: ignore artist separation. Still never repeats a track.
+        sweep(artist_cap=None, respect_separation=False)
+    return picked
 
 
 async def fetch_programming_batch(station: Station, count: int) -> list[TrackRef]:

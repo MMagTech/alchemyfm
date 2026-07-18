@@ -19,6 +19,7 @@ from app.services.refill import (
     harmonic_ordering_enabled,
     import_batch_to_pool,
     last_played_item_id,
+    pool_count,
     shape_refill_batch,
 )
 
@@ -148,7 +149,14 @@ async def extend_queue(
 
     try:
         target = count or station.queue_target
-        blocked_ids = _recent_item_ids(db, station.id)
+        # Clamp the no-repeat window to the pool. A fixed 200-track history can
+        # cover a small library entirely, leaving every candidate excluded and
+        # the refill starving; keep enough headroom to actually fill a batch.
+        pool_size = pool_count(db, station.id)
+        recent_limit = 200
+        if pool_size:
+            recent_limit = max(20, min(200, pool_size - target))
+        blocked_ids = _recent_item_ids(db, station.id, limit=recent_limit)
         blocked_artists = _blocked_artists(db, station)
 
         queued_ids = {
