@@ -25,7 +25,7 @@ from plugin.api import (
     table,
 )
 
-PLUGIN_VERSION = "4.0.1"
+PLUGIN_VERSION = "4.1.0"
 PLUGIN_ID = "alchemy_fm_bridge"
 CRON_TASK_LIVING = "refresh_living"
 CRON_TASK_TYPE = f"plugin.{PLUGIN_ID}.{CRON_TASK_LIVING}"
@@ -624,6 +624,17 @@ JOURNEY_END_MOODS = (
     ("sad", "Sad"),
 )
 
+# find_path allows only ONE endpoint to be a mood/anchor; the other must be a song.
+JOURNEY_START_KINDS = (
+    ("song", "Seed Track (from Search Seed Track above)"),
+    ("anchor", "Song Alchemy Anchor"),
+)
+JOURNEY_END_KINDS = (
+    ("mood", "Mood"),
+    ("song", "Seed Track"),
+    ("anchor", "Song Alchemy Anchor"),
+)
+
 REFRESH_MODES = (
     ("similar_to_last", "Similar to Last Played (Recommended)"),
     ("no_repeats", "No Repeats (Fresh Tracks First)"),
@@ -782,22 +793,45 @@ def preview_programming(profile: dict[str, Any]) -> list[dict[str, Any]]:
 def _journey_path_rows(journey: dict[str, Any]) -> list[dict[str, Any]]:
     """Call AudioMuse find_path for a journey's start->end mood, returning the
     ordered path rows (the drift spine)."""
-    start_id = str(journey.get("start_id") or "").strip()
-    end_mood = str(journey.get("end_mood") or "").strip().lower()
-    if not start_id:
-        raise ChannelDesignerError("Pick a start track for the journey (search Seed Track).")
-    if not end_mood:
-        raise ChannelDesignerError("Choose an end mood for the journey.")
-    max_steps = int(journey.get("max_steps") or 8)
-    data = audiomuse_get(
-        "/api/find_path",
-        params={
-            "start_song_id": start_id,
-            "end_mood": end_mood,
-            "max_steps": str(max_steps),
-            "path_space": "audio",
-        },
-    )
+    params: dict[str, str] = {
+        "max_steps": str(int(journey.get("max_steps") or 8)),
+        "path_space": "audio",
+    }
+
+    start_kind = str(journey.get("start_kind") or "song").strip().lower()
+    if start_kind == "anchor":
+        anchor = str(journey.get("start_anchor") or "").strip()
+        if not anchor:
+            raise ChannelDesignerError("Choose a start anchor for the journey.")
+        params["start_anchor"] = anchor
+    else:
+        start_id = str(journey.get("start_id") or "").strip()
+        if not start_id:
+            raise ChannelDesignerError("Pick a start track for the journey (search Seed Track).")
+        params["start_song_id"] = start_id
+
+    end_kind = str(journey.get("end_kind") or "mood").strip().lower()
+    if end_kind == "anchor":
+        anchor = str(journey.get("end_anchor") or "").strip()
+        if not anchor:
+            raise ChannelDesignerError("Choose a destination anchor for the journey.")
+        params["end_anchor"] = anchor
+    elif end_kind == "song":
+        end_song = str(journey.get("end_song_id") or "").strip()
+        if not end_song:
+            raise ChannelDesignerError("Pick a destination track for the journey.")
+        params["end_song_id"] = end_song
+    else:
+        end_mood = str(journey.get("end_mood") or "").strip().lower()
+        if not end_mood:
+            raise ChannelDesignerError("Choose a destination mood for the journey.")
+        params["end_mood"] = end_mood
+
+    # mood_pct only applies when an end resolves through a centroid.
+    if start_kind == "anchor" or end_kind in ("mood", "anchor"):
+        params["mood_pct"] = str(int(journey.get("mood_pct") or 100))
+
+    data = audiomuse_get("/api/find_path", params=params)
     path = data.get("path") if isinstance(data, dict) else None
     if not isinstance(path, list) or not path:
         raise ChannelDesignerError(
@@ -863,10 +897,15 @@ def _programming_source_ref(programming: dict[str, Any]) -> str:
         return seed_id
     if ptype == "journey":
         journey = programming.get("journey") or {}
-        start_id = str(journey.get("start_id") or "").strip()
-        if not start_id:
-            raise ChannelDesignerError("Pick a start track for the journey.")
-        return start_id
+        ref = str(
+            journey.get("start_id")
+            or journey.get("start_anchor")
+            or journey.get("end_song_id")
+            or ""
+        ).strip()
+        if not ref:
+            raise ChannelDesignerError("Set a start for the journey.")
+        return ref
     raise ChannelDesignerError(f"Unsupported programming type: {ptype}")
 
 
@@ -1052,11 +1091,223 @@ DAYPART_PRESETS = (
 )
 
 
+# Mood arcs — keys must match backend app/services/daypart.py MOOD_PRESETS.
+DAYPART_MOOD_PRESETS = (
+    ("off", "Off — energy only"),
+    ("calm_to_party", "Calm → Party — quiet nights, bright days, party evenings"),
+    ("steady_relaxed", "Steady Relaxed — easy all day"),
+    ("upbeat_days", "Upbeat Days — lively daytime, wind down after dark"),
+)
+
+
+def _llm_settings() -> dict[str, str] | None:
+    """Reuse AudioMuse's own configured LLM. None when it has none.
+
+    Imported lazily so the plugin still loads (and tests still run) on cores
+    that don't expose `config`. We never store LLM credentials ourselves --
+    whatever AudioMuse is pointed at is what we use.
+    """
+    try:
+        from plugin.api import config as core_config
+    except Exception:
+        return None
+    provider = str(getattr(core_config, "AI_MODEL_PROVIDER", "") or "").strip().upper()
+    if not provider or provider == "NONE":
+        return None
+    if provider == "OLLAMA":
+        return {
+            "provider": "OLLAMA",
+            "url": str(getattr(core_config, "OLLAMA_SERVER_URL", "") or ""),
+            "model": str(getattr(core_config, "OLLAMA_MODEL_NAME", "") or ""),
+            "key": "",
+        }
+    return {
+        "provider": provider,
+        "url": str(getattr(core_config, f"{provider}_SERVER_URL", "") or ""),
+        "model": str(getattr(core_config, f"{provider}_MODEL_NAME", "") or ""),
+        "key": str(getattr(core_config, f"{provider}_API_KEY", "") or ""),
+    }
+
+
+def _llm_generate_json(prompt: str, settings: dict[str, str], *, timeout: float = 90.0) -> str:
+    """Ask the configured provider for a JSON object and return the raw text."""
+    url = (settings.get("url") or "").strip()
+    model = (settings.get("model") or "").strip()
+    if not url or not model:
+        raise ChannelDesignerError(
+            "AudioMuse has no LLM server/model configured — set one in AudioMuse settings."
+        )
+    headers = {"Content-Type": "application/json"}
+    # Ollama-style endpoints end in /api/generate regardless of the provider label.
+    if url.rstrip("/").endswith("/api/generate"):
+        payload = {"model": model, "prompt": prompt, "stream": False, "format": "json"}
+    else:
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "response_format": {"type": "json_object"},
+        }
+        if settings.get("key"):
+            headers["Authorization"] = f"Bearer {settings['key']}"
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        raise ChannelDesignerError(f"LLM request failed: {exc}") from exc
+    if isinstance(data, dict):
+        if "response" in data:  # Ollama
+            return str(data.get("response") or "")
+        choices = data.get("choices")
+        if isinstance(choices, list) and choices:
+            message = (choices[0] or {}).get("message") or {}
+            return str(message.get("content") or "")
+    raise ChannelDesignerError("LLM returned an unrecognised response shape.")
+
+
+def _coerce_choice(value: Any, allowed: tuple[tuple[str, str], ...], default: str = "") -> str:
+    """Only accept values the UI actually offers — never trust the model blindly."""
+    candidate = str(value or "").strip().lower()
+    for key, _label in allowed:
+        if candidate == key:
+            return key
+    return default
+
+
+def design_station_from_prompt(prompt: str) -> dict[str, Any]:
+    """Turn a plain-language description into validated designer form values.
+
+    Every field is checked against the same vocabularies the form offers;
+    anything the model invents is dropped rather than written into a station.
+    Returns only the keys it could validate.
+    """
+    prompt = (prompt or "").strip()
+    if len(prompt) < 3:
+        raise ChannelDesignerError("Describe the station in a few words first.")
+    settings = _llm_settings()
+    if not settings:
+        raise ChannelDesignerError(
+            "AudioMuse has no AI provider configured, so Design Full Station is "
+            "unavailable. Set one in AudioMuse settings, or build the station by hand."
+        )
+
+    moods = ", ".join(k for k, _ in JOURNEY_END_MOODS)
+    curves = ", ".join(k for k, _ in DAYPART_PRESETS)
+    mood_arcs = ", ".join(k for k, _ in DAYPART_MOOD_PRESETS)
+    instruction = (
+        "You configure an internet radio station. Reply with ONLY a JSON object, no prose.\n"
+        "Keys and allowed values:\n"
+        '  "name": short station name (max 40 chars)\n'
+        '  "programming_type": one of clap_query, lyrics_query, journey\n'
+        '  "clap_query": short phrase describing how the music SOUNDS (if programming_type=clap_query)\n'
+        '  "lyrics_query": short phrase describing lyrical THEME (if programming_type=lyrics_query)\n'
+        f'  "journey_end_mood": one of {moods} (only if programming_type=journey)\n'
+        '  "ordering_enabled": true or false (smooth harmonic/tempo transitions)\n'
+        '  "daypart_enabled": true or false (vary energy by time of day)\n'
+        f'  "daypart_preset": one of {curves}\n'
+        f'  "daypart_mood_preset": one of {mood_arcs}\n'
+        f"Station description: {prompt}\n"
+    )
+    raw = _llm_generate_json(instruction, settings)
+    text = (raw or "").strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start:
+        raise ChannelDesignerError("The AI did not return usable JSON. Try rephrasing.")
+    try:
+        data = json.loads(text[start : end + 1])
+    except json.JSONDecodeError as exc:
+        raise ChannelDesignerError(f"The AI returned malformed JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ChannelDesignerError("The AI did not return a JSON object.")
+
+    out: dict[str, Any] = {}
+    name = str(data.get("name") or "").strip()
+    if name:
+        out["name"] = name[:60]
+
+    ptype = _coerce_choice(data.get("programming_type"), PROGRAMMING_TYPES)
+    if ptype in ("clap_query", "lyrics_query", "journey"):
+        out["programming_type"] = ptype
+        if ptype == "clap_query":
+            query = str(data.get("clap_query") or "").strip()
+            if len(query) >= 3:
+                out["clap_query"] = query[:200]
+        elif ptype == "lyrics_query":
+            query = str(data.get("lyrics_query") or "").strip()
+            if len(query) >= 3:
+                out["lyrics_query"] = query[:200]
+        else:
+            mood = _coerce_choice(data.get("journey_end_mood"), JOURNEY_END_MOODS, "relaxed")
+            out["journey_end_kind"] = "mood"
+            out["journey_start_kind"] = "song"
+            out["journey_end_mood"] = mood
+
+    out["ordering_enabled"] = bool(data.get("ordering_enabled"))
+    out["daypart_enabled"] = bool(data.get("daypart_enabled"))
+    if out["daypart_enabled"]:
+        out["daypart_preset"] = _coerce_choice(
+            data.get("daypart_preset"), DAYPART_PRESETS, "rise_and_settle"
+        )
+        out["daypart_mood_preset"] = _coerce_choice(
+            data.get("daypart_mood_preset"), DAYPART_MOOD_PRESETS, "off"
+        )
+    return out
+
+
+def _journey_from_form(form) -> dict[str, Any]:
+    """Build a journey config, enforcing find_path's one-song-endpoint rule."""
+    start_kind = (form.get("journey_start_kind") or "song").strip().lower()
+    end_kind = (form.get("journey_end_kind") or "mood").strip().lower()
+    if start_kind != "song" and end_kind != "song":
+        raise ChannelDesignerError(
+            "A journey needs at least one end to be a track. Set Start or "
+            "Destination to Seed Track."
+        )
+
+    journey: dict[str, Any] = {
+        "start_kind": start_kind,
+        "end_kind": end_kind,
+        "max_steps": max(4, min(20, int(form.get("journey_max_steps") or 8))),
+        "mood_pct": max(0, min(100, int(form.get("journey_mood_pct") or 100))),
+        "timezone": (form.get("journey_timezone") or "").strip(),
+        "waypoints": [],
+    }
+
+    if start_kind == "anchor":
+        journey["start_anchor"] = (form.get("journey_start_anchor") or "").strip()
+        if not journey["start_anchor"]:
+            raise ChannelDesignerError("Choose a start anchor for the journey.")
+    else:
+        journey["start_id"] = _resolve_seed_id_from_form(form)
+        if not journey["start_id"]:
+            raise ChannelDesignerError(
+                "Pick a start track for the journey (search Seed Track)."
+            )
+
+    if end_kind == "mood":
+        journey["end_mood"] = (form.get("journey_end_mood") or "").strip().lower()
+        if not journey["end_mood"]:
+            raise ChannelDesignerError("Choose a destination mood for the journey.")
+    elif end_kind == "anchor":
+        journey["end_anchor"] = (form.get("journey_end_anchor") or "").strip()
+        if not journey["end_anchor"]:
+            raise ChannelDesignerError("Choose a destination anchor for the journey.")
+    else:
+        journey["end_song_id"] = (form.get("journey_end_song_id") or "").strip()
+        if not journey["end_song_id"]:
+            raise ChannelDesignerError(
+                "Pick a destination track for the journey, or paste a track item id."
+            )
+    return journey
+
+
 def _daypart_from_form(form) -> dict[str, Any]:
-    """Time-of-day energy config. Executed by the Alchemy FM backend on every refill."""
+    """Time-of-day energy/mood config. Executed by the backend on every refill."""
     return {
         "enabled": form.get("daypart_enabled") == "on",
         "preset": (form.get("daypart_preset") or "rise_and_settle").strip(),
+        "mood_preset": (form.get("daypart_mood_preset") or "off").strip(),
         "timezone": (form.get("daypart_timezone") or "").strip(),
     }
 
@@ -1778,21 +2029,7 @@ def profile_from_form(form, *, for_deploy: bool = False) -> dict[str, Any]:
                 "Pick a seed track from search results or paste a track item id."
             )
     elif ptype == "journey":
-        start_id = _resolve_seed_id_from_form(form)
-        if not start_id:
-            raise ChannelDesignerError(
-                "Pick a start track for the journey (search Seed Track)."
-            )
-        end_mood = (form.get("journey_end_mood") or "").strip().lower()
-        if not end_mood:
-            raise ChannelDesignerError("Choose an end mood for the journey.")
-        programming["journey"] = {
-            "start_id": start_id,
-            "end_mood": end_mood,
-            "max_steps": max(4, min(20, int(form.get("journey_max_steps") or 8))),
-            "timezone": (form.get("journey_timezone") or "").strip(),
-            "waypoints": [],
-        }
+        programming["journey"] = _journey_from_form(form)
     else:
         raise ChannelDesignerError(f"Unsupported programming type: {ptype}")
 
@@ -4296,14 +4533,25 @@ def _profile_from_values(values: dict[str, Any]) -> dict[str, Any]:
         if not programming["seed_id"]:
             programming["seed_id"] = _resolve_seed_id_from_form(values)
     elif ptype == "journey":
-        start_id = (values.get("seed_id") or "").strip() or _resolve_seed_id_from_form(values)
-        programming["journey"] = {
-            "start_id": start_id,
-            "end_mood": (values.get("journey_end_mood") or "").strip().lower(),
-            "max_steps": _parse_optional_int(values.get("journey_max_steps")) or 8,
-            "timezone": (values.get("journey_timezone") or "").strip(),
-            "waypoints": [],
-        }
+        try:
+            programming["journey"] = _journey_from_form(values)
+        except ChannelDesignerError:
+            # Values-mode is used for status rendering, where an incomplete
+            # journey is normal -- keep what is set and let _programming_incomplete
+            # flag it rather than raising mid-render.
+            programming["journey"] = {
+                "start_kind": (values.get("journey_start_kind") or "song").strip(),
+                "end_kind": (values.get("journey_end_kind") or "mood").strip(),
+                "start_id": (values.get("seed_id") or "").strip(),
+                "start_anchor": _text(values.get("journey_start_anchor")),
+                "end_mood": (values.get("journey_end_mood") or "").strip().lower(),
+                "end_anchor": _text(values.get("journey_end_anchor")),
+                "end_song_id": (values.get("journey_end_song_id") or "").strip(),
+                "max_steps": _parse_optional_int(values.get("journey_max_steps")) or 8,
+                "mood_pct": _parse_optional_int(values.get("journey_mood_pct")) or 100,
+                "timezone": (values.get("journey_timezone") or "").strip(),
+                "waypoints": [],
+            }
     slug = (
         (values.get("editing_slug") or values.get("slug") or values.get("draft_slug") or "").strip()
         or _slugify(values.get("name") or "")
@@ -4500,8 +4748,14 @@ def _programming_incomplete(programming: dict[str, Any]) -> bool:
         return not str(programming.get("seed_id") or "").strip()
     if ptype == "journey":
         journey = programming.get("journey") or {}
-        return not str(journey.get("start_id") or "").strip() or not str(
-            journey.get("end_mood") or ""
+        start_kind = str(journey.get("start_kind") or "song")
+        end_kind = str(journey.get("end_kind") or "mood")
+        start_key = "start_anchor" if start_kind == "anchor" else "start_id"
+        end_key = {"mood": "end_mood", "anchor": "end_anchor"}.get(end_kind, "end_song_id")
+        if start_kind != "song" and end_kind != "song":
+            return True  # find_path needs at least one track endpoint
+        return not str(journey.get(start_key) or "").strip() or not str(
+            journey.get(end_key) or ""
         ).strip()
     return False
 
@@ -4800,6 +5054,16 @@ def _programming_fields_html(
     anchor_sel_class = "afm-picker-selected is-set" if selected_anchor_id else "afm-picker-selected"
     anchor_sel_hidden = "" if selected_anchor_id else " hidden"
 
+    # Journey endpoint pickers
+    anchor_options = tuple(
+        [("", "— none —")]
+        + [(str(a.get("id")), str(a.get("name") or a.get("id"))) for a in anchor_list]
+    )
+    journey_start_kind = str(values.get("journey_start_kind", "song"))
+    journey_end_kind = str(values.get("journey_end_kind", "mood"))
+    journey_start_anchor = str(values.get("journey_start_anchor", ""))
+    journey_end_anchor = str(values.get("journey_end_anchor", ""))
+
     return (
         "<section class='afm-panel afm-programming-panel afm-step-panel' id='step-programming'>"
         + _step_panel_heading(
@@ -4861,6 +5125,7 @@ def _programming_fields_html(
         + f"<div id='field-seed' class='afm-field afm-seed-field afm-type-field'{hidden('similar_seed')}>"
         + _field_label("Search Seed Track")
         + f"<div class='afm-seed-search-field' id='afm-seed-track-picker' "
+        + "data-target-input='seed_id' data-set-type='similar_seed' "
         + f"data-track-search-url='{html.escape(track_search_url)}'>"
         + f"<input name='seed_search' id='seed_search' class='afm-text-input afm-seed-search-input' "
         + "autocomplete='off' role='combobox' aria-expanded='false' "
@@ -4876,11 +5141,47 @@ def _programming_fields_html(
         + f"value='{html.escape(str(values.get('seed_id', '')))}'>"
         + "</div></div>"
         + f"<div id='field-journey' class='afm-field afm-type-field'{hidden('journey')}>"
-        + "<p class='hint'>A <strong>journey</strong> drifts the station from your "
-        "<strong>start track</strong> (set it in <em>Search Seed Track</em> above) toward an "
-        "<strong>end mood</strong> across the day, looping each night. Set it once — it follows the clock.</p>"
-        + _field_label("End Mood", mandatory=True)
+        + "<p class='hint'>A <strong>journey</strong> drifts the station from a "
+        "<strong>start</strong> toward a <strong>destination</strong> across the day, looping each "
+        "night. Set it once — it follows the clock. AudioMuse requires at least one end to be a "
+        "track, so start and destination cannot both be a mood or anchor.</p>"
+        + _field_label("Start", mandatory=True)
+        + f"<select name='journey_start_kind' class='afm-select'>{_select_options(JOURNEY_START_KINDS, journey_start_kind)}</select>"
+        + "<p class='hint'>Choose <strong>Seed Track</strong> to start from the track picked in "
+        "<em>Search Seed Track</em> above, or <strong>Anchor</strong> to start from a saved vibe.</p>"
+        + "<div class='afm-field'>"
+        + _field_label("Start Anchor (When Start = Anchor)")
+        + f"<select name='journey_start_anchor' class='afm-select'>{_select_options(anchor_options, journey_start_anchor)}</select>"
+        + "</div>"
+        + _field_label("Destination", mandatory=True)
+        + f"<select name='journey_end_kind' class='afm-select'>{_select_options(JOURNEY_END_KINDS, journey_end_kind)}</select>"
+        + "<div class='afm-field'>"
+        + _field_label("Destination Mood (When Destination = Mood)")
         + f"<select name='journey_end_mood' class='afm-select'>{_select_options(JOURNEY_END_MOODS, str(values.get('journey_end_mood', '')))}</select>"
+        + "</div>"
+        + "<div class='afm-field'>"
+        + _field_label("Destination Anchor (When Destination = Anchor)")
+        + f"<select name='journey_end_anchor' class='afm-select'>{_select_options(anchor_options, journey_end_anchor)}</select>"
+        + "</div>"
+        + "<div class='afm-field'>"
+        + _field_label("Destination Track (When Destination = Seed Track)")
+        + f"<div class='afm-seed-search-field' id='afm-journey-end-picker' "
+        + "data-target-input='journey_end_song_id' "
+        + f"data-track-search-url='{html.escape(track_search_url)}'>"
+        + "<input name='journey_end_search' class='afm-text-input afm-seed-search-input' "
+        "autocomplete='off' role='combobox' aria-expanded='false' "
+        f"placeholder='Title or artist…' value='{html.escape(str(values.get('journey_end_search', '')))}'>"
+        + "<div class='afm-seed-track-results'></div>"
+        + "</div>"
+        + f"<input name='journey_end_song_id' class='afm-text-input' "
+        f"placeholder='Filled when you pick a search result' "
+        f"value='{html.escape(str(values.get('journey_end_song_id', '')))}'>"
+        + "</div>"
+        + "<label style='display:block;margin-top:.6rem;'>Mood / Anchor Travel (%)</label>"
+        + f"<input type='number' name='journey_mood_pct' min='0' max='100' "
+        f"value='{html.escape(str(values.get('journey_mood_pct', 100)))}'>"
+        + "<p class='hint'>How far toward the mood/anchor centroid the path travels. 100 = all the "
+        "way; lower values stay closer to the start. Ignored for track destinations.</p>"
         + "<label style='display:block;margin-top:.6rem;'>Path Length (Steps)</label>"
         + f"<input type='number' name='journey_max_steps' min='4' max='20' value='{html.escape(str(values.get('journey_max_steps', 8)))}'>"
         + "<p class='hint'>Waypoints from start to end mood. More = smoother, slower drift.</p>"
@@ -5217,9 +5518,10 @@ def _chat_designer_fields_html(values: dict[str, Any], *, flash_html: str = "") 
         "<summary>"
         '<span class="afm-helper-badge">Helper</span>'
         '<span><span class="afm-collapsible-title">Chat Designer</span>'
-        '<span class="afm-collapsible-hint">Use <strong>before Step 2</strong> when you are not sure what to program. '
-        "<strong>Generate Playlist Preview</strong> sets Step 2 to a <strong>Sonic Vibe (CLAP)</strong> query from your "
-        "description and shows Preview Results — it does not deploy.</span></span>"
+        '<span class="afm-collapsible-hint">Optional helper — everything here can be set by hand. '
+        "<strong>Generate Playlist Preview</strong> sets Step 2 to a <strong>Sonic Vibe (CLAP)</strong> query and "
+        "shows Preview Results. <strong>Design Full Station</strong> fills in Steps 1, 2 and 5 as a draft you "
+        "review. Neither deploys.</span></span>"
         "</summary>"
         '<div class="afm-collapsible-body">'
         f"{flash_html}"
@@ -5242,6 +5544,10 @@ def _chat_designer_fields_html(values: dict[str, Any], *, flash_html: str = "") 
         + 'data-afm-loading-panel="chat-designer" data-afm-loading-no-scroll="true" '
         + 'data-afm-ajax-preview="true" data-loading-label="Generating…">'
         "Generate Playlist Preview</button>"
+        + "<button type='submit' name='afm_action' value='design_station' formnovalidate "
+        + 'class="afm-btn afm-btn-secondary" data-afm-loading="afm-chat-loading" '
+        + 'data-afm-loading-panel="chat-designer" data-loading-label="Designing…">'
+        "Design Full Station</button>"
         + "</div>"
         + f"<input type='hidden' name='design_notes' value='{html.escape(str(values.get('design_notes', '')))}'>"
         + "</div></details>"
@@ -5503,6 +5809,7 @@ def _playback_rules_fields_html(values: dict[str, Any]) -> str:
     ordering_enabled = values.get("ordering_enabled", False)
     daypart_enabled = values.get("daypart_enabled", False)
     daypart_preset = str(values.get("daypart_preset", "rise_and_settle"))
+    daypart_mood_preset = str(values.get("daypart_mood_preset", "off"))
     daypart_timezone = str(values.get("daypart_timezone", ""))
     return (
         "<section class='afm-panel afm-step-panel'>"
@@ -5539,8 +5846,14 @@ def _playback_rules_fields_html(values: dict[str, Any]) -> str:
         "local hour, using AudioMuse energy analysis. Set it once — it runs itself.</p>"
         + "</div>"
         + "<div class='afm-field'>"
-        + _field_label("Daypart Curve")
+        + _field_label("Daypart Curve (Energy)")
         + f"<select name='daypart_preset' class='afm-select'>{_select_options(DAYPART_PRESETS, daypart_preset)}</select>"
+        + "</div>"
+        + "<div class='afm-field'>"
+        + _field_label("Daypart Mood Arc (Optional)")
+        + f"<select name='daypart_mood_preset' class='afm-select'>{_select_options(DAYPART_MOOD_PRESETS, daypart_mood_preset)}</select>"
+        + "<p class='hint'>Layers a mood on top of the energy curve, using AudioMuse mood tags "
+        "(relaxed, happy, danceable, party). Leave <strong>Off</strong> to bias by energy alone.</p>"
         + "</div>"
         + "<div class='afm-field'>"
         + _field_label("Station Timezone")
@@ -5927,6 +6240,7 @@ def _form_values_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
     daypart = profile.get("daypart") or {}
     values["daypart_enabled"] = bool(daypart.get("enabled"))
     values["daypart_preset"] = daypart.get("preset") or "rise_and_settle"
+    values["daypart_mood_preset"] = daypart.get("mood_preset") or "off"
     values["daypart_timezone"] = daypart.get("timezone") or ""
     if ptype == "clap_query":
         values["clap_query"] = programming.get("query") or ""
@@ -5948,8 +6262,14 @@ def _form_values_from_profile(profile: dict[str, Any]) -> dict[str, Any]:
     elif ptype == "journey":
         journey = programming.get("journey") or {}
         values["seed_id"] = journey.get("start_id") or ""
+        values["journey_start_kind"] = journey.get("start_kind") or "song"
+        values["journey_end_kind"] = journey.get("end_kind") or "mood"
+        values["journey_start_anchor"] = _text(journey.get("start_anchor"))
+        values["journey_end_anchor"] = _text(journey.get("end_anchor"))
+        values["journey_end_song_id"] = journey.get("end_song_id") or ""
         values["journey_end_mood"] = journey.get("end_mood") or ""
         values["journey_max_steps"] = journey.get("max_steps") or 8
+        values["journey_mood_pct"] = journey.get("mood_pct", 100)
         values["journey_timezone"] = journey.get("timezone") or ""
     return values
 
@@ -6987,11 +7307,17 @@ def _page_script(
     }}
   }})();
 
-  (function initSeedTrackTypeahead() {{
-    const picker = document.getElementById('afm-seed-track-picker');
-    const input = document.getElementById('seed_search');
-    const results = document.getElementById('afm-seed-track-results');
-    const seedIdField = document.querySelector('input[name="seed_id"]');
+  /* One typeahead per .afm-seed-search-field, so a journey can have both a
+     start and a destination picker. Each container names the input it fills
+     (data-target-input) and, optionally, a programming type to switch to when
+     a track is picked (data-set-type) -- the journey pickers must NOT switch
+     the type, only the Similar-to-Seed one does. */
+  document.querySelectorAll('.afm-seed-search-field').forEach((picker) => {{
+    const input = picker.querySelector('.afm-seed-search-input');
+    const results = picker.querySelector('.afm-seed-track-results');
+    const targetName = picker.getAttribute('data-target-input') || 'seed_id';
+    const seedIdField = document.querySelector('input[name="' + targetName + '"]');
+    const setType = picker.getAttribute('data-set-type') || '';
     const typeSelect = document.getElementById('programming_type');
     if (!picker || !input || !results) return;
 
@@ -7021,8 +7347,8 @@ def _page_script(
       const title = track.title || 'Unknown';
       const artist = track.artist || 'Unknown';
       input.value = title + ' — ' + artist;
-      if (typeSelect) {{
-        typeSelect.value = 'similar_seed';
+      if (typeSelect && setType) {{
+        typeSelect.value = setType;
         typeSelect.dispatchEvent(new Event('change', {{ bubbles: true }}));
       }}
       clearResults();
@@ -7140,7 +7466,7 @@ def _page_script(
     if ((input.value || '').trim().length >= 2 && !(seedIdField && seedIdField.value)) {{
       runSearch(input.value);
     }}
-  }})();
+  }});
 
   (function initAnchorTypeahead() {{
     const picker = document.getElementById('afm-anchor-picker');
@@ -7983,6 +8309,25 @@ def _home_page():
                             f"Chat preview — {result['track_count']} tracks. Tweak programming/filters, then deploy.",
                             "ok",
                             anchor="preview-results",
+                        )
+                    elif action == "design_station":
+                        prompt = (request.form.get("chat_prompt") or "").strip()
+                        drafted = design_station_from_prompt(prompt)
+                        # Draft only: prefill the form, never deploy. The operator
+                        # reviews every field and can override any of it.
+                        values.update(drafted)
+                        values["chat_designer_open"] = True
+                        values["chat_prompt"] = prompt
+                        scroll_anchor = "designer"
+                        filled = ", ".join(sorted(drafted.keys()))
+                        note = ""
+                        if drafted.get("programming_type") == "journey":
+                            note = " Journeys also need a start track — pick one in Search Seed Track."
+                        flashes.add(
+                            f"Drafted a station from your description ({filled}). "
+                            f"Review the steps below, then Preview and Deploy.{note}",
+                            "ok",
+                            anchor="designer",
                         )
                     elif action == "preview":
                         unfiltered = _merged_programming_tracks_unfiltered(profile, slug)
