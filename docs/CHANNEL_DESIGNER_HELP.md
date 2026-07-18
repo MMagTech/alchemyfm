@@ -55,8 +55,9 @@ In **Programming**, pick **one** type and fill its field:
 | **Mood Cluster** | Mood + cluster index | From your library analysis |
 | **Song Alchemy Anchor** | Anchor id | Reuse an existing anchor playlist |
 | **Similar to Seed Track** | One track id | Build around sonic neighbors |
+| **Journey** | Start + destination | Drift from one vibe toward another across the day |
 
-This is the **core identity** of the station. Refills and cron re-run this query (v3 live mode).
+This is the **core identity** of the station. Refills and cron re-run this programming (v3 live mode). Journeys are the exception — they follow a path built at deploy rather than repeating one query.
 
 **Optional shortcut:** **Discover Channels → Use in Designer** prefills a CLAP query. **Chat designer** is a slow LLM brainstorm — use it for ideas, then switch to a programming type and deploy.
 
@@ -151,6 +152,7 @@ Slug cannot change after first deploy.
     ├ Filters            ◄── optional per station
     ├ Bootstrap opener   ◄── optional per station
     ├ Living channel     ◄── optional per station
+    ├ Playback rules     ◄── per station (refills + sequencing)
     └ Channel + deploy   ◄── per station + Preview/Deploy
   Preview / Audition                  Your Stations (switch)
 ```
@@ -166,6 +168,7 @@ Slug cannot change after first deploy.
 | **Mood Cluster** | Pick a mood and sub-cluster from your library analysis. |
 | **Song Alchemy Anchor** | Reuse an existing anchor playlist. |
 | **Similar to Seed Track** | Build around one library track's sonic neighbors. |
+| **Journey** | Drift the station from a start (seed track or anchor) toward a destination (mood, track or anchor) across the day, looping each night. Unlike the others this does not re-run one fixed query — a path is built at deploy and the clock decides where along it you are. Mood/anchor destinations also take a **travel %** for how far toward that centroid to go. |
 
 ---
 
@@ -224,11 +227,11 @@ Wait for clustering to finish (check **Active Tasks**) before expecting playlist
 
 Collapsed helper at the **top of the form** (before Step 1), alongside Discover Channels. Use when you are not sure what to put in **Step 2 Programming**.
 
-Natural-language ideas via `POST /chat/api/chatPlaylist` with a `userInput` field. Requires AudioMuse chat/AI configured.
+Both buttons need AudioMuse's AI configured. **Suggest Programming** goes through AudioMuse's chat (`POST /chat/api/chatPlaylist`); **Draft Whole Station** calls the same configured provider directly and asks it for a station config, validating every value against the choices the form offers.
 
 - **Suggest Programming** sets Step 2 to a **Sonic Vibe (CLAP)** query from your prompt and shows Preview Results.
 - **Draft Whole Station** fills in Steps 1, 2 and 5 as a draft you review — if it picks a Journey you still choose a start track. Channel name is optional — a draft name is suggested from your description until you deploy.
-- Slow (LLM) — tweak Programming and run **Preview Programming** before deploy.
+- Slow (LLM) — often 30–90 seconds. Either way, review what it filled in, then run **Preview Programming** before deploy.
 - **Not** wired to living cron and **does not** deploy to Alchemy FM.
 
 ---
@@ -262,6 +265,27 @@ Every refill first re-runs your **Step 2 programming** query, then reuses unplay
 | **Similar to Programming Seed** | Stays near one fixed anchor track — less drift. |
 | **Programming Only** | Re-queries Step 2 and uses the pool once — no similar expansion and no pool repeats. |
 | **Stay in Source Pool** | Reuses imported tracks and allows repeats before leaving the pool. No similar-track drift. |
+
+### Sequencing (same step, both optional, both off by default)
+
+| Option | Behavior |
+|--------|----------|
+| **Smooth Transitions** | Orders each refill so neighbouring tracks share a compatible key and tempo (Camelot-style mixing), using AudioMuse tempo/key analysis. Off = tracks play in recommendation order. |
+| **Time-of-Day Energy (Daypart)** | Biases each refill toward calmer or higher-energy tracks based on the station's local hour, following a curve you pick. |
+| **Daypart Mood Arc** | Optional layer on top of the energy curve — favours a mood per time of day (e.g. relaxed mornings, party evenings). Defaults to off, so daypart stays energy-only unless you choose one. |
+
+Both daypart options need a **Station Timezone**; set them once and they follow the clock.
+
+---
+
+## Backup and restore
+
+**Plugins → Alchemy FM → Settings** has a **Backup & Restore** panel.
+
+- **Download Backup** — every channel design and living pool as one JSON file. **Credentials are never included**, so the file is safe to keep alongside your other backups.
+- **Restore from Backup** — merges by slug: a channel with the same slug is overwritten, others are left untouched. Re-deploy restored channels to re-link them to Alchemy FM.
+
+Worth doing before big changes — channel designs live in AudioMuse's database, so they are not covered by an Alchemy FM backup.
 
 ---
 
