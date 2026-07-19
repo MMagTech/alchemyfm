@@ -300,6 +300,8 @@ def health():
         count = db.query(Station).filter(Station.enabled.is_(True)).count()
         bs = get_broadcast_settings(db)
         default_theme = normalize_theme(bs.default_theme)
+        encode_format = bs.encode_format or "mp3"
+        bitrate = bs.aac_bitrate if encode_format == "aac" else bs.mp3_bitrate
     finally:
         db.close()
     return {
@@ -309,6 +311,8 @@ def health():
         "default_theme": default_theme,
         "git_sha": settings.git_sha,
         "started_at": _started_at.isoformat(),
+        "encode_format": encode_format,
+        "bitrate": bitrate or 0,
     }
 
 

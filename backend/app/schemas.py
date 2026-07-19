@@ -10,6 +10,12 @@ class TrackRef(BaseModel):
     item_id: str
     title: str
     artist: str
+    # Small same-origin thumbnail. These render 15-20 to a list while a
+    # stream is buffering, so the queue asks for 64px rather than the 300px
+    # default used for hero art.
+    cover_url: str | None = None
+    # Only set on recently-played rows; up-next hasn't happened yet.
+    played_at: datetime | None = None
 
 
 class TrackInfo(TrackRef):
@@ -149,6 +155,9 @@ class HealthResponse(BaseModel):
     default_theme: str = "amber"
     git_sha: str = "unknown"
     started_at: str
+    # What listeners are actually receiving, so the player can say so.
+    encode_format: str = "mp3"
+    bitrate: int = 0
 
 
 class BroadcastStatsRead(BaseModel):
@@ -166,6 +175,10 @@ class BroadcastSettingsRead(BaseModel):
     max_listeners: int
     default_theme: str = "amber"
     icecast_restart_available: bool = False
+    # Set when the running Icecast enforces fewer source slots than the
+    # written config needs, so the UI can say so persistently rather than
+    # only in the one response that triggered it.
+    icecast_restart_pending: bool = False
     backup_keep_count: int = 7
     backup_auto_enabled: bool = True
     log_level: str = "INFO"

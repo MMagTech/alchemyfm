@@ -1,6 +1,7 @@
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.auth import require_admin
@@ -191,6 +192,7 @@ def list_knowledge_cache(
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
     status: str | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=200),
     db: Session = Depends(get_knowledge_db),
 ):
     _require_feature()
@@ -200,6 +202,15 @@ def list_knowledge_cache(
             query = query.filter(TrackKnowledge.status == TrackKnowledgeStatus(status))
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="Invalid status") from exc
+    if q and q.strip():
+        # Status filters alone can't find one track in a cache of hundreds.
+        term = f"%{q.strip()}%"
+        query = query.filter(
+            or_(
+                TrackKnowledge.title.ilike(term),
+                TrackKnowledge.artist.ilike(term),
+            )
+        )
     total = query.count()
     rows = (
         query.order_by(TrackKnowledge.updated_at.desc())

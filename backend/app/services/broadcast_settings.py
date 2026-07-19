@@ -86,6 +86,20 @@ def _sync_icecast_source_limit(
     return None
 
 
+def icecast_restart_pending(db: Session) -> bool:
+    """True when icecast.xml asks for more source slots than the RUNNING
+    server enforces.
+
+    Icecast only reads its config at startup, so the written limit and the
+    enforced one diverge until a restart, and stations past the running limit
+    silently never come on air. Without exposing this the warning only exists
+    on the one response that caused it — miss that and nothing ever says so.
+    """
+    row = get_broadcast_settings(db)
+    applied = int(row.icecast_applied_sources or 0)
+    return applied < computed_source_slots(db)
+
+
 def record_icecast_restarted(db: Session) -> None:
     """After any successful Icecast restart, the running limit == the written
     file. Record it so limit-grow checks stay accurate."""

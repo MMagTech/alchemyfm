@@ -585,6 +585,18 @@ async def sync_station_from_icecast(
     return current
 
 
+def queue_thumb_url(item_id: str | None, size: int = 64) -> str | None:
+    """Same-origin cover thumbnail for a queue row.
+
+    Deliberately small: these lists render 15-20 images at a time, on a page
+    that is also buffering a live stream, so they ask for a thumbnail rather
+    than the 300px hero size.
+    """
+    if not item_id:
+        return None
+    return f"/api/cover/{item_id}?size={size}"
+
+
 def get_up_next(db: Session, station: Station, limit: int = 8) -> list[TrackRef]:
     items = (
         db.query(QueueItem)
@@ -596,7 +608,15 @@ def get_up_next(db: Session, station: Station, limit: int = 8) -> list[TrackRef]
         .limit(limit)
         .all()
     )
-    return [TrackRef(item_id=i.item_id, title=i.title, artist=i.artist) for i in items]
+    return [
+        TrackRef(
+            item_id=i.item_id,
+            title=i.title,
+            artist=i.artist,
+            cover_url=queue_thumb_url(i.item_id),
+        )
+        for i in items
+    ]
 
 
 def get_recently_played(db: Session, station: Station, limit: int = 10) -> list[TrackRef]:
@@ -618,7 +638,15 @@ def get_recently_played(db: Session, station: Station, limit: int = 10) -> list[
         if key in seen:
             continue
         seen.add(key)
-        result.append(TrackRef(item_id=row.item_id, title=row.title, artist=row.artist))
+        result.append(
+            TrackRef(
+                item_id=row.item_id,
+                title=row.title,
+                artist=row.artist,
+                cover_url=queue_thumb_url(row.item_id),
+                played_at=row.played_at,
+            )
+        )
         if len(result) >= limit:
             break
     return result

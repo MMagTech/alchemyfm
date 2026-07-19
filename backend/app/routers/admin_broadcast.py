@@ -17,6 +17,7 @@ from app.services.backup import create_backup, prune_old_backups
 from app.services.broadcast_settings import (
     apply_broadcast_settings,
     get_broadcast_settings,
+    icecast_restart_pending,
     record_icecast_restarted,
     update_broadcast_settings,
 )
@@ -47,7 +48,10 @@ _APPLY_TRIGGER_FIELDS = {
 def read_broadcast_settings(db: Session = Depends(get_db)):
     row = get_broadcast_settings(db)
     return BroadcastSettingsRead.model_validate(row).model_copy(
-        update={"icecast_restart_available": icecast_restart_enabled()}
+        update={
+            "icecast_restart_available": icecast_restart_enabled(),
+            "icecast_restart_pending": icecast_restart_pending(db),
+        }
     )
 
 
@@ -93,7 +97,10 @@ def save_broadcast_settings(
         # level doesn't touch Liquidsoap/Icecast, so no station restart needed.
         logging.getLogger().setLevel(getattr(logging, row.log_level, logging.INFO))
     return BroadcastSettingsRead.model_validate(row).model_copy(
-        update={"icecast_restart_available": icecast_restart_enabled()}
+        update={
+            "icecast_restart_available": icecast_restart_enabled(),
+            "icecast_restart_pending": icecast_restart_pending(db),
+        }
     )
 
 
