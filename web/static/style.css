@@ -5525,3 +5525,69 @@ body.login-page .login-shell {
   font-size: 0.7rem;
   color: var(--muted);
 }
+
+/* ---------- Login: wordmark, accent glow, password peek ---------- */
+
+body.login-page {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%,
+      color-mix(in srgb, var(--accent) 12%, transparent), transparent 60%),
+    var(--bg);
+}
+
+.login-mark {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.9rem;
+}
+
+.login-mark i {
+  display: block;
+  width: 17px;
+  height: 17px;
+  border-radius: 4px;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.login-mark span {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.login-mark em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+.login-password-wrap {
+  position: relative;
+}
+
+.login-password-wrap input {
+  padding-right: 3.2rem;
+}
+
+.login-peek {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.15rem 0.3rem;
+}
+
+.login-peek:hover,
+.login-peek:focus-visible {
+  color: var(--text);
+  outline: none;
+}
