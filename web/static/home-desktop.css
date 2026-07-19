@@ -46,6 +46,12 @@
   gap: 1.1rem;
 }
 
+/* Up to six stations can be featured; a tighter minimum lets all six share
+   one row at full shelf width instead of wrapping a lonely sixth card. */
+#stations-featured.station-grid {
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+}
+
 /* Art on top, text beneath — the cover does the identifying. */
 .station-card {
   --station-card-art: 100%;

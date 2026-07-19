@@ -379,47 +379,118 @@ const GlobalLivePlayer = {
   },
 
   // ── Mobile two-tab navigation ─────────────────────────────
-  // The phone has no room for a mini player *and* a nav bar, so Now Playing
-  // becomes a tab rather than a strip above one.
+  // The phone has no room for a mini player *and* a nav bar. Now Playing is
+  // a JUMP to the playing station's page (the full player) — the panel only
+  // appears when idle, as an invitation. The bar persists on home AND
+  // station pages; CSS keeps it phone-only.
 
   _activeTab: 'stations',
 
-  /** Only on a phone, and only on home — the station page is its own player. */
+  viewingStationSlug() {
+    try {
+      return this.slugFromStationUrl(new URL(location.href)) || '';
+    } catch {
+      return '';
+    }
+  },
+
+  /** True when the page being viewed IS the station coming out of the speakers. */
+  viewingPlayingStation() {
+    const playing = this.getAudio()?.dataset?.wantLive === '1'
+      ? this.activePlayingSlug()
+      : '';
+    return Boolean(playing && this.isStationPage() && this.viewingStationSlug() === playing);
+  },
+
+  /** Pass null for no active tab (browsing a station that isn't playing). */
+  syncTabButtons(tab) {
+    document.querySelectorAll('#live-tabs .live-tab').forEach((btn) => {
+      const on = tab != null && btn.dataset.tab === tab;
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-pressed', String(on));
+    });
+  },
+
+  /** Which tab reflects the current page: home = Stations, the playing
+      station's page = Now Playing, any other station's page = neither. */
+  pageTab() {
+    if (this.viewingPlayingStation()) return 'now';
+    return this.isStationPage() ? null : 'stations';
+  },
+
+  closeNowPlayingPanel() {
+    const panel = document.getElementById('now-playing-panel');
+    if (panel) panel.hidden = true;
+    document.body.classList.remove('np-open');
+    if (this._activeTab === 'now') this._activeTab = 'stations';
+  },
+
   tabsApply() {
     const tabs = document.getElementById('live-tabs');
     if (!tabs) return false;
-    const eligible = this.isHomePage() && !this.isStationPage();
+    const eligible = this.isHomePage() || this.isStationPage();
     tabs.hidden = !eligible;
     document.body.classList.toggle('has-live-tabs', eligible);
-    if (!eligible) this.setTab('stations', { silent: true });
+    if (!eligible) {
+      this.closeNowPlayingPanel();
+      this.syncTabButtons('stations');
+      return false;
+    }
+    // Landing on any page closes the idle panel; the highlight follows
+    // the page (home = Stations, playing station = Now Playing, other
+    // station = neither).
+    this.closeNowPlayingPanel();
+    this.syncTabButtons(this.pageTab());
     return eligible;
   },
 
   setTab(name, { silent = false } = {}) {
     const tab = name === 'now' ? 'now' : 'stations';
-    this._activeTab = tab;
 
-    const panel = document.getElementById('now-playing-panel');
-    if (panel) panel.hidden = tab !== 'now';
-    document.body.classList.toggle('np-open', tab === 'now');
+    if (tab === 'now') {
+      const wantLive = this.getAudio()?.dataset?.wantLive === '1';
+      const playingSlug = wantLive ? this.activePlayingSlug() : '';
+      if (!silent && playingSlug) {
+        // Playing: jump to the station's page, same as hitting Open on it.
+        this.closeNowPlayingPanel();
+        if (this.viewingPlayingStation()) {
+          this.syncTabButtons('now');
+          return;
+        }
+        void this.softNavigateToStation(playingSlug);
+        return;
+      }
+      // Idle: the invitation panel.
+      this._activeTab = 'now';
+      const panel = document.getElementById('now-playing-panel');
+      if (panel) panel.hidden = false;
+      document.body.classList.add('np-open');
+      this.syncTabButtons('now');
+      if (!silent) this.renderNowPlaying();
+      this.syncMiniVisibility();
+      return;
+    }
 
-    document.querySelectorAll('#live-tabs .live-tab').forEach((btn) => {
-      const on = btn.dataset.tab === tab;
-      btn.classList.toggle('is-active', on);
-      btn.setAttribute('aria-pressed', String(on));
-    });
-
-    if (tab === 'now' && !silent) this.renderNowPlaying();
+    this.closeNowPlayingPanel();
+    if (!silent && this.isStationPage()) {
+      this.softNavigateToHome();
+      return;
+    }
+    this.syncTabButtons('stations');
     this.syncMiniVisibility();
   },
 
-  /** Equaliser on the tab icon whenever something is actually playing. */
+  /** Equaliser on the tab icon whenever something is actually playing,
+      and the NP highlight tracks whether you're looking at that station. */
   syncTabIndicator() {
     const tabs = document.getElementById('live-tabs');
     if (!tabs) return;
     const audio = this.getAudio();
     const live = audio?.dataset?.wantLive === '1';
     tabs.classList.toggle('is-live', Boolean(live));
+    if (!tabs.hidden && this._activeTab !== 'now') {
+      this.syncTabButtons(this.pageTab());
+    }
   },
 
   renderNowPlaying() {
@@ -1122,7 +1193,7 @@ const GlobalLivePlayer = {
     // Keep these in step with index.html — a stale version here means a
     // soft-navigated home silently loads a different stylesheet than a
     // full page load does.
-    add('/static/home-desktop.css?v=18', '(min-width: 641px)');
+    add('/static/home-desktop.css?v=20', '(min-width: 641px)');
     add('/static/home-mobile.css?v=12', '(max-width: 640px)');
     this._homeStylesLoaded = true;
   },
@@ -1295,7 +1366,7 @@ const GlobalLivePlayer = {
         return;
       }
       const script = document.createElement('script');
-      script.src = '/static/home-page.js?v=10';
+      script.src = '/static/home-page.js?v=11';
       script.dataset.alchemyHomePage = '1';
       script.onload = resolve;
       script.onerror = reject;
