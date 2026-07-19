@@ -8,9 +8,9 @@
   <link rel="icon" href="/static/icons/favicon.ico?v=2" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png?v=2">
   <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png?v=2">
-  <link rel="stylesheet" href="/static/style.css?v=146">
+  <link rel="stylesheet" href="/static/style.css?v=148">
   <link rel="stylesheet" href="/static/themes.css?v=3">
-  <link rel="stylesheet" href="/static/admin-mobile.css?v=13" media="(max-width: 640px)">
+  <link rel="stylesheet" href="/static/admin-mobile.css?v=14" media="(max-width: 640px)">
   <script src="/static/themes.js?v=15"></script>
 </head>
 <body>
@@ -219,6 +219,10 @@
             <span class="hint" id="cache-summary-count">—</span>
           </summary>
           <div class="knowledge-cache-body">
+            <div class="knowledge-cache-search">
+              <input type="search" id="cache-q" placeholder="Search title or artist"
+                aria-label="Search cached tracks" autocomplete="off">
+            </div>
             <div class="knowledge-cache-toolbar">
               <div class="knowledge-cache-filters" role="group" aria-label="Filter by status">
                 <button type="button" class="btn btn-sm is-active" data-status="">All</button>
@@ -404,6 +408,9 @@
       document.getElementById('stat-pending').textContent = s.jobs_pending;
       document.getElementById('stat-running').textContent = s.jobs_running;
       document.getElementById('stat-failed').textContent = s.jobs_failed;
+      document.getElementById('stat-failed')
+        .closest('.knowledge-stat-card')
+        ?.classList.toggle('is-bad', Number(s.jobs_failed) > 0);
       document.getElementById('stat-cancelled').textContent = s.jobs_cancelled ?? 0;
       document.getElementById('stat-last-error').textContent = s.last_job_error || '—';
     }
@@ -481,11 +488,42 @@
     const CACHE_PAGE_SIZE = 25;
     let cacheStatus = '';
     let cacheOffset = 0;
+    let cacheQuery = '';
 
     function escapeHtml(s) {
       const d = document.createElement('div');
       d.textContent = s ?? '';
       return d.innerHTML;
+    }
+
+    /** Timestamps are naive UTC — pin them before parsing. */
+    function parseUtc(value) {
+      if (!value) return NaN;
+      return Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(value) ? value : value + 'Z');
+    }
+
+    function agoLabel(value) {
+      const t = parseUtc(value);
+      if (!Number.isFinite(t)) return '';
+      const mins = Math.floor((Date.now() - t) / 60000);
+      if (mins < 60) return `${Math.max(mins, 0)}m ago`;
+      if (mins < 1440) return `${Math.floor(mins / 60)}h ago`;
+      return `${Math.floor(mins / 1440)}d ago`;
+    }
+
+    function inLabel(value) {
+      const t = parseUtc(value);
+      if (!Number.isFinite(t)) return '';
+      const mins = Math.floor((t - Date.now()) / 60000);
+      if (mins <= 0) return 'expired';
+      if (mins < 1440) return `in ${Math.max(Math.floor(mins / 60), 1)}h`;
+      return `in ${Math.floor(mins / 1440)}d`;
+    }
+
+    function factConfHtml(f) {
+      const c = Number(f.confidence);
+      if (!Number.isFinite(c)) return '';
+      return `<span class="knowledge-fact-conf ${c >= 0.8 ? 'is-hi' : 'is-mid'}">${c.toFixed(2)}</span>`;
     }
 
     function renderCache(data) {
@@ -502,11 +540,19 @@
         document.getElementById('cache-range').textContent = `${from}–${to} of ${total}`;
         list.innerHTML = data.items.map(e => {
           const facts = (e.facts || []).map(f =>
-            `<li><span class="knowledge-fact-cat">${escapeHtml(f.category)}</span> ${escapeHtml(f.text)}</li>`
+            `<li>${factConfHtml(f)}<span class="knowledge-fact-cat">${escapeHtml(f.category)}</span> ${escapeHtml(f.text)}</li>`
           ).join('');
+          const cached = agoLabel(e.updated_at);
+          const expires = inLabel(e.expires_at);
+          const times = (cached || expires)
+            ? `<p class="knowledge-cache-times">` +
+              (cached ? `<span><span class="k">Cached</span>${cached}</span>` : '') +
+              (expires ? `<span><span class="k">Expires</span>${expires}</span>` : '') +
+              `</p>`
+            : '';
           const body = e.failure_reason
             ? `<p class="knowledge-cache-error">${escapeHtml(e.failure_reason)}</p>`
-            : (facts ? `<ul class="knowledge-fact-list">${facts}</ul>` : '<p class="hint">No facts stored.</p>');
+            : (facts ? `${times}<ul class="knowledge-fact-list">${facts}</ul>` : '<p class="hint">No facts stored.</p>');
           return `
             <details class="knowledge-cache-row">
               <summary>
@@ -530,6 +576,7 @@
       if (!document.getElementById('cache-details').open) return;
       const qs = new URLSearchParams({ offset: cacheOffset, limit: CACHE_PAGE_SIZE });
       if (cacheStatus) qs.set('status', cacheStatus);
+      if (cacheQuery) qs.set('q', cacheQuery);
       try {
         renderCache(await adminFetchJSON('/api/admin/knowledge/cache?' + qs));
       } catch (err) {
@@ -539,6 +586,16 @@
     }
 
     document.getElementById('cache-details').addEventListener('toggle', loadCache);
+
+    let cacheSearchTimer = null;
+    document.getElementById('cache-q').addEventListener('input', (e) => {
+      clearTimeout(cacheSearchTimer);
+      cacheSearchTimer = setTimeout(() => {
+        cacheQuery = e.target.value.trim();
+        cacheOffset = 0;
+        loadCache();
+      }, 300);
+    });
 
     document.querySelector('.knowledge-cache-filters').addEventListener('click', (e) => {
       const btn = e.target.closest('[data-status]');

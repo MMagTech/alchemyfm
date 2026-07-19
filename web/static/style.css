@@ -5283,3 +5283,66 @@ body.login-page .login-shell {
     justify-content: flex-end;
   }
 }
+
+/* ---------- Knowledge cache: search, confidence, timestamps ---------- */
+
+.knowledge-cache-search {
+  margin-bottom: 0.7rem;
+}
+
+.knowledge-cache-search input {
+  width: 100%;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--field);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.45rem 0.65rem;
+}
+
+.knowledge-cache-search input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.knowledge-fact-conf {
+  display: inline-block;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.66rem;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 0 0.35rem;
+  margin-right: 0.35rem;
+  vertical-align: 1px;
+}
+
+.knowledge-fact-conf.is-hi {
+  color: #90d0a8;
+  background: rgba(144, 208, 168, 0.12);
+}
+
+.knowledge-fact-conf.is-mid {
+  color: #e8c87a;
+  background: rgba(232, 200, 122, 0.12);
+}
+
+.knowledge-cache-times {
+  display: flex;
+  gap: 0.9rem;
+  margin: 0 0 0.5rem;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.knowledge-cache-times .k {
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.75;
+  margin-right: 0.3rem;
+}
+
+.knowledge-stat-card.is-bad .knowledge-stat-value {
+  color: #f0a0a0;
+}
