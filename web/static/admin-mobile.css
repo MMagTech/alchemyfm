@@ -191,3 +191,27 @@ main {
 .admin-dialog-panel {
   border-radius: var(--radius-lg);
 }
+
+/* Station rows (rebuilt as .admin-strow cells) — actions on their own row. */
+.admin-strow .adm-c-acts {
+  flex-basis: 100%;
+  margin-left: 0;
+  margin-top: 0.5rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border-subtle);
+  justify-content: flex-end;
+}
+
+.admin-sumbar {
+  gap: 0.5rem;
+  padding: 0.55rem 0.7rem;
+}
+
+.admin-restart-banner {
+  flex-wrap: wrap;
+}
+
+.admin-restart-banner .btn {
+  margin-left: 0;
+  flex-basis: 100%;
+}

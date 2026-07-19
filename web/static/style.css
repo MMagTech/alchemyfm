@@ -5068,3 +5068,218 @@ body.login-page .login-shell {
     grid-column: 1 / -1;
   }
 }
+
+/* ---------- Admin stations: summary bar + table-style rows ---------- */
+
+.admin-sumbar {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  margin: 0 0 1.1rem;
+  padding: 0.6rem 0.9rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
+
+.admin-sum {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.admin-sum b {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-sum.is-live b::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--live);
+  margin-right: 5px;
+  box-shadow: 0 0 4px color-mix(in srgb, var(--live) 45%, transparent);
+  vertical-align: middle;
+}
+
+.admin-sum.is-warn b {
+  color: #e8c87a;
+}
+
+.admin-sum-div {
+  width: 1px;
+  height: 1.15rem;
+  background: var(--border);
+}
+
+.admin-stations-group {
+  margin: 1rem 0 0.55rem;
+}
+
+.admin-stations-group:first-of-type {
+  margin-top: 0;
+}
+
+.admin-st-art {
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--field);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.admin-st-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.admin-st-art.is-off img {
+  filter: grayscale(1) brightness(0.6);
+}
+
+.adm-c-station {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.adm-c-station .admin-station-link {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-listeners {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-listeners::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.admin-listeners.is-live {
+  color: var(--text);
+}
+
+.admin-listeners.is-live::before {
+  background: var(--live);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 20%, transparent);
+}
+
+.admin-reason-line {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin: 0.45rem 0 0;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  max-width: 100%;
+  word-break: break-word;
+}
+
+.admin-reason-line .lbl {
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.85;
+  flex-shrink: 0;
+}
+
+.admin-reason-line.is-warn {
+  color: #e8c87a;
+  background: rgba(232, 200, 122, 0.09);
+}
+
+.admin-reason-line.is-bad {
+  color: #f0a0a0;
+  background: rgba(240, 160, 160, 0.09);
+}
+
+/* Mobile-first: rows are wrapped cards; desktop turns them into table rows. */
+.admin-strow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
+}
+
+.admin-strow .adm-c-station {
+  flex-basis: 100%;
+}
+
+.admin-strow .adm-c-acts {
+  margin-left: auto;
+}
+
+.admin-sthead {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .admin-sthead,
+  .admin-strow {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 2.2fr) 4.2rem 5rem minmax(0, 1.3fr) minmax(0, 1.5fr) 4.5rem max-content;
+    gap: 0 0.7rem;
+    align-items: center;
+  }
+
+  .admin-sthead {
+    padding: 0 0.95rem 0.45rem;
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .admin-sthead .adm-head-acts {
+    text-align: right;
+  }
+
+  .admin-strow {
+    padding: 0.5rem 0.95rem;
+  }
+
+  .admin-strow .adm-c-station {
+    flex-basis: auto;
+  }
+
+  .admin-strow .admin-reason-line {
+    grid-column: 1 / -1;
+  }
+
+  .admin-strow .adm-c-acts {
+    justify-content: flex-end;
+  }
+}
