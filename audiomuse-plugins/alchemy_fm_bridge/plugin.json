@@ -5,20 +5,20 @@
   "description": "Design live radio channels in AudioMuse using CLAP, lyrics, mood clusters, and Song Alchemy \u2014 preview programming, then deploy to Alchemy FM.",
   "versions": [
     {
+      "version": "4.2.0",
+      "min_core_version": "2.5.0",
+      "changelog": "Saved designs that were never deployed now appear under Your Stations with a 'Not Deployed' badge and can be deleted (drafts from Suggest Programming used to accumulate forever with no removal path). Genre filters now match subgenres \u2014 'rock' also matches 'hard rock' and 'classic rock' instead of requiring an exact match \u2014 and the filter feedback counts tracks that have no genre metadata. Deploys now surface a warning when Alchemy FM's Icecast is out of source slots, so a saved-but-off-air station says why instead of looking successfully deployed.",
+      "imageUrl": "",
+      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
+      "checksum": "50810dd5a11ca7d28326a1ac7e434d6c"
+    },
+    {
       "version": "4.1.2",
       "min_core_version": "2.5.0",
       "changelog": "Rename the Chat Designer buttons and refresh copy that went stale as features were added. 'Generate Playlist Preview' is now 'Suggest Programming' (it never produced a playlist - it sets a Step 2 query, and 'playlist' already means a Navidrome playlist elsewhere in this plugin) and 'Design Full Station' is now 'Draft Whole Station' (it fills Steps 1, 2 and 5, not everything). The panel hint described only the preview path even though it sat under both buttons. Step 2's explainer did not list the Journey type; Step 5's did not mention Smooth Transitions or Time-of-Day Energy at all. Panel subtitles and the build-a-station overview updated to match.",
       "imageUrl": "",
       "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
       "checksum": "86e5e14cfef4eb1b1f0681535a4c398b"
-    },
-    {
-      "version": "4.1.1",
-      "min_core_version": "2.5.0",
-      "changelog": "Fix Design Full Station doing nothing. The new action was handled inside a branch gated to preview/push/chat_preview, so the button never reached its handler. It is now dispatched correctly, and drafting no longer requires a valid Step 2 first - which was the point, since you use it when the form is still empty.",
-      "imageUrl": "",
-      "sourceUrl": "https://raw.githubusercontent.com/MMagTech/alchemyfm/master/audiomuse-plugins/alchemy_fm_bridge.zip",
-      "checksum": "874522d0a1ccc3086d5939369d01fd66"
     }
   ]
 }
