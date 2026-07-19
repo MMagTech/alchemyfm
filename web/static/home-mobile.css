@@ -1,5 +1,58 @@
 /* Home station cards — mobile only (640px and below). */
 
+/* No rail on a phone; the grid is the whole screen. */
+.shelf {
+  display: block;
+}
+
+.shelf-rail {
+  display: none;
+}
+
+.home-greeting {
+  margin: 0 0 1.25rem;
+}
+
+.home-greeting-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.home-greeting-sub {
+  display: flex;
+  align-items: center;
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.home-line-sep {
+  margin: 0 0.4rem;
+  opacity: 0.55;
+}
+
+.home-listen-count.is-live {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.station-card.is-off-air .station-card-art-mount {
+  filter: grayscale(1) brightness(0.62);
+}
+
+.station-card.is-off-air .station-card-head h2 {
+  color: var(--muted);
+}
+
+.station-card-listeners.is-off-air {
+  color: var(--muted);
+  background: var(--field);
+  border: 1px solid var(--border);
+}
+
 .station-grid {
   grid-template-columns: 1fr;
   gap: 1rem;

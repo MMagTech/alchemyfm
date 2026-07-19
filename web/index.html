@@ -16,8 +16,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/static/style.css?v=145">
   <link rel="stylesheet" href="/static/themes.css?v=3">
-  <link rel="stylesheet" href="/static/home-desktop.css?v=16" media="(min-width: 641px)">
-  <link rel="stylesheet" href="/static/home-mobile.css?v=11" media="(max-width: 640px)">
+  <link rel="stylesheet" href="/static/home-desktop.css?v=17" media="(min-width: 641px)">
+  <link rel="stylesheet" href="/static/home-mobile.css?v=12" media="(max-width: 640px)">
   <script src="/static/themes.js?v=15"></script>
 </head>
 <body>
@@ -39,15 +39,24 @@
       <div id="theme-picker" class="theme-picker"></div>
     </div>
   </header>
-  <main>
-    <p class="subtitle">Designed in AudioMuse. Live on Alchemy&nbsp;FM.</p>
-    <div id="featured-section" hidden>
-      <p class="section-label"><span class="section-label-star" aria-hidden="true">&#9733;</span>Featured</p>
-      <div id="stations-featured" class="station-grid"></div>
-      <p class="section-label" id="all-stations-label" hidden>All Stations</p>
-    </div>
-    <div id="stations" class="station-grid">
-      <p class="empty">Loading stations…</p>
+  <main class="shelf">
+    <aside class="shelf-rail" aria-labelledby="shelf-rail-label">
+      <p class="shelf-rail-label" id="shelf-rail-label">Stations<span class="shelf-rail-count" id="shelf-rail-count"></span></p>
+      <ul class="shelf-rail-list" id="shelf-rail-list"></ul>
+    </aside>
+    <div class="shelf-main">
+      <div class="home-greeting">
+        <h2 class="home-greeting-title" id="home-greeting">Welcome</h2>
+        <p class="home-greeting-sub" id="home-broadcast-line"></p>
+      </div>
+      <div id="featured-section" hidden>
+        <p class="section-label"><span class="section-label-star" aria-hidden="true">&#9733;</span>Featured</p>
+        <div id="stations-featured" class="station-grid"></div>
+        <p class="section-label" id="all-stations-label" hidden>All Stations</p>
+      </div>
+      <div id="stations" class="station-grid">
+        <p class="empty">Loading stations…</p>
+      </div>
     </div>
   </main>
   <div id="global-live-shell">
@@ -86,7 +95,7 @@
   <script src="/static/live-audio-graph.js?v=8"></script>
   <script src="/static/tuning-static.js?v=6"></script>
   <script src="/static/global-live-player.js?v=40"></script>
-  <script src="/static/home-page.js?v=8"></script>
+  <script src="/static/home-page.js?v=9"></script>
   <script src="/static/app.js?v=55"></script>
   <script src="/static/admin-library-controls.js?v=20"></script>
   <script>
