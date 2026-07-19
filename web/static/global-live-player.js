@@ -255,6 +255,10 @@ const GlobalLivePlayer = {
           <a id="live-mini-station" class="live-mini-station" href="#">Station</a>
           <p id="live-mini-track" class="live-mini-track">Live</p>
         </div>
+        <div class="live-mini-status">
+          <span id="live-mini-live" class="live-mini-live" hidden>Live</span>
+          <span id="live-mini-listeners" class="live-mini-listeners" hidden></span>
+        </div>
         <button type="button" id="live-mini-viz-btn" class="live-mini-viz-btn"
           aria-label="Fullscreen visuals" title="Fullscreen visuals" hidden>
           <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" focusable="false">
@@ -296,6 +300,43 @@ const GlobalLivePlayer = {
       volume: document.getElementById('live-mini-volume'),
       vizBtn: document.getElementById('live-mini-viz-btn'),
     };
+  },
+
+  /**
+   * Live / Off air pill and listener count in the playbar. Kept separate from
+   * updateMiniMeta() because most callers of that have no station detail to
+   * hand, and passing undefined would blank a perfectly good reading.
+   * Values are cached so play/pause can re-render without a fetch.
+   */
+  syncMiniStatus(next) {
+    if (next) this._miniStatus = { ...(this._miniStatus || {}), ...next };
+    const { listeners = null, onAir = null } = this._miniStatus || {};
+
+    const liveEl = document.getElementById('live-mini-live');
+    const listenersEl = document.getElementById('live-mini-listeners');
+    const audio = this.getAudio();
+    const wantLive = audio?.dataset?.wantLive === '1';
+
+    if (liveEl) {
+      const offAir = onAir === false;
+      liveEl.classList.toggle('is-off-air', offAir);
+      if (offAir) {
+        liveEl.textContent = 'Off air';
+        liveEl.hidden = false;
+      } else {
+        liveEl.textContent = 'Live';
+        liveEl.hidden = !wantLive;
+      }
+    }
+
+    if (listenersEl) {
+      const count = Number(listeners);
+      const show = Number.isFinite(count) && count > 0 && onAir !== false;
+      listenersEl.hidden = !show;
+      if (show) {
+        listenersEl.textContent = count === 1 ? '1 listening' : `${count} listening`;
+      }
+    }
   },
 
   syncMiniVizButton() {
@@ -550,6 +591,7 @@ const GlobalLivePlayer = {
         np: s.now_playing,
         artworkUrl: (s.now_playing && s.now_playing.cover_url) || s.artwork_url || '',
       });
+      this.syncMiniStatus({ listeners: s.listeners, onAir: s.on_air });
 
       if ((this.isHomePage() || this.isOnSoftHome()) &&
           typeof AlchemyHome !== 'undefined' &&

@@ -14,7 +14,7 @@
   <meta name="apple-mobile-web-app-title" content="Alchemy FM">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="/static/style.css?v=145">
+  <link rel="stylesheet" href="/static/style.css?v=146">
   <link rel="stylesheet" href="/static/themes.css?v=3">
   <link rel="stylesheet" href="/static/home-desktop.css?v=17" media="(min-width: 641px)">
   <link rel="stylesheet" href="/static/home-mobile.css?v=12" media="(max-width: 640px)">
@@ -72,6 +72,10 @@
         <a id="live-mini-station" class="live-mini-station" href="#">Station</a>
         <p id="live-mini-track" class="live-mini-track">Live</p>
       </div>
+      <div class="live-mini-status">
+        <span id="live-mini-live" class="live-mini-live" hidden>Live</span>
+        <span id="live-mini-listeners" class="live-mini-listeners" hidden></span>
+      </div>
       <button type="button" id="live-mini-viz-btn" class="live-mini-viz-btn"
         aria-label="Fullscreen visuals" title="Fullscreen visuals" hidden>
         <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" focusable="false">
@@ -94,7 +98,7 @@
   </div>
   <script src="/static/live-audio-graph.js?v=8"></script>
   <script src="/static/tuning-static.js?v=6"></script>
-  <script src="/static/global-live-player.js?v=41"></script>
+  <script src="/static/global-live-player.js?v=42"></script>
   <script src="/static/home-page.js?v=9"></script>
   <script src="/static/app.js?v=55"></script>
   <script src="/static/admin-library-controls.js?v=20"></script>

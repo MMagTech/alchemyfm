@@ -2690,6 +2690,64 @@ body.live-station-page .live-mini-player {
   overflow: hidden;
 }
 
+/* Playbar readouts. Desktop has room for the live state and headcount;
+   a phone does not, so they stay hidden there. */
+.live-mini-status {
+  display: none;
+  align-items: center;
+  gap: 0.6rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+@media (min-width: 641px) {
+  .live-mini-status {
+    display: flex;
+  }
+}
+
+.live-mini-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-border);
+}
+
+.live-mini-live::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--live);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 22%, transparent);
+}
+
+.live-mini-live.is-off-air {
+  color: var(--muted);
+  background: var(--field);
+  border-color: var(--border);
+}
+
+.live-mini-live.is-off-air::before {
+  background: var(--border);
+  box-shadow: none;
+}
+
+.live-mini-listeners {
+  font-size: 0.74rem;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .live-mini-play-btn {
   flex-shrink: 0;
   width: 40px;
