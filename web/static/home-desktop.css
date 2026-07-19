@@ -1,165 +1,10 @@
 /* Home — desktop only (641px+).
-   Shelf layout: a rail naming every station, beside an art-forward grid. */
+   Single-column shelf: greeting, featured, then the art-forward grid.
+   (The station rail lives on the station page, where it's navigation —
+   its styles are in station-desktop.css.) */
 
 .shelf {
-  display: grid;
-  grid-template-columns: 232px minmax(0, 1fr);
-  gap: 2rem;
-  align-items: start;
   max-width: 1240px;
-}
-
-/* ---------- Rail ---------- */
-
-.shelf-rail {
-  position: sticky;
-  top: 1.5rem;
-  min-width: 0;
-}
-
-.shelf-rail-label {
-  display: flex;
-  align-items: baseline;
-  color: var(--muted);
-  font-size: 0.72rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  margin: 0 0 0.6rem;
-  padding: 0 0.55rem;
-}
-
-.shelf-rail-count {
-  font-weight: 500;
-  letter-spacing: 0.04em;
-}
-
-.shelf-rail-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.shelf-rail-link {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.4rem 0.55rem;
-  border-radius: 8px;
-  min-width: 0;
-  color: var(--text);
-  transition: background-color 0.15s ease;
-}
-
-.shelf-rail-link:hover {
-  background: var(--field);
-  color: var(--text);
-}
-
-.shelf-rail-art {
-  position: relative;
-  width: 26px;
-  height: 26px;
-  border-radius: 5px;
-  overflow: hidden;
-  flex-shrink: 0;
-  background: var(--field);
-  display: grid;
-  place-items: center;
-}
-
-.shelf-rail-art img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.shelf-rail-art-placeholder {
-  color: var(--muted);
-  font-size: 0.7rem;
-}
-
-.shelf-rail-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 0.83rem;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.shelf-rail-item.is-off-air .shelf-rail-name {
-  color: var(--muted);
-}
-
-.shelf-rail-item.is-off-air .shelf-rail-art img {
-  filter: grayscale(1) brightness(0.6);
-}
-
-.shelf-rail-item.is-playing .shelf-rail-link {
-  background: var(--accent-subtle);
-}
-
-.shelf-rail-item.is-playing .shelf-rail-name {
-  color: var(--text);
-  font-weight: 600;
-}
-
-/* Equaliser, only on the station actually playing. */
-.shelf-rail-eq {
-  display: none;
-  align-items: flex-end;
-  gap: 2px;
-  height: 10px;
-  flex-shrink: 0;
-}
-
-.shelf-rail-item.is-playing .shelf-rail-eq {
-  display: inline-flex;
-}
-
-.shelf-rail-eq i {
-  width: 2px;
-  border-radius: 1px;
-  background: var(--live);
-  animation: shelf-rail-eq 900ms ease-in-out infinite;
-}
-
-.shelf-rail-eq i:nth-child(1) {
-  height: 40%;
-  animation-delay: -200ms;
-}
-
-.shelf-rail-eq i:nth-child(2) {
-  height: 90%;
-  animation-delay: -600ms;
-}
-
-.shelf-rail-eq i:nth-child(3) {
-  height: 60%;
-  animation-delay: -400ms;
-}
-
-@keyframes shelf-rail-eq {
-  0%,
-  100% {
-    transform: scaleY(0.4);
-  }
-
-  50% {
-    transform: scaleY(1);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .shelf-rail-eq i {
-    animation: none;
-  }
 }
 
 /* ---------- Greeting ---------- */
@@ -257,6 +102,19 @@
    card (invisible in DOM checks, very visible on a desktop screen). */
 .station-card-actions .station-card-listeners {
   width: auto;
+}
+
+/* Per the mock, listeners is quiet text with the live dot — no pill box.
+   Only the "Off air" state keeps its bordered tag treatment (excluded here). */
+.station-card-actions .station-card-listeners:not(.is-off-air) {
+  min-height: 0;
+  padding: 0;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--muted);
+  background: none;
+  border: none;
+  justify-content: flex-start;
 }
 
 .station-card-actions .station-card-tune-in {
@@ -366,14 +224,3 @@
   }
 }
 
-/* Below the rail's breakpoint the two-column shelf has no room. */
-@media (max-width: 900px) {
-  .shelf {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
-  }
-
-  .shelf-rail {
-    display: none;
-  }
-}

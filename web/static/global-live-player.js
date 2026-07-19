@@ -1196,13 +1196,10 @@ const GlobalLivePlayer = {
   },
 
   /** Must mirror the <main> of index.html, or a soft-navigated home comes
-      back without the rail, greeting or featured section. */
+      back without the greeting or featured section. (No rail on home — the
+      station rail lives on the station page, where it's navigation.) */
   homeMainMarkup() {
     return `
-      <aside class="shelf-rail" aria-labelledby="shelf-rail-label">
-        <p class="shelf-rail-label" id="shelf-rail-label">Stations<span class="shelf-rail-count" id="shelf-rail-count"></span></p>
-        <ul class="shelf-rail-list" id="shelf-rail-list"></ul>
-      </aside>
       <div class="shelf-main">
         <div class="home-greeting">
           <h2 class="home-greeting-title" id="home-greeting">Welcome</h2>

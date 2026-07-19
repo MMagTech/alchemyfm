@@ -5591,3 +5591,27 @@ body.login-page {
   color: var(--text);
   outline: none;
 }
+
+/* ---------- Admin settings: stacked right column (Status + Backups) ---------- */
+
+.admin-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  min-width: 0;
+}
+
+.admin-col .admin-panel {
+  margin-bottom: 0;
+}
+
+/* Inside the Status panel the strip fills the card and loses its page margin. */
+.admin-col .admin-stat-strip {
+  max-width: none;
+  margin: 0 0 0.9rem;
+}
+
+.admin-col .admin-buildline {
+  margin-top: 0;
+  padding-top: 0.9rem;
+}

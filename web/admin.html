@@ -8,7 +8,7 @@
   <link rel="icon" href="/static/icons/favicon.ico?v=2" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png?v=2">
   <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png?v=2">
-  <link rel="stylesheet" href="/static/style.css?v=148">
+  <link rel="stylesheet" href="/static/style.css?v=149">
   <link rel="stylesheet" href="/static/themes.css?v=3">
   <link rel="stylesheet" href="/static/admin-mobile.css?v=14" media="(max-width: 640px)">
   <script src="/static/themes.js?v=15"></script>
@@ -49,17 +49,6 @@
       <h2>Settings</h2>
       <p class="admin-lede">Appearance, encoding, listener limits, and backups shared by all stations.</p>
     </header>
-
-    <div class="admin-stat-strip" aria-label="Live broadcast stats">
-      <div class="admin-stat-tile">
-        <p class="k">Listeners</p>
-        <p class="v"><span class="live-dot" id="stat-listeners-dot" hidden></span><span id="stat-listeners">–</span></p>
-      </div>
-      <div class="admin-stat-tile">
-        <p class="k">Outbound</p>
-        <p class="v"><span id="stat-outbound">–</span><small>Mbps</small></p>
-      </div>
-    </div>
 
     <div class="admin-restart-banner" id="restart-pending-banner" hidden>
       <span class="admin-restart-banner-icon" aria-hidden="true">&#9888;</span>
@@ -103,6 +92,32 @@
       </form>
     </section>
 
+    <div class="admin-col">
+    <section class="admin-panel admin-panel-compact" id="status-section">
+      <div class="admin-panel-head">
+        <div>
+          <h2>Status</h2>
+          <p class="admin-lede">Live broadcast numbers and this build.</p>
+        </div>
+      </div>
+      <div class="admin-stat-strip" aria-label="Live broadcast stats">
+        <div class="admin-stat-tile">
+          <p class="k">Listeners</p>
+          <p class="v"><span class="live-dot" id="stat-listeners-dot" hidden></span><span id="stat-listeners">–</span></p>
+        </div>
+        <div class="admin-stat-tile">
+          <p class="k">Outbound</p>
+          <p class="v"><span id="stat-outbound">–</span><small>Mbps</small></p>
+        </div>
+      </div>
+      <div class="admin-buildline" id="admin-buildline" hidden>
+        <span class="admin-beta-chip">Beta</span>
+        <span><span class="k">Build</span> <span class="v" id="build-sha">—</span></span>
+        <span><span class="k">Up</span> <span class="v" id="build-uptime">—</span></span>
+        <span><span class="k">Encoding</span> <span class="v" id="build-encoding">—</span></span>
+      </div>
+    </section>
+
     <section class="admin-panel admin-panel-compact" id="backups-section">
       <div class="admin-panel-head">
         <div>
@@ -129,6 +144,7 @@
         </div>
       </form>
     </section>
+    </div>
 
     <section class="admin-panel admin-panel-wide" id="broadcast-section">
       <div class="admin-panel-head">
@@ -211,12 +227,6 @@
 
     </div>
 
-    <div class="admin-buildline" id="admin-buildline" hidden>
-      <span class="admin-beta-chip">Beta</span>
-      <span><span class="k">Build</span> <span class="v" id="build-sha">—</span></span>
-      <span><span class="k">Up</span> <span class="v" id="build-uptime">—</span></span>
-      <span><span class="k">Encoding</span> <span class="v" id="build-encoding">—</span></span>
-    </div>
   </main>
 
   <div id="admin-help-dialog" class="admin-dialog admin-help-dialog" hidden>
