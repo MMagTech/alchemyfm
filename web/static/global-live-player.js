@@ -874,8 +874,11 @@ const GlobalLivePlayer = {
       link.dataset.alchemyHomeStyle = href;
       head.appendChild(link);
     };
-    add('/static/home-desktop.css?v=16', '(min-width: 641px)');
-    add('/static/home-mobile.css?v=11', '(max-width: 640px)');
+    // Keep these in step with index.html — a stale version here means a
+    // soft-navigated home silently loads a different stylesheet than a
+    // full page load does.
+    add('/static/home-desktop.css?v=17', '(min-width: 641px)');
+    add('/static/home-mobile.css?v=12', '(max-width: 640px)');
     this._homeStylesLoaded = true;
   },
 
@@ -947,11 +950,27 @@ const GlobalLivePlayer = {
     }
   },
 
+  /** Must mirror the <main> of index.html, or a soft-navigated home comes
+      back without the rail, greeting or featured section. */
   homeMainMarkup() {
     return `
-      <p class="subtitle">Designed in AudioMuse. Live on Alchemy FM.</p>
-      <div id="stations" class="station-grid">
-        <p class="empty">Loading stations…</p>
+      <aside class="shelf-rail" aria-labelledby="shelf-rail-label">
+        <p class="shelf-rail-label" id="shelf-rail-label">Stations<span class="shelf-rail-count" id="shelf-rail-count"></span></p>
+        <ul class="shelf-rail-list" id="shelf-rail-list"></ul>
+      </aside>
+      <div class="shelf-main">
+        <div class="home-greeting">
+          <h2 class="home-greeting-title" id="home-greeting">Welcome</h2>
+          <p class="home-greeting-sub" id="home-broadcast-line"></p>
+        </div>
+        <div id="featured-section" hidden>
+          <p class="section-label"><span class="section-label-star" aria-hidden="true">&#9733;</span>Featured</p>
+          <div id="stations-featured" class="station-grid"></div>
+          <p class="section-label" id="all-stations-label" hidden>All Stations</p>
+        </div>
+        <div id="stations" class="station-grid">
+          <p class="empty">Loading stations…</p>
+        </div>
       </div>`;
   },
 
@@ -983,6 +1002,7 @@ const GlobalLivePlayer = {
     const main = document.querySelector('main');
     if (main) {
       main.removeAttribute('id');
+      main.classList.add('shelf');
       main.innerHTML = this.homeMainMarkup();
     }
 
@@ -1055,6 +1075,8 @@ const GlobalLivePlayer = {
     const main = document.querySelector('main');
     if (main) {
       main.id = 'content';
+      // The station page is a single column; drop the home shelf grid.
+      main.classList.remove('shelf');
       main.innerHTML = '<p class="empty">Loading…</p>';
     }
 
