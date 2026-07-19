@@ -1122,7 +1122,7 @@ const GlobalLivePlayer = {
     // Keep these in step with index.html — a stale version here means a
     // soft-navigated home silently loads a different stylesheet than a
     // full page load does.
-    add('/static/home-desktop.css?v=17', '(min-width: 641px)');
+    add('/static/home-desktop.css?v=18', '(min-width: 641px)');
     add('/static/home-mobile.css?v=12', '(max-width: 640px)');
     this._homeStylesLoaded = true;
   },

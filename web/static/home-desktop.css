@@ -250,7 +250,18 @@
   margin-top: 0.1rem;
 }
 
-.station-card-tune-in {
+/* The base sheet still carries the old two-column actions grid, where the
+   listeners pill and Open button are width:100% grid cells — and those rules
+   are more specific than a bare class. Match their specificity here, or both
+   children fill the whole flex row and the Open button spills out of the
+   card (invisible in DOM checks, very visible on a desktop screen). */
+.station-card-actions .station-card-listeners {
+  width: auto;
+}
+
+.station-card-actions .station-card-tune-in {
+  width: auto;
+  min-height: 0;
   padding: 0.3rem 0.7rem;
   font-size: 0.76rem;
 }
