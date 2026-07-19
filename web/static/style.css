@@ -5346,3 +5346,182 @@ body.login-page .login-shell {
 .knowledge-stat-card.is-bad .knowledge-stat-value {
   color: #f0a0a0;
 }
+
+/* ---------- Admin logs: one viewer, four source tabs ---------- */
+
+.log-tabs {
+  display: flex;
+  gap: 0.15rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.8rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.log-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.log-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.75rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.log-tab:hover {
+  color: var(--text);
+}
+
+.log-tab.is-active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.log-tab-size {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.log-tab-errdot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f0a0a0;
+  flex-shrink: 0;
+}
+
+.log-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.65rem;
+}
+
+.log-search {
+  flex: 1;
+  min-width: 10rem;
+}
+
+.log-search input {
+  width: 100%;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--field);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.6rem;
+}
+
+.log-search input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.log-lvlseg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.log-lvlseg button {
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.35rem 0.7rem;
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.log-lvlseg button:last-child {
+  border-right: none;
+}
+
+.log-lvlseg button.is-active {
+  background: var(--field);
+  color: var(--text);
+}
+
+.log-toolbar-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.log-view {
+  font-family: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.74rem;
+  line-height: 1.65;
+  padding: 0.7rem 0.8rem;
+  height: 24rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg) 82%, #000);
+}
+
+.log-line {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 0 0.25rem;
+  border-radius: 3px;
+  color: color-mix(in srgb, var(--text) 88%, var(--muted));
+}
+
+.log-line.is-debug {
+  opacity: 0.55;
+}
+
+.log-line.is-warn {
+  background: rgba(232, 200, 122, 0.09);
+  color: #e8c87a;
+}
+
+.log-line.is-error {
+  background: rgba(240, 160, 160, 0.1);
+  color: #f0a0a0;
+}
+
+.log-line mark {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--text);
+  border-radius: 2px;
+}
+
+.log-empty {
+  padding: 1.4rem;
+  text-align: center;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-style: italic;
+  margin: 0;
+}
+
+.log-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+  font-size: 0.7rem;
+  color: var(--muted);
+}

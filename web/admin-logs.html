@@ -8,9 +8,9 @@
   <link rel="icon" href="/static/icons/favicon.ico?v=2" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png?v=2">
   <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png?v=2">
-  <link rel="stylesheet" href="/static/style.css?v=146">
+  <link rel="stylesheet" href="/static/style.css?v=148">
   <link rel="stylesheet" href="/static/themes.css?v=3">
-  <link rel="stylesheet" href="/static/admin-mobile.css?v=13" media="(max-width: 640px)">
+  <link rel="stylesheet" href="/static/admin-mobile.css?v=14" media="(max-width: 640px)">
   <script src="/static/themes.js?v=15"></script>
 </head>
 <body>
@@ -82,8 +82,25 @@
         </div>
         <button class="btn btn-sm" type="button" id="download-all-logs-btn">Download All Logs</button>
       </div>
-      <div id="logs-grid" class="admin-stations-grid">
-        <p class="admin-empty">Loading…</p>
+      <div class="log-tabs" id="log-tabs" role="tablist" aria-label="Log source"></div>
+      <div class="log-toolbar">
+        <div class="log-search">
+          <input type="search" id="log-q" placeholder="Search this log" aria-label="Search this log" autocomplete="off">
+        </div>
+        <div class="log-lvlseg" id="log-lvlseg" role="group" aria-label="Level filter">
+          <button type="button" class="is-active" data-lvl="all">All</button>
+          <button type="button" data-lvl="warnerr">Warn + Error</button>
+        </div>
+        <span class="log-toolbar-actions">
+          <button class="btn btn-sm" type="button" id="log-refresh-btn">Refresh</button>
+          <button class="btn btn-sm" type="button" id="log-download-btn">Download</button>
+          <button class="btn btn-sm btn-danger" type="button" id="log-clear-btn">Clear</button>
+        </span>
+      </div>
+      <div class="log-view" id="log-view"><p class="admin-empty">Loading…</p></div>
+      <div class="log-meta">
+        <span id="log-meta-lines">last 200 lines</span>
+        <span>persisted under the data volume</span>
       </div>
     </section>
   </main>
@@ -262,58 +279,139 @@
       }
     });
 
-    async function loadTail(name) {
-      const el = document.getElementById(`log-tail-${name}`);
-      if (!el) return;
-      el.textContent = 'Loading…';
+    // --- One viewer, four sources ---------------------------------------
+    let logEntries = [];
+    let currentLog = 'backend';
+    let currentLines = [];
+    let logQuery = '';
+    let logLvlMode = 'all';
+
+    function lineLevel(line) {
+      if (/\b(ERROR|CRITICAL|EROR)\b/i.test(line)) return 'error';
+      if (/\b(WARNING|WARN)\b/i.test(line)) return 'warn';
+      if (/\bDEBUG\b/i.test(line)) return 'debug';
+      return 'info';
+    }
+
+    function highlight(escaped, q) {
+      if (!q) return escaped;
+      const i = escaped.toLowerCase().indexOf(q.toLowerCase());
+      if (i === -1) return escaped;
+      return escaped.slice(0, i) + '<mark>' + escaped.slice(i, i + q.length) + '</mark>' + escaped.slice(i + q.length);
+    }
+
+    function renderLog() {
+      const view = document.getElementById('log-view');
+      const entry = logEntries.find((l) => l.name === currentLog);
+      if (entry && !entry.exists) {
+        view.innerHTML = '<p class="log-empty">(not created yet)</p>';
+        return;
+      }
+      if (!currentLines.length) {
+        view.innerHTML = '<p class="log-empty">(empty)</p>';
+        return;
+      }
+      const q = logQuery.trim();
+      let shown = 0;
+      const html = currentLines.map((line) => {
+        const level = lineLevel(line);
+        if (logLvlMode === 'warnerr' && level !== 'warn' && level !== 'error') return '';
+        if (q && line.toLowerCase().indexOf(q.toLowerCase()) === -1) return '';
+        shown++;
+        return `<span class="log-line is-${level}">${highlight(RadioApp.escape(line), q)}</span>`;
+      }).join('');
+      view.innerHTML = shown ? html : '<p class="log-empty">No lines match.</p>';
+      view.scrollTop = view.scrollHeight;
+    }
+
+    function syncLogButtons() {
+      const entry = logEntries.find((l) => l.name === currentLog);
+      const exists = Boolean(entry?.exists);
+      document.getElementById('log-download-btn').disabled = !exists;
+      document.getElementById('log-clear-btn').disabled = !exists;
+      document.getElementById('log-meta-lines').textContent = exists
+        ? `last 200 lines · ${formatBytes(entry.size)}`
+        : 'not created yet';
+    }
+
+    function renderTabs() {
+      const tabs = document.getElementById('log-tabs');
+      tabs.innerHTML = logEntries.map((entry) => {
+        const errDot = entry.name === 'icecast-error' && entry.exists && entry.size > 0
+          ? '<span class="log-tab-errdot" aria-hidden="true"></span>'
+          : '';
+        return `
+          <button type="button" role="tab" class="log-tab${entry.name === currentLog ? ' is-active' : ''}"
+            aria-selected="${entry.name === currentLog}" data-log="${entry.name}">
+            ${LOG_LABELS[entry.name] || entry.name}${errDot}
+            <span class="log-tab-size">${entry.exists ? formatBytes(entry.size) : '—'}</span>
+          </button>`;
+      }).join('');
+    }
+
+    async function loadTail() {
+      const view = document.getElementById('log-view');
+      const requested = currentLog;
       try {
-        const res = await fetch(`/api/admin/logs/${encodeURIComponent(name)}/tail?lines=200`, { credentials: 'same-origin' });
+        const res = await fetch(`/api/admin/logs/${encodeURIComponent(requested)}/tail?lines=200`, { credentials: 'same-origin' });
         if (res.status === 401) { redirectToLogin(); return; }
         const text = await res.text();
-        el.textContent = text || '(empty)';
-        el.scrollTop = el.scrollHeight;
+        if (requested !== currentLog) return;
+        currentLines = text ? text.replace(/\n$/, '').split('\n') : [];
+        renderLog();
       } catch (err) {
-        el.textContent = `Could not load: ${err.message}`;
+        if (requested !== currentLog) return;
+        view.innerHTML = `<p class="log-empty">Could not load: ${RadioApp.escape(err.message)}</p>`;
       }
     }
 
     async function loadLogs() {
-      const grid = document.getElementById('logs-grid');
       try {
         const data = await adminFetchJSON('/api/admin/logs');
-        grid.innerHTML = data.logs.map((entry) => `
-          <div class="admin-station-card">
-            <div class="admin-station-top">
-              <span class="admin-station-link">${LOG_LABELS[entry.name] || entry.name}</span>
-              <span class="admin-chip">${entry.exists ? formatBytes(entry.size) : 'not created yet'}</span>
-            </div>
-            <pre class="log-tail-view" id="log-tail-${entry.name}">Loading…</pre>
-            <div class="admin-station-actions">
-              <div class="admin-actions admin-actions-ops">
-                <button class="btn btn-sm" type="button" data-action="refresh" data-name="${entry.name}">Refresh</button>
-                <button class="btn btn-sm" type="button" data-action="download" data-name="${entry.name}" ${entry.exists ? '' : 'disabled'}>Download</button>
-                <button class="btn btn-sm btn-danger" type="button" data-action="clear" data-name="${entry.name}" ${entry.exists ? '' : 'disabled'}>Clear</button>
-              </div>
-            </div>
-          </div>
-        `).join('');
-        data.logs.forEach((entry) => loadTail(entry.name));
+        logEntries = data.logs || [];
+        if (!logEntries.some((l) => l.name === currentLog) && logEntries.length) {
+          currentLog = logEntries[0].name;
+        }
+        renderTabs();
+        syncLogButtons();
+        await loadTail();
       } catch (err) {
-        grid.innerHTML = `<p class="admin-empty">${RadioApp.escape(err.message)}</p>`;
+        document.getElementById('log-view').innerHTML =
+          `<p class="admin-empty">${RadioApp.escape(err.message)}</p>`;
       }
     }
 
-    document.getElementById('logs-grid').addEventListener('click', (e) => {
-      const btn = e.target.closest('button[data-action]');
+    document.getElementById('log-tabs').addEventListener('click', (e) => {
+      const tab = e.target.closest('.log-tab');
+      if (!tab || tab.dataset.log === currentLog) return;
+      currentLog = tab.dataset.log;
+      currentLines = [];
+      renderTabs();
+      syncLogButtons();
+      document.getElementById('log-view').innerHTML = '<p class="admin-empty">Loading…</p>';
+      loadTail();
+    });
+
+    document.getElementById('log-q').addEventListener('input', (e) => {
+      logQuery = e.target.value;
+      renderLog();
+    });
+
+    document.getElementById('log-lvlseg').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-lvl]');
       if (!btn) return;
-      const name = btn.dataset.name;
-      if (btn.dataset.action === 'refresh') {
-        loadTail(name);
-      } else if (btn.dataset.action === 'download') {
-        window.location.href = `/api/admin/logs/${encodeURIComponent(name)}/download`;
-      } else if (btn.dataset.action === 'clear') {
-        openClearDialog(name);
-      }
+      document.querySelectorAll('#log-lvlseg [data-lvl]')
+        .forEach((b) => b.classList.toggle('is-active', b === btn));
+      logLvlMode = btn.dataset.lvl;
+      renderLog();
+    });
+
+    document.getElementById('log-refresh-btn').addEventListener('click', () => loadLogs());
+    document.getElementById('log-download-btn').addEventListener('click', () => {
+      window.location.href = `/api/admin/logs/${encodeURIComponent(currentLog)}/download`;
+    });
+    document.getElementById('log-clear-btn').addEventListener('click', () => {
+      openClearDialog(currentLog);
     });
 
     document.getElementById('download-all-logs-btn').addEventListener('click', () => {
