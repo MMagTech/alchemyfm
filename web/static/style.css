@@ -1,7 +1,8 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 
 :root {
-  /* Violet — default full palette */
+  /* Dark neutrals + the default amber accent. themes.css layers the other
+     accents and the light-mode neutrals on top of this. */
   --bg: #09090b;
   --surface: #111113;
   --surface-raised: #18181b;
@@ -11,14 +12,19 @@
   --border-subtle: #1f1f23;
   --text: #fafafa;
   --muted: #a1a1aa;
-  --accent: #8b5cf6;
-  --accent-hover: #a78bfa;
-  --accent-text: #ede9fe;
+  --accent: #f59e0b;
+  --accent-hover: #fbbf24;
+  /* Derived rather than hard-coded so every accent gets a readable
+     on-accent text colour for free. */
+  --accent-text: color-mix(in srgb, var(--accent) 32%, #ffffff);
   --accent-subtle: color-mix(in srgb, var(--accent) 14%, transparent);
   --accent-muted: color-mix(in srgb, var(--accent) 10%, transparent);
   --accent-border: color-mix(in srgb, var(--accent) 32%, transparent);
-  --live: #c084fc;
+  --live: #fbbf24;
   --live-glow: color-mix(in srgb, var(--live) 55%, transparent);
+  /* Cards need elevation in light mode; in dark they separate by brightness,
+     so this is a no-op shadow that can still compose in a shadow list. */
+  --card-shadow: 0 0 0 transparent;
   --radius: 12px;
   --radius-lg: 16px;
   --radius-pill: 999px;
@@ -30,7 +36,13 @@
   --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.22);
   --mobile-header-glass: color-mix(in srgb, var(--surface) 78%, transparent);
   --header-blur: 16px;
-  --page-glow: none;
+  /* Derived from the accent, so the ambient page glow follows the theme
+     instead of needing a hand-tuned gradient per palette. */
+  --page-glow: radial-gradient(
+    ellipse 90% 55% at 50% -15%,
+    color-mix(in srgb, var(--accent) 13%, transparent),
+    transparent 58%
+  );
 }
 
 /* Alternate themes — see themes.css */
@@ -86,6 +98,107 @@ html {
   background-color: var(--field);
   border-color: var(--border);
   outline: none;
+}
+
+/* Accent swatches + light/dark toggle — replaces the old theme <select>. */
+.theme-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.theme-accents {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.theme-swatch {
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  background: var(--swatch);
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.theme-swatch:hover {
+  transform: scale(1.15);
+}
+
+.theme-swatch[aria-pressed="true"] {
+  border-color: var(--text);
+  transform: scale(1.05);
+}
+
+.theme-swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.theme-mode-toggle {
+  display: grid;
+  place-items: center;
+  width: var(--header-ctrl-h);
+  height: var(--header-ctrl-h);
+  padding: 0;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.82rem;
+  line-height: 1;
+}
+
+.theme-mode-toggle:hover {
+  color: var(--text);
+  background: var(--field);
+  border-color: var(--border);
+}
+
+.theme-mode-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Half-disc for "follows your device", then sun and moon for a pinned mode. */
+.theme-mode-toggle[data-mode="system"] .theme-mode-icon::before {
+  content: "\25D0";
+}
+
+.theme-mode-toggle[data-mode="light"] .theme-mode-icon::before {
+  content: "\2600";
+}
+
+.theme-mode-toggle[data-mode="dark"] .theme-mode-icon::before {
+  content: "\263E";
+}
+
+/* Same swatches, roomier, for the admin "default accent" control. */
+.admin-accent-picker .theme-accents {
+  gap: 0.5rem;
+  padding: 0.15rem 0;
+}
+
+.admin-accent-picker .theme-swatch {
+  width: 22px;
+  height: 22px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-swatch {
+    transition: none;
+  }
+
+  .theme-swatch:hover,
+  .theme-swatch[aria-pressed="true"] {
+    transform: none;
+  }
 }
 
 .theme-select:focus-visible {

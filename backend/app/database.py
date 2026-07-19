@@ -158,7 +158,7 @@ class BroadcastSettings(Base):
     genre: Mapped[str] = mapped_column(String(100), default="Radio")
     crossfade_sec: Mapped[int] = mapped_column(Integer, default=0)
     max_listeners: Mapped[int] = mapped_column(Integer, default=100)
-    default_theme: Mapped[str] = mapped_column(String(32), default="violet")
+    default_theme: Mapped[str] = mapped_column(String(32), default="amber")
     artist_bio_enabled: Mapped[bool] = mapped_column(default=True)
     default_navidrome_playlist_id: Mapped[str] = mapped_column(String(100), default="")
     backup_keep_count: Mapped[int] = mapped_column(Integer, default=7)

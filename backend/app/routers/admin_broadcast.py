@@ -21,6 +21,7 @@ from app.services.broadcast_settings import (
     update_broadcast_settings,
 )
 from app.services.icecast_restart import icecast_restart_enabled, restart_icecast_container
+from app.themes import normalize_theme
 
 router = APIRouter(
     prefix="/api/admin/broadcast",
@@ -53,9 +54,8 @@ def read_broadcast_settings(db: Session = Depends(get_db)):
 @router.get("/appearance", response_model=AppearanceSettingsRead)
 def read_appearance_settings(db: Session = Depends(get_db)):
     row = get_broadcast_settings(db)
-    theme = row.default_theme or "violet"
     return AppearanceSettingsRead(
-        default_theme=theme,
+        default_theme=normalize_theme(row.default_theme),
         artist_bio_enabled=bool(row.artist_bio_enabled),
         default_navidrome_playlist_id=row.default_navidrome_playlist_id or "",
     )
@@ -74,7 +74,7 @@ def save_appearance_settings(
         },
     )
     return AppearanceSettingsRead(
-        default_theme=row.default_theme or "violet",
+        default_theme=normalize_theme(row.default_theme),
         artist_bio_enabled=bool(row.artist_bio_enabled),
         default_navidrome_playlist_id=row.default_navidrome_playlist_id or "",
     )

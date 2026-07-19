@@ -8,10 +8,10 @@
   <link rel="icon" href="/static/icons/favicon.ico?v=2" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png?v=2">
   <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png?v=2">
-  <link rel="stylesheet" href="/static/style.css?v=142">
-  <link rel="stylesheet" href="/static/themes.css?v=2">
+  <link rel="stylesheet" href="/static/style.css?v=145">
+  <link rel="stylesheet" href="/static/themes.css?v=3">
   <link rel="stylesheet" href="/static/admin-mobile.css?v=13" media="(max-width: 640px)">
-  <script src="/static/themes.js?v=14"></script>
+  <script src="/static/themes.js?v=15"></script>
 </head>
 <body>
   <header>
@@ -59,8 +59,9 @@
       </div>
       <form id="appearance-form">
         <div class="appearance-theme-field">
-          <label for="default_theme">Default station theme</label>
-          <select id="default_theme" name="default_theme" required></select>
+          <label>Default accent</label>
+          <div id="default-accent" class="admin-accent-picker"></div>
+          <p class="hint appearance-hint">The accent new visitors see. Listeners can pick their own, and light or dark follows their device.</p>
         </div>
         <div class="appearance-playlist-field">
           <label for="default_navidrome_playlist_id">Heart Playlist (Navidrome)</label>

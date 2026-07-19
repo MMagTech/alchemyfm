@@ -15,7 +15,7 @@ DEFAULTS = {
     "genre": "Radio",
     "crossfade_sec": 0,
     "max_listeners": 100,
-    "default_theme": "violet",
+    "default_theme": "amber",
     "artist_bio_enabled": True,
     "backup_keep_count": 7,
     "backup_auto_enabled": True,

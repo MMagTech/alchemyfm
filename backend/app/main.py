@@ -19,6 +19,7 @@ from app.config import settings
 from app.database import SessionLocal, Station, init_db
 from app.rate_limit import limiter
 from app.schemas import BroadcastStatsRead, HealthResponse
+from app.themes import normalize_theme
 from app.middleware import SecurityHeadersMiddleware
 from app.routers import (
     admin,
@@ -298,7 +299,7 @@ def health():
     try:
         count = db.query(Station).filter(Station.enabled.is_(True)).count()
         bs = get_broadcast_settings(db)
-        default_theme = bs.default_theme or "violet"
+        default_theme = normalize_theme(bs.default_theme)
     finally:
         db.close()
     return {

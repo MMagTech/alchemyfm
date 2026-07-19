@@ -146,7 +146,7 @@ class HealthResponse(BaseModel):
     status: Literal["ok"]
     stations_enabled: int
     knowledge_feature: bool = False
-    default_theme: str = "violet"
+    default_theme: str = "amber"
     git_sha: str = "unknown"
     started_at: str
 
@@ -164,7 +164,7 @@ class BroadcastSettingsRead(BaseModel):
     genre: str
     crossfade_sec: int
     max_listeners: int
-    default_theme: str = "violet"
+    default_theme: str = "amber"
     icecast_restart_available: bool = False
     backup_keep_count: int = 7
     backup_auto_enabled: bool = True
@@ -179,7 +179,7 @@ class IcecastRestartResponse(BaseModel):
 
 
 class AppearanceSettingsRead(BaseModel):
-    default_theme: str = "violet"
+    default_theme: str = "amber"
     artist_bio_enabled: bool = True
     default_navidrome_playlist_id: str = ""
 
