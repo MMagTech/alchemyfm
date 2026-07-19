@@ -457,6 +457,9 @@ const AlchemyHome = {
   mount() {
     if (!document.getElementById('stations')) return;
     this.unmount();
+    // The rail list is fresh DOM after a soft-nav; a stale key would make
+    // renderRail skip the rebuild and leave it empty.
+    this._railKey = '';
     this.bindGridUi();
     this.loadStations();
     this._pollTimer = setInterval(() => this.loadStations(), 8000);

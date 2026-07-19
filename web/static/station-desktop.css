@@ -1,8 +1,187 @@
-/* Station tune-in layout — desktop only (641px+). Do not edit for mobile. */
+/* Station page — desktop only (641px+). Shelf A: rail beside the tune-in hero.
+   The rail block mirrors home-desktop.css — keep the two in step. */
+
+body.live-station-page main#content {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+  max-width: 1240px;
+}
+
+body.live-station-page main#content > .empty {
+  grid-column: 1 / -1;
+}
+
+/* ---------- Rail (mirrors home-desktop.css) ---------- */
+
+.shelf-rail {
+  position: sticky;
+  top: 1.5rem;
+  min-width: 0;
+}
+
+.shelf-rail-label {
+  display: flex;
+  align-items: baseline;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  margin: 0 0 0.6rem;
+  padding: 0 0.55rem;
+}
+
+.shelf-rail-count {
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.shelf-rail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.shelf-rail-link {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  min-width: 0;
+  color: var(--text);
+  transition: background-color 0.15s ease;
+}
+
+.shelf-rail-link:hover {
+  background: var(--field);
+  color: var(--text);
+}
+
+.shelf-rail-art {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--field);
+  display: grid;
+  place-items: center;
+}
+
+.shelf-rail-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.shelf-rail-art-placeholder {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.shelf-rail-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.83rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shelf-rail-item.is-off-air .shelf-rail-name {
+  color: var(--muted);
+}
+
+.shelf-rail-item.is-off-air .shelf-rail-art img {
+  filter: grayscale(1) brightness(0.6);
+}
+
+.shelf-rail-item.is-playing .shelf-rail-link {
+  background: var(--accent-subtle);
+}
+
+.shelf-rail-item.is-playing .shelf-rail-name {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* The station being viewed, when it isn't the one playing. */
+.shelf-rail-item.is-viewing:not(.is-playing) .shelf-rail-link {
+  background: var(--field);
+}
+
+.shelf-rail-item.is-viewing .shelf-rail-name {
+  font-weight: 600;
+}
+
+.shelf-rail-eq {
+  display: none;
+  align-items: flex-end;
+  gap: 2px;
+  height: 10px;
+  flex-shrink: 0;
+}
+
+.shelf-rail-item.is-playing .shelf-rail-eq {
+  display: inline-flex;
+}
+
+.shelf-rail-eq i {
+  width: 2px;
+  border-radius: 1px;
+  background: var(--live);
+  animation: shelf-rail-eq 900ms ease-in-out infinite;
+}
+
+.shelf-rail-eq i:nth-child(1) {
+  height: 40%;
+  animation-delay: -200ms;
+}
+
+.shelf-rail-eq i:nth-child(2) {
+  height: 90%;
+  animation-delay: -600ms;
+}
+
+.shelf-rail-eq i:nth-child(3) {
+  height: 60%;
+  animation-delay: -400ms;
+}
+
+@keyframes shelf-rail-eq {
+  0%,
+  100% {
+    transform: scaleY(0.4);
+  }
+
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shelf-rail-eq i {
+    animation: none;
+  }
+}
+
+/* ---------- Tune-in hero: art on the page, not in a box ---------- */
 
 .station-tune-in {
-  margin-bottom: 1.75rem;
-  padding: 1.5rem 1.6rem 1.35rem;
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  margin-bottom: 1.5rem;
 }
 
 .tune-in-top {
@@ -22,84 +201,13 @@
 
 .tune-in-art-mount,
 .tune-in-art-mount .artwork,
-.tune-in-art-mount .cover-frame.tune-in-art {
-  width: var(--tune-in-art);
-  height: var(--tune-in-art);
-  border-radius: var(--radius-lg);
-}
-
+.tune-in-art-mount .cover-frame.tune-in-art,
 .tune-in-art,
 .tune-in-art-wrap .artwork,
 .tune-in-art-wrap .cover-frame.tune-in-art {
   width: var(--tune-in-art);
   height: var(--tune-in-art);
   border-radius: var(--radius-lg);
-}
-
-.tune-in-player {
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.85rem;
-  flex-shrink: 0;
-  width: var(--tune-in-art);
-  height: var(--tune-in-art);
-  margin-left: auto;
-  padding: 0.6rem 0.7rem 0.65rem;
-  border-radius: var(--radius-lg);
-  align-self: center;
-  overflow: hidden;
-  box-sizing: border-box;
-}
-
-.tune-in-player-controls {
-  gap: 0.7rem;
-}
-
-.operator-station-heart-slot {
-  display: none;
-}
-
-.tune-in-meta .operator-station-heart-meta-slot {
-  justify-content: flex-start;
-}
-
-.tune-in-player .live-play-btn {
-  width: 42px;
-  height: 42px;
-  font-size: 1rem;
-}
-
-.tune-in-player .live-play-btn::before {
-  font-size: 0.95em;
-}
-
-.tune-in-player .live-player-center {
-  line-height: 1.2;
-  flex: 1;
-  min-width: 0;
-  row-gap: 0.2rem;
-}
-
-.tune-in-player .live-status-text,
-.tune-in-player #live-status-text {
-  font-size: 0.65rem;
-}
-
-.tune-in-player .live-timer {
-  font-size: 1.05rem;
-}
-
-.tune-in-player .live-volume {
-  width: 100%;
-  padding: 0 0.1rem;
-}
-
-.tune-in-player-divider {
-  display: none;
-}
-
-.tune-in-player .live-volume-slider {
-  width: 100%;
 }
 
 .tune-in-meta {
@@ -111,31 +219,6 @@
   padding-right: 0.65rem;
 }
 
-.tune-in-station-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.55rem 0.85rem;
-  margin-bottom: 0.5rem;
-}
-
-.tune-in-station-row h2 {
-  margin: 0;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--muted);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.tune-in-station-row .live-badge {
-  margin: 0;
-}
-
-.tune-in-station-row h2:only-child {
-  margin: 0;
-}
-
 .tune-in-track .now-playing-title {
   font-size: 1.65rem;
   line-height: 1.2;
@@ -145,6 +228,152 @@
   margin: 0.3rem 0 0;
   font-size: 1rem;
 }
+
+.tune-in-desc {
+  margin: 0.55rem 0 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.tune-in-metarow .live-status-dot,
+.tune-in-metarow .live-status-text {
+  grid-area: auto;
+}
+
+/* Big play + volume on the hero's right edge. */
+.tune-in-play-col {
+  align-self: center;
+  width: 118px;
+}
+
+.tune-in-play-col .live-play-btn {
+  width: 56px;
+  height: 56px;
+  font-size: 1.15rem;
+}
+
+.tune-in-play-col .live-volume {
+  width: 100%;
+  padding: 0 0.1rem;
+}
+
+.tune-in-play-col .operator-station-heart-slot {
+  display: none;
+}
+
+.tune-in-meta .operator-station-heart-meta-slot {
+  display: flex;
+  justify-content: flex-start;
+}
+
+/* ---------- Bio, visualizer, foot ---------- */
+
+.tune-in-artist-bio {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--field) 88%, var(--surface));
+  border: 1px solid var(--border-subtle);
+  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  max-height: 11rem;
+}
+
+.tune-in-artist-bio-text {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: var(--bio-line-height);
+  color: var(--muted);
+}
+
+.tune-in-artist-bio-actions {
+  margin-top: 0.4rem;
+}
+
+.tune-in-visualizer-wrap {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.tune-in-visualizer-wrap.is-heard-other {
+  position: relative;
+}
+
+.tune-in-visualizer-wrap.is-heard-other::before {
+  content: 'Other station';
+  position: absolute;
+  top: 0.35rem;
+  right: 0.45rem;
+  z-index: 1;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.tune-in-visualizer-wrap.is-heard-other .tune-in-visualizer {
+  opacity: 0.88;
+}
+
+.tune-in-visualizer {
+  display: block;
+  width: 100%;
+  height: 60px;
+  border-radius: var(--radius);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 6%, var(--field)) 0%,
+    var(--field) 100%
+  );
+  border: 1px solid var(--border-subtle);
+}
+
+.tune-in-foot {
+  margin: 0.85rem 0 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+}
+
+.tune-in-foot-links {
+  margin: 0;
+  font-size: 0.74rem;
+  min-width: 0;
+  color: var(--muted);
+}
+
+.tune-in-foot-sep {
+  margin: 0 0.35rem;
+  color: var(--border);
+}
+
+/* ---------- Up Next / Recently Played side by side ---------- */
+
+.station-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.1rem;
+  align-items: start;
+}
+
+.station-panels .panel {
+  margin-bottom: 0;
+}
+
+@media (max-width: 1020px) {
+  .station-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------- Knowledge popover placement ---------- */
 
 .tune-in-art-wrap .knowledge-tip {
   position: absolute;
@@ -193,99 +422,20 @@
   pointer-events: auto;
 }
 
-.tune-in-desc {
-  margin: 0.55rem 0 0;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-}
-
-.tune-in-visualizer-wrap {
-  margin-top: 0.85rem;
-  padding-top: 0.85rem;
-  border-top: 1px solid var(--border-subtle);
-}
-
-.tune-in-visualizer-wrap.is-heard-other {
-  position: relative;
-}
-
-.tune-in-visualizer-wrap.is-heard-other::before {
-  content: 'Other station';
-  position: absolute;
-  top: 0.35rem;
-  right: 0.45rem;
-  z-index: 1;
-  font-size: 0.62rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--muted);
-  pointer-events: none;
-}
-
-.tune-in-visualizer-wrap.is-heard-other .tune-in-visualizer {
-  opacity: 0.88;
-}
-
-.tune-in-artist-bio {
-  margin-top: 1rem;
-  padding: 0.85rem 1rem;
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--field) 88%, var(--surface));
-  border: 1px solid var(--border-subtle);
-  max-height: 11rem;
-}
-
-.tune-in-artist-bio-text {
-  margin: 0;
-  font-size: 0.82rem;
-  line-height: var(--bio-line-height);
-  color: var(--muted);
-}
-
-.tune-in-artist-bio-actions {
-  margin-top: 0.4rem;
-}
-
-.tune-in-visualizer {
-  display: block;
-  width: 100%;
-  height: 60px;
-  border-radius: var(--radius);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--accent) 6%, var(--field)) 0%,
-    var(--field) 100%
-  );
-  border: 1px solid var(--border-subtle);
-}
-
-.tune-in-foot {
-  margin: 0.85rem 0 0;
-  padding-top: 1rem;
-  border-top: 1px solid var(--border-subtle);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.85rem;
-}
-
-.tune-in-foot-links {
-  margin: 0;
-  font-size: 0.74rem;
-  min-width: 0;
-  color: var(--muted);
-}
-
-.tune-in-foot-sep {
-  margin: 0 0.35rem;
-  color: var(--border);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .viz-fullscreen-btn:hover {
     transform: none;
+  }
+}
+
+/* Below the rail's breakpoint the two-column shelf has no room. */
+@media (max-width: 900px) {
+  body.live-station-page main#content {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .station-rail {
+    display: none;
   }
 }

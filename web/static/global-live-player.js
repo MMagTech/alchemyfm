@@ -1139,8 +1139,8 @@ const GlobalLivePlayer = {
       link.dataset.alchemyStationStyle = href;
       head.appendChild(link);
     };
-    add('/static/station-desktop.css?v=13', '(min-width: 641px)');
-    add('/static/station-mobile.css?v=20', '(max-width: 640px)');
+    add('/static/station-desktop.css?v=14', '(min-width: 641px)');
+    add('/static/station-mobile.css?v=21', '(max-width: 640px)');
     this._stationStylesLoaded = true;
   },
 
@@ -1177,13 +1177,13 @@ const GlobalLivePlayer = {
       await this.loadScriptOnce('/static/live-audio-graph.js?v=8', 'live-audio-graph');
     }
     if (typeof LiveTuningFx === 'undefined') {
-      await this.loadScriptOnce('/static/tuning-static.js?v=5', 'tuning-static');
+      await this.loadScriptOnce('/static/tuning-static.js?v=6', 'tuning-static');
     }
     if (typeof StripVisualizer === 'undefined') {
       await this.loadScriptOnce('/static/strip-visualizer.js?v=3', 'strip-visualizer');
     }
 
-    await this.loadScriptOnce('/static/station-boot.js?v=10', 'station-boot');
+    await this.loadScriptOnce('/static/station-boot.js?v=11', 'station-boot');
   },
 
   async ensureTuningReady() {
@@ -1191,7 +1191,7 @@ const GlobalLivePlayer = {
       await this.loadScriptOnce('/static/live-audio-graph.js?v=8', 'live-audio-graph');
     }
     if (typeof LiveTuningFx === 'undefined') {
-      await this.loadScriptOnce('/static/tuning-static.js?v=5', 'tuning-static');
+      await this.loadScriptOnce('/static/tuning-static.js?v=6', 'tuning-static');
     }
   },
 
@@ -1298,7 +1298,7 @@ const GlobalLivePlayer = {
         return;
       }
       const script = document.createElement('script');
-      script.src = '/static/home-page.js?v=5';
+      script.src = '/static/home-page.js?v=10';
       script.dataset.alchemyHomePage = '1';
       script.onload = resolve;
       script.onerror = reject;

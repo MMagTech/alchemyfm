@@ -4676,3 +4676,256 @@ body.login-page .login-shell {
   text-align: center;
   font-size: 0.9rem;
 }
+
+/* ---------- Station page (Shelf A) — shared across breakpoints ---------- */
+
+.station-heading {
+  margin: 0 0 1.1rem;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  text-transform: none;
+}
+
+.tune-in-metarow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+  margin-top: 0.7rem;
+}
+
+.tune-in-listeners {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.tune-in-listeners::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.tune-in-listeners.is-live::before {
+  background: var(--live);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 20%, transparent);
+}
+
+.tune-in-listeners.is-off-air::before {
+  background: var(--border);
+}
+
+.tune-in-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tune-in-metarow .live-timer {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.tune-in-metarow .operator-station-heart-meta-slot[hidden] {
+  display: none !important;
+}
+
+.tune-in-play-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
+  flex-shrink: 0;
+}
+
+.tune-in-foot-right {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+.format-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.45rem;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.station-tune-in.is-off-air .tune-in-art-mount {
+  filter: grayscale(1) brightness(0.62);
+}
+
+/* ---------- Queue rows: thumbnail, title/artist, timestamp, heart ---------- */
+
+.track-rows .trow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0;
+}
+
+.trow-art {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--field);
+  display: grid;
+  place-items: center;
+}
+
+.trow-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.trow-art-placeholder {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.trow-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.trow-name b {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trow-name span {
+  font-size: 0.78rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trow-ago {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.trow .operator-heart-btn.is-row-heart {
+  margin-left: auto;
+  width: 1.7rem;
+  height: 1.7rem;
+}
+
+.trow .operator-heart-btn.is-row-heart + .trow-ago {
+  margin-left: 0.35rem;
+}
+
+/* ---------- Knowledge popover: dots, arrows, slide ---------- */
+
+.knowledge-popover-body {
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.knowledge-popover-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.knowledge-popover-nav[hidden] {
+  display: none;
+}
+
+.knowledge-dots {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.knowledge-dot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--border);
+  cursor: pointer;
+}
+
+.knowledge-dot.is-current {
+  background: var(--accent);
+}
+
+.knowledge-arrow {
+  display: grid;
+  place-items: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.knowledge-arrow:hover,
+.knowledge-arrow:focus-visible {
+  color: var(--text);
+  border-color: var(--muted);
+  outline: none;
+}
+
+/* The ✦ springs in when facts land after the track already rendered. */
+.knowledge-tip-btn.is-arriving {
+  animation: knowledge-star-pop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes knowledge-star-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .knowledge-tip-btn.is-arriving {
+    animation: none;
+  }
+  .knowledge-popover-body {
+    transition: none;
+  }
+}

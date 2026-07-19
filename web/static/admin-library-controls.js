@@ -98,6 +98,7 @@ const AdminLibraryControls = {
   activateOperatorUI() {
     this.mountMiniHeart();
     this.mountStationHeartSlot();
+    this.decorateRecentRows();
     this.hookMiniMeta();
     this.hookStationNowPlaying();
     this.resyncCurrentTrack();
@@ -113,6 +114,7 @@ const AdminLibraryControls = {
     this._busy = false;
     this.ensureStationHeartRow();
     document.getElementById('operator-mini-heart')?.remove();
+    document.querySelectorAll('.operator-heart-btn.is-row-heart').forEach((b) => b.remove());
     if (!quiet) {
       this.showHint(
         message || 'Operator session expired. Long-press the logo to sign in again.',
@@ -286,7 +288,7 @@ const AdminLibraryControls = {
   createHeartButton({ id, label }) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.id = id;
+    if (id) btn.id = id;
     btn.className = 'operator-heart-btn';
     btn.setAttribute('aria-pressed', 'false');
     btn.setAttribute('aria-label', label);
@@ -294,6 +296,41 @@ const AdminLibraryControls = {
     btn.innerHTML = this.HEART_SVG;
     btn.addEventListener('click', () => this.toggleHeart(btn));
     return btn;
+  },
+
+  /**
+   * Hearts on the station page's Recently Played rows. State is the local
+   * heart cache — the queue payload carries no hearted flag — so a track
+   * hearted while on air shows hearted here, and anything else starts empty.
+   */
+  decorateRecentRows() {
+    const list = document.getElementById('recent-list');
+    if (!list) return;
+    list.querySelectorAll('li.trow[data-item-id]').forEach((li) => {
+      const itemId = li.dataset.itemId;
+      let btn = li.querySelector('.operator-heart-btn');
+      if (!this._admin || !itemId) {
+        btn?.remove();
+        return;
+      }
+      if (!btn) {
+        btn = this.createHeartButton({ label: 'Heart this track' });
+        btn.classList.add('is-row-heart');
+        const ago = li.querySelector('.trow-ago');
+        if (ago) li.insertBefore(btn, ago);
+        else li.appendChild(btn);
+      }
+      btn.dataset.itemId = itemId;
+      const hearted = this._heartInFlight.has(itemId)
+        ? this._heartInFlight.get(itemId)
+        : Boolean(this._heartState.get(itemId));
+      btn.setAttribute('aria-pressed', hearted ? 'true' : 'false');
+      btn.classList.toggle('is-hearted', hearted);
+    });
+  },
+
+  onRecentListRendered() {
+    if (this._admin) this.decorateRecentRows();
   },
 
   mountStationHeartSlot() {
@@ -470,6 +507,8 @@ const AdminLibraryControls = {
 
   rememberItemId(btn, itemId) {
     if (!itemId) return;
+    // Row hearts are per-track; they must not clobber the on-air fallbacks.
+    if (btn?.classList?.contains('is-row-heart')) return;
     if (btn?.id === 'operator-mini-heart') {
       this._miniItemId = itemId;
     } else {
@@ -541,9 +580,12 @@ const AdminLibraryControls = {
     if (hearted === null) return;
     btn.setAttribute('aria-pressed', hearted ? 'true' : 'false');
     btn.classList.toggle('is-hearted', hearted);
+    const rowHeart = btn.classList.contains('is-row-heart');
     btn.setAttribute(
       'aria-label',
-      hearted ? 'Unheart on-air track' : 'Heart on-air track'
+      rowHeart
+        ? (hearted ? 'Unheart this track' : 'Heart this track')
+        : (hearted ? 'Unheart on-air track' : 'Heart on-air track')
     );
   },
 
