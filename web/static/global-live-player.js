@@ -278,8 +278,47 @@ const GlobalLivePlayer = {
           </div>
         </div>
       </div>
+      ${this.mobileNavMarkup()}
     </div>`;
     document.body.appendChild(shell);
+  },
+
+  /** Mobile-only: a two-tab bar and the Now Playing surface it reveals.
+      Kept identical in index.html and station.html — see ensureShell(). */
+  mobileNavMarkup() {
+    return `
+      <section id="now-playing-panel" class="now-playing-panel" hidden aria-label="Now playing">
+        <div class="np-live" id="np-live" hidden>
+          <div class="np-art" id="np-art"><div class="np-art-placeholder" aria-hidden="true">♪</div></div>
+          <p class="np-station" id="np-station"></p>
+          <h2 class="np-title" id="np-title"></h2>
+          <p class="np-artist" id="np-artist"></p>
+          <p class="np-status" id="np-status"></p>
+          <div class="np-transport">
+            <button type="button" class="np-play" id="np-play" aria-label="Play">
+              <span class="np-play-icon" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
+        <div class="np-idle" id="np-idle" hidden>
+          <span class="np-idle-icon" aria-hidden="true"></span>
+          <h2 class="np-idle-title">You're not tuned in</h2>
+          <p class="np-idle-sub">Pick a station and it plays here.</p>
+          <div class="np-resume" id="np-resume" hidden></div>
+          <div class="np-shortcuts" id="np-shortcuts"></div>
+        </div>
+      </section>
+      <nav id="live-tabs" class="live-tabs" aria-label="Sections" hidden>
+        <button type="button" class="live-tab is-active" data-tab="stations" aria-pressed="true">
+          <span class="live-tab-icon live-tab-grid" aria-hidden="true"></span>
+          <span class="live-tab-label">Stations</span>
+        </button>
+        <button type="button" class="live-tab" data-tab="now" aria-pressed="false">
+          <span class="live-tab-icon live-tab-play" aria-hidden="true"></span>
+          <span class="live-tab-eq" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="live-tab-label">Now playing</span>
+        </button>
+      </nav>`;
   },
 
   getAudio() {
@@ -337,6 +376,158 @@ const GlobalLivePlayer = {
         listenersEl.textContent = count === 1 ? '1 listening' : `${count} listening`;
       }
     }
+  },
+
+  // ── Mobile two-tab navigation ─────────────────────────────
+  // The phone has no room for a mini player *and* a nav bar, so Now Playing
+  // becomes a tab rather than a strip above one.
+
+  _activeTab: 'stations',
+
+  /** Only on a phone, and only on home — the station page is its own player. */
+  tabsApply() {
+    const tabs = document.getElementById('live-tabs');
+    if (!tabs) return false;
+    const eligible = this.isHomePage() && !this.isStationPage();
+    tabs.hidden = !eligible;
+    document.body.classList.toggle('has-live-tabs', eligible);
+    if (!eligible) this.setTab('stations', { silent: true });
+    return eligible;
+  },
+
+  setTab(name, { silent = false } = {}) {
+    const tab = name === 'now' ? 'now' : 'stations';
+    this._activeTab = tab;
+
+    const panel = document.getElementById('now-playing-panel');
+    if (panel) panel.hidden = tab !== 'now';
+    document.body.classList.toggle('np-open', tab === 'now');
+
+    document.querySelectorAll('#live-tabs .live-tab').forEach((btn) => {
+      const on = btn.dataset.tab === tab;
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-pressed', String(on));
+    });
+
+    if (tab === 'now' && !silent) this.renderNowPlaying();
+    this.syncMiniVisibility();
+  },
+
+  /** Equaliser on the tab icon whenever something is actually playing. */
+  syncTabIndicator() {
+    const tabs = document.getElementById('live-tabs');
+    if (!tabs) return;
+    const audio = this.getAudio();
+    const live = audio?.dataset?.wantLive === '1';
+    tabs.classList.toggle('is-live', Boolean(live));
+  },
+
+  renderNowPlaying() {
+    const panel = document.getElementById('now-playing-panel');
+    if (!panel) return;
+
+    const session = this.readSession();
+    const audio = this.getAudio();
+    const tuned = Boolean(session?.slug) && (audio?.dataset?.wantLive === '1' || this.isListening());
+
+    const liveEl = document.getElementById('np-live');
+    const idleEl = document.getElementById('np-idle');
+    if (liveEl) liveEl.hidden = !tuned;
+    if (idleEl) idleEl.hidden = tuned;
+
+    if (tuned) this.renderNowPlayingLive(session);
+    else this.renderNowPlayingIdle(session);
+  },
+
+  renderNowPlayingLive(session) {
+    const { np = null, stationName = '', artworkUrl = '' } = this._miniStatus?.meta || {};
+    const set = (id, text) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    };
+    set('np-station', stationName || session?.stationName || '');
+    set('np-title', np?.title || 'Live');
+    set('np-artist', np?.artist || '');
+
+    const { listeners = null, onAir = null } = this._miniStatus || {};
+    const bits = [];
+    bits.push(onAir === false ? 'Off air' : 'Live');
+    if (Number(listeners) > 0) {
+      bits.push(Number(listeners) === 1 ? '1 listening' : `${listeners} listening`);
+    }
+    set('np-status', bits.join(' · '));
+
+    const art = document.getElementById('np-art');
+    const cover = artworkUrl || '';
+    if (art) {
+      if (cover) art.innerHTML = `<img src="${RadioApp.escapeAttr(cover)}" alt="" decoding="async">`;
+      else art.innerHTML = '<div class="np-art-placeholder" aria-hidden="true">♪</div>';
+    }
+
+    const playBtn = document.getElementById('np-play');
+    const audio = this.getAudio();
+    const playing = Boolean(audio && !audio.paused && audio.dataset.wantLive === '1');
+    if (playBtn) {
+      playBtn.classList.toggle('is-playing', playing);
+      playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    }
+  },
+
+  /** Idle is an invitation, not a dead end: last station first, then featured. */
+  renderNowPlayingIdle(session) {
+    const resume = document.getElementById('np-resume');
+    const shortcuts = document.getElementById('np-shortcuts');
+    const stations = this.readStationsCache() || [];
+
+    if (resume) {
+      const last = session?.slug
+        ? stations.find((s) => s.slug === session.slug) || { slug: session.slug, name: session.stationName }
+        : null;
+      if (last?.slug) {
+        resume.hidden = false;
+        resume.innerHTML = `
+          <a class="np-resume-link" href="${this.stationUrl(last.slug)}">
+            <span class="np-resume-label">Back to</span>
+            <span class="np-resume-name">${RadioApp.escape(last.name || last.slug)}</span>
+          </a>`;
+      } else {
+        resume.hidden = true;
+        resume.innerHTML = '';
+      }
+    }
+
+    if (!shortcuts) return;
+    const featured = stations.filter((s) => s.featured).slice(0, 4);
+    const picks = featured.length ? featured : stations.slice(0, 4);
+    if (!picks.length) {
+      shortcuts.innerHTML = '';
+      return;
+    }
+    shortcuts.innerHTML = `
+      <p class="np-shortcuts-label">${featured.length ? '★ Featured' : 'Stations'}</p>
+      ${picks.map((s) => `
+        <a class="np-shortcut" href="${this.stationUrl(s.slug)}">
+          <span class="np-shortcut-name">${RadioApp.escape(s.name)}</span>
+          <span class="np-shortcut-go" aria-hidden="true"></span>
+        </a>`).join('')}`;
+  },
+
+  bindTabs() {
+    const tabs = document.getElementById('live-tabs');
+    if (!tabs || tabs.dataset.bound === '1') return;
+    tabs.dataset.bound = '1';
+    tabs.addEventListener('click', (e) => {
+      const btn = e.target.closest('.live-tab');
+      if (!btn) return;
+      this.setTab(btn.dataset.tab);
+    });
+
+    const play = document.getElementById('np-play');
+    play?.addEventListener('click', () => {
+      const audio = this.getAudio();
+      audio?._liveEngine?.togglePlay?.();
+      setTimeout(() => this.renderNowPlaying(), 60);
+    });
   },
 
   syncMiniVizButton() {
@@ -410,6 +601,7 @@ const GlobalLivePlayer = {
 
     bar.hidden = !show;
     document.body.classList.toggle('has-live-mini-player', show);
+    this.syncTabIndicator();
 
     if (!show) {
       this.stopMiniPoll();
@@ -591,7 +783,18 @@ const GlobalLivePlayer = {
         np: s.now_playing,
         artworkUrl: (s.now_playing && s.now_playing.cover_url) || s.artwork_url || '',
       });
-      this.syncMiniStatus({ listeners: s.listeners, onAir: s.on_air });
+      this.syncMiniStatus({
+        listeners: s.listeners,
+        onAir: s.on_air,
+        meta: {
+          stationName: s.name,
+          slug: s.slug,
+          np: s.now_playing,
+          artworkUrl: (s.now_playing && s.now_playing.cover_url) || s.artwork_url || '',
+        },
+      });
+      this.syncTabIndicator();
+      if (this._activeTab === 'now') this.renderNowPlaying();
 
       if ((this.isHomePage() || this.isOnSoftHome()) &&
           typeof AlchemyHome !== 'undefined' &&
@@ -1069,6 +1272,7 @@ const GlobalLivePlayer = {
       });
     }
     this.syncMiniVisibility();
+    this.tabsApply();
     if (session?.slug) {
       this.refreshMiniNowPlaying(session.slug);
     }
@@ -1130,6 +1334,7 @@ const GlobalLivePlayer = {
     document.title = 'Station — Alchemy FM';
 
     history.pushState({ alchemyfm: 'station', slug }, '', this.stationUrl(slug));
+    this.tabsApply();
     this.syncMiniVisibility();
 
     try {
@@ -1361,6 +1566,8 @@ const GlobalLivePlayer = {
     });
 
     this.bindSoftNavigation();
+    this.bindTabs();
+    this.tabsApply();
 
     if (this.isHomePage()) {
       this.bindMiniUi();

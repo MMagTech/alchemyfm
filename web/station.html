@@ -12,7 +12,7 @@
   <link rel="manifest" href="/static/manifest.webmanifest">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Alchemy FM">
-  <link rel="stylesheet" href="/static/style.css?v=146">
+  <link rel="stylesheet" href="/static/style.css?v=147">
   <link rel="stylesheet" href="/static/themes.css?v=3">
   <link rel="stylesheet" href="/static/station-desktop.css?v=13" media="(min-width: 641px)">
   <link rel="stylesheet" href="/static/station-mobile.css?v=20" media="(max-width: 640px)">
@@ -84,11 +84,43 @@
         </div>
       </div>
     </div>
+    <section id="now-playing-panel" class="now-playing-panel" hidden aria-label="Now playing">
+      <div class="np-live" id="np-live" hidden>
+        <div class="np-art" id="np-art"><div class="np-art-placeholder" aria-hidden="true">&#9834;</div></div>
+        <p class="np-station" id="np-station"></p>
+        <h2 class="np-title" id="np-title"></h2>
+        <p class="np-artist" id="np-artist"></p>
+        <p class="np-status" id="np-status"></p>
+        <div class="np-transport">
+          <button type="button" class="np-play" id="np-play" aria-label="Play">
+            <span class="np-play-icon" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+      <div class="np-idle" id="np-idle" hidden>
+        <span class="np-idle-icon" aria-hidden="true"></span>
+        <h2 class="np-idle-title">You're not tuned in</h2>
+        <p class="np-idle-sub">Pick a station and it plays here.</p>
+        <div class="np-resume" id="np-resume" hidden></div>
+        <div class="np-shortcuts" id="np-shortcuts"></div>
+      </div>
+    </section>
+    <nav id="live-tabs" class="live-tabs" aria-label="Sections" hidden>
+      <button type="button" class="live-tab is-active" data-tab="stations" aria-pressed="true">
+        <span class="live-tab-icon live-tab-grid" aria-hidden="true"></span>
+        <span class="live-tab-label">Stations</span>
+      </button>
+      <button type="button" class="live-tab" data-tab="now" aria-pressed="false">
+        <span class="live-tab-icon live-tab-play" aria-hidden="true"></span>
+        <span class="live-tab-eq" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="live-tab-label">Now playing</span>
+      </button>
+    </nav>
   </div>
   <script src="/static/live-audio-graph.js?v=8"></script>
   <script src="/static/tuning-static.js?v=6"></script>
   <script src="/static/strip-visualizer.js?v=3"></script>
-  <script src="/static/global-live-player.js?v=42"></script>
+  <script src="/static/global-live-player.js?v=43"></script>
   <script src="/static/home-page.js?v=9"></script>
   <script src="/static/app.js?v=55"></script>
   <script src="/static/admin-library-controls.js?v=20"></script>

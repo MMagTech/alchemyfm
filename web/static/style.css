@@ -2690,6 +2690,350 @@ body.live-station-page .live-mini-player {
   overflow: hidden;
 }
 
+/* ============================================================
+   Mobile two-tab navigation + Now Playing surface.
+   Phone-only: a phone cannot carry a mini player and a nav bar, so
+   Now Playing becomes a destination rather than a strip.
+   ============================================================ */
+
+.live-tabs {
+  display: none;
+}
+
+.now-playing-panel {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .live-tabs:not([hidden]) {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1300;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+    border-top: 1px solid var(--border-subtle);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transform: translateZ(0);
+  }
+
+  .live-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.5rem 0 0.55rem;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 0.66rem;
+    cursor: pointer;
+  }
+
+  .live-tab.is-active {
+    color: var(--accent);
+  }
+
+  .live-tab-icon {
+    width: 17px;
+    height: 17px;
+    display: block;
+  }
+
+  .live-tab-grid {
+    border: 2px solid currentColor;
+    border-radius: 3px;
+    background:
+      linear-gradient(currentColor, currentColor) center / 2px 100% no-repeat,
+      linear-gradient(currentColor, currentColor) center / 100% 2px no-repeat;
+  }
+
+  .live-tab-play {
+    border-style: solid;
+    border-width: 8px 0 8px 13px;
+    border-color: transparent transparent transparent currentColor;
+    width: 0;
+    height: 0;
+    margin-left: 3px;
+  }
+
+  /* Equaliser replaces the play glyph once something is actually playing. */
+  .live-tab-eq {
+    display: none;
+    align-items: flex-end;
+    gap: 2px;
+    height: 17px;
+  }
+
+  .live-tabs.is-live .live-tab[data-tab="now"] .live-tab-play {
+    display: none;
+  }
+
+  .live-tabs.is-live .live-tab[data-tab="now"] .live-tab-eq {
+    display: inline-flex;
+  }
+
+  .live-tab-eq i {
+    width: 3px;
+    border-radius: 1px;
+    background: currentColor;
+    animation: live-tab-eq 900ms ease-in-out infinite;
+  }
+
+  .live-tab-eq i:nth-child(1) { height: 45%; animation-delay: -200ms; }
+  .live-tab-eq i:nth-child(2) { height: 95%; animation-delay: -600ms; }
+  .live-tab-eq i:nth-child(3) { height: 65%; animation-delay: -400ms; }
+
+  @keyframes live-tab-eq {
+    0%, 100% { transform: scaleY(0.4); }
+    50% { transform: scaleY(1); }
+  }
+
+  /* Now Playing takes the whole screen above the tab bar. */
+  .now-playing-panel:not([hidden]) {
+    position: fixed;
+    inset: 0;
+    bottom: calc(3.4rem + env(safe-area-inset-bottom, 0px));
+    z-index: 1250;
+    display: flex;
+    flex-direction: column;
+    background: var(--page-glow), var(--bg);
+    overflow-y: auto;
+    padding: 1.5rem 1.25rem 2rem;
+  }
+
+  .np-live,
+  .np-idle {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    margin: auto 0;
+  }
+
+  .np-art {
+    width: min(66vw, 260px);
+    aspect-ratio: 1;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: var(--field);
+    display: grid;
+    place-items: center;
+    box-shadow: var(--shadow-art);
+  }
+
+  .np-art img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .np-art-placeholder {
+    color: var(--muted);
+    font-size: 2rem;
+  }
+
+  .np-station {
+    margin: 1.25rem 0 0;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .np-title {
+    margin: 0.4rem 0 0;
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+
+  .np-artist {
+    margin: 0.2rem 0 0;
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+
+  .np-status {
+    margin: 0.7rem 0 0;
+    font-size: 0.78rem;
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .np-transport {
+    margin-top: 1.5rem;
+  }
+
+  .np-play {
+    width: 68px;
+    height: 68px;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent);
+    color: var(--bg);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    box-shadow: var(--shadow-btn);
+  }
+
+  .np-play-icon {
+    border-style: solid;
+    border-width: 11px 0 11px 18px;
+    border-color: transparent transparent transparent currentColor;
+    margin-left: 4px;
+  }
+
+  .np-play.is-playing .np-play-icon {
+    border: none;
+    width: 16px;
+    height: 20px;
+    margin: 0;
+    background: currentColor;
+    -webkit-mask: linear-gradient(#000 0 0) 0 / 5px 100% no-repeat,
+      linear-gradient(#000 0 0) 100% / 5px 100% no-repeat;
+    mask: linear-gradient(#000 0 0) 0 / 5px 100% no-repeat,
+      linear-gradient(#000 0 0) 100% / 5px 100% no-repeat;
+  }
+
+  /* Idle is an invitation, never a dead end. */
+  .np-idle-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    display: block;
+    position: relative;
+  }
+
+  .np-idle-icon::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 7px 0 7px 11px;
+    border-color: transparent transparent transparent var(--muted);
+    transform: translateX(2px);
+  }
+
+  .np-idle-title {
+    margin: 1rem 0 0;
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .np-idle-sub {
+    margin: 0.35rem 0 0;
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+
+  .np-resume {
+    width: 100%;
+    margin-top: 1.4rem;
+  }
+
+  .np-resume-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0.7rem 1rem;
+    border-radius: var(--radius);
+    background: var(--surface-raised);
+    border: 1px solid var(--accent-border);
+    color: var(--text);
+    box-shadow: var(--card-shadow);
+  }
+
+  .np-resume-label {
+    color: var(--muted);
+    font-size: 0.8rem;
+  }
+
+  .np-resume-name {
+    font-weight: 600;
+    font-size: 0.92rem;
+  }
+
+  .np-shortcuts {
+    width: 100%;
+    margin-top: 1.25rem;
+    text-align: left;
+  }
+
+  .np-shortcuts-label {
+    margin: 0 0 0.5rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .np-shortcut {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.65rem 0.85rem;
+    margin-bottom: 0.4rem;
+    border-radius: var(--radius);
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    color: var(--text);
+    box-shadow: var(--card-shadow);
+  }
+
+  .np-shortcut-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.9rem;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .np-shortcut-go {
+    border-style: solid;
+    border-width: 5px 0 5px 8px;
+    border-color: transparent transparent transparent var(--accent);
+    flex-shrink: 0;
+  }
+
+  /* The tab bar replaces the mini player on a phone. */
+  body.has-live-tabs .live-mini-player {
+    display: none;
+  }
+
+  body.has-live-tabs main {
+    padding-bottom: 4.5rem;
+  }
+
+  body.np-open {
+    overflow: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-tab-eq i {
+    animation: none;
+  }
+}
+
 /* Playbar readouts. Desktop has room for the live state and headcount;
    a phone does not, so they stay hidden there. */
 .live-mini-status {
