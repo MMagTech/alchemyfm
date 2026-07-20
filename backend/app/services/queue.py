@@ -48,12 +48,22 @@ def _format_m3u_line(track: TrackInfo) -> str:
 
 
 def rebuild_m3u_from_db(db: Session, station: Station) -> None:
-    """Rewrite queue.m3u from pending queue items with fresh Navidrome stream URLs."""
+    """Rewrite queue.m3u from queued items with fresh Navidrome stream URLs.
+
+    The PLAYING item is deliberately excluded. Liquidsoap consumes this file
+    with playlist(mode="normal", reload_mode="watch"): every rewrite triggers
+    a reload, and a reload can reset the playlist cursor to the top. When the
+    on-air track was still the head of the file, that reset made Liquidsoap
+    pull the same track again at song end — an audible back-to-back repeat
+    (invisible in play history, because the duplicate track-start callback is
+    deduped). With only queued tracks in the file, a cursor reset lands on
+    whatever should air next.
+    """
     items = (
         db.query(QueueItem)
         .filter(
             QueueItem.station_id == station.id,
-            QueueItem.status.in_([QueueItemStatus.queued, QueueItemStatus.playing]),
+            QueueItem.status == QueueItemStatus.queued,
         )
         .order_by(QueueItem.position.asc(), QueueItem.id.asc())
         .all()
@@ -627,6 +637,28 @@ def get_recently_played(db: Session, station: Station, limit: int = 10) -> list[
         .limit(limit * 3)
         .all()
     )
+    # History rows are written at track START (artist separation depends on
+    # that), so the newest row is usually the track still on air. Skip that
+    # one row — "recently played" means finished tracks — but only the
+    # newest, so a genuine earlier play of the same track stays visible.
+    playing = (
+        db.query(QueueItem)
+        .filter(
+            QueueItem.station_id == station.id,
+            QueueItem.status == QueueItemStatus.playing,
+        )
+        .order_by(QueueItem.id.desc())
+        .first()
+    )
+    if rows and playing and _same_track(
+        rows[0].artist,
+        rows[0].title,
+        rows[0].item_id or "",
+        playing.artist,
+        playing.title,
+        playing.item_id or "",
+    ):
+        rows = rows[1:]
     result: list[TrackRef] = []
     seen: set[tuple[str, str, str]] = set()
     for row in rows:
