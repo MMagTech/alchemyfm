@@ -8,10 +8,10 @@
   <link rel="icon" href="/static/icons/favicon.ico?v=2" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png?v=2">
   <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png?v=2">
-  <link rel="stylesheet" href="/static/style.css?v=142">
-  <link rel="stylesheet" href="/static/themes.css?v=2">
-  <link rel="stylesheet" href="/static/admin-mobile.css?v=13" media="(max-width: 640px)">
-  <script src="/static/themes.js?v=14"></script>
+  <link rel="stylesheet" href="/static/style.css?v=149">
+  <link rel="stylesheet" href="/static/themes.css?v=3">
+  <link rel="stylesheet" href="/static/admin-mobile.css?v=14" media="(max-width: 640px)">
+  <script src="/static/themes.js?v=15"></script>
 </head>
 <body>
   <header>
@@ -122,7 +122,7 @@
 
             <div class="form-actions">
               <button type="submit" class="btn">Save Settings</button>
-              <button type="button" class="btn btn-danger" id="purge-cache-btn">Clear Knowledge Cache</button>
+              <button type="button" class="btn btn-danger" id="purge-cache-btn">Clear Knowledge</button>
             </div>
           </form>
         </section>
@@ -168,7 +168,7 @@
         <div class="admin-panel-head">
           <div>
             <h2>Providers</h2>
-            <p class="admin-lede">Search uses free public APIs. Ollama and optional SearXNG are set in <code>.env</code> — restart the backend after changing those.</p>
+            <p class="admin-lede">Search uses free public APIs. The language model (local Ollama or an OpenAI-compatible cloud provider) and optional SearXNG are set in <code>.env</code> — restart the backend after changing those.</p>
           </div>
         </div>
         <div class="knowledge-provider-grid">
@@ -198,17 +198,47 @@
 
           <article class="knowledge-provider-card">
             <div class="knowledge-provider-card-head">
-              <h3 class="knowledge-provider-name">Ollama</h3>
+              <h3 class="knowledge-provider-name">Language Model</h3>
               <span class="knowledge-provider-badge is-required">Required</span>
             </div>
-            <code class="knowledge-provider-value" id="display-ollama-url">—</code>
-            <p class="knowledge-provider-meta">Model: <code id="display-ollama-model">—</code></p>
+            <p class="knowledge-provider-meta">Provider: <code id="display-llm-provider">—</code></p>
+            <code class="knowledge-provider-value" id="display-llm-url">—</code>
+            <p class="knowledge-provider-meta">Model: <code id="display-llm-model">—</code></p>
             <div class="knowledge-provider-card-actions">
-              <button type="button" class="btn btn-sm" id="test-ollama-btn">Test Ollama</button>
-              <span class="hint" id="ollama-test-result"></span>
+              <button type="button" class="btn btn-sm" id="test-llm-btn">Test Model</button>
+              <span class="hint" id="llm-test-result"></span>
             </div>
           </article>
         </div>
+      </section>
+
+      <section class="admin-panel admin-knowledge-cache">
+        <details id="cache-details">
+          <summary class="knowledge-cache-summary">
+            <h2>Cached Facts</h2>
+            <span class="hint" id="cache-summary-count">—</span>
+          </summary>
+          <div class="knowledge-cache-body">
+            <div class="knowledge-cache-search">
+              <input type="search" id="cache-q" placeholder="Search title or artist"
+                aria-label="Search cached tracks" autocomplete="off">
+            </div>
+            <div class="knowledge-cache-toolbar">
+              <div class="knowledge-cache-filters" role="group" aria-label="Filter by status">
+                <button type="button" class="btn btn-sm is-active" data-status="">All</button>
+                <button type="button" class="btn btn-sm" data-status="ready">Ready</button>
+                <button type="button" class="btn btn-sm" data-status="no_facts">No Facts</button>
+                <button type="button" class="btn btn-sm" data-status="failed">Failed</button>
+              </div>
+              <div class="knowledge-cache-pager">
+                <button type="button" class="btn btn-sm" id="cache-prev">Prev</button>
+                <span class="hint" id="cache-range">—</span>
+                <button type="button" class="btn btn-sm" id="cache-next">Next</button>
+              </div>
+            </div>
+            <div class="knowledge-cache-list" id="cache-list"></div>
+          </div>
+        </details>
       </section>
     </div>
   </main>
@@ -289,9 +319,11 @@
               <strong>Active</strong> — enrich upcoming queue tracks in the background.
             </dd>
             <dt>Providers</dt>
-            <dd>Search uses MusicBrainz, Wikipedia, and DuckDuckGo (free). Ollama is required (<code>OLLAMA_URL</code>, <code>OLLAMA_MODEL</code>). Optional SearXNG via <code>SEARXNG_URL</code>. Restart backend after <code>.env</code> changes.</dd>
-            <dt>Clear Cache</dt>
-            <dd>Removes all cached facts and cancels pending jobs. Use Active mode to rebuild.</dd>
+            <dd>Search uses MusicBrainz, Wikipedia, and DuckDuckGo (free). A language model is required: local Ollama (<code>OLLAMA_URL</code>, <code>OLLAMA_MODEL</code>) by default, or an OpenAI-compatible cloud provider by setting <code>KNOWLEDGE_LLM_PROVIDER=openai</code> with <code>KNOWLEDGE_LLM_BASE_URL</code>, <code>KNOWLEDGE_LLM_MODEL</code>, and <code>KNOWLEDGE_LLM_API_KEY</code>. Optional SearXNG via <code>SEARXNG_URL</code>. Restart backend after <code>.env</code> changes.</dd>
+            <dt>Clear Knowledge</dt>
+            <dd>Removes all cached facts and the whole job history, including past failures. Use Active mode to rebuild.</dd>
+            <dt>Cached Facts</dt>
+            <dd>Browse what has been enriched, filter by status, read the stored facts, and re-run a single track with Refresh.</dd>
           </dl>
         </section>
         <section class="admin-help-section">
@@ -327,14 +359,14 @@
           <path d="M6 7l1 14h10l1-14"/>
         </svg>
       </div>
-      <h3 id="knowledge-purge-title" class="admin-dialog-title">Clear Knowledge Cache?</h3>
+      <h3 id="knowledge-purge-title" class="admin-dialog-title">Clear Knowledge?</h3>
       <p id="knowledge-purge-desc" class="admin-dialog-lede">
-        Deletes all cached facts and cancels pending enrichment jobs.
-        Settings and provider URLs are kept. You can re-enrich tracks after switching back to Active.
+        Deletes every cached fact and the entire job history, including past failures.
+        Settings and providers are kept. In Active mode, tracks re-enrich automatically as they come up in the queue.
       </p>
       <div class="admin-dialog-actions">
         <button type="button" class="btn btn-secondary" data-purge-dismiss>Cancel</button>
-        <button type="button" class="btn btn-danger" id="knowledge-purge-confirm">Clear Cache</button>
+        <button type="button" class="btn btn-danger" id="knowledge-purge-confirm">Clear Knowledge</button>
       </div>
     </div>
   </div>
@@ -365,13 +397,20 @@
         form[key].value = s[key];
       }
       document.getElementById('display-searxng-url').textContent = s.searxng_url || 'Not set (optional)';
-      document.getElementById('display-ollama-url').textContent = s.ollama_url || 'Not set in .env';
-      document.getElementById('display-ollama-model').textContent = s.ollama_model || 'Not set in .env';
+      const cloud = s.llm_provider === 'openai';
+      document.getElementById('display-llm-provider').textContent = cloud ? 'OpenAI-compatible' : 'Ollama (local)';
+      document.getElementById('display-llm-url').textContent =
+        (cloud ? s.llm_base_url : s.ollama_url) || 'Not set in .env';
+      document.getElementById('display-llm-model').textContent =
+        (cloud ? s.llm_model : s.ollama_model) || 'Not set in .env';
       document.getElementById('stat-cache').textContent = s.cache_entries;
       document.getElementById('stat-ready').textContent = s.cache_ready;
       document.getElementById('stat-pending').textContent = s.jobs_pending;
       document.getElementById('stat-running').textContent = s.jobs_running;
       document.getElementById('stat-failed').textContent = s.jobs_failed;
+      document.getElementById('stat-failed')
+        .closest('.knowledge-stat-card')
+        ?.classList.toggle('is-bad', Number(s.jobs_failed) > 0);
       document.getElementById('stat-cancelled').textContent = s.jobs_cancelled ?? 0;
       document.getElementById('stat-last-error').textContent = s.last_job_error || '—';
     }
@@ -434,14 +473,163 @@
       }
     });
 
-    document.getElementById('test-ollama-btn').addEventListener('click', async () => {
-      const el = document.getElementById('ollama-test-result');
+    document.getElementById('test-llm-btn').addEventListener('click', async () => {
+      const el = document.getElementById('llm-test-result');
       el.textContent = 'Testing…';
       try {
         const s = await adminFetchJSON('/api/admin/knowledge?test=1');
-        el.textContent = s.ollama_ok ? `✓ ${s.ollama_message}` : `✗ ${s.ollama_message}`;
+        el.textContent = s.llm_ok ? `✓ ${s.llm_message}` : `✗ ${s.llm_message}`;
       } catch (err) {
         el.textContent = err.message;
+      }
+    });
+
+    // --- Cached facts browser -------------------------------------------
+    const CACHE_PAGE_SIZE = 25;
+    let cacheStatus = '';
+    let cacheOffset = 0;
+    let cacheQuery = '';
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s ?? '';
+      return d.innerHTML;
+    }
+
+    /** Timestamps are naive UTC — pin them before parsing. */
+    function parseUtc(value) {
+      if (!value) return NaN;
+      return Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(value) ? value : value + 'Z');
+    }
+
+    function agoLabel(value) {
+      const t = parseUtc(value);
+      if (!Number.isFinite(t)) return '';
+      const mins = Math.floor((Date.now() - t) / 60000);
+      if (mins < 60) return `${Math.max(mins, 0)}m ago`;
+      if (mins < 1440) return `${Math.floor(mins / 60)}h ago`;
+      return `${Math.floor(mins / 1440)}d ago`;
+    }
+
+    function inLabel(value) {
+      const t = parseUtc(value);
+      if (!Number.isFinite(t)) return '';
+      const mins = Math.floor((t - Date.now()) / 60000);
+      if (mins <= 0) return 'expired';
+      if (mins < 1440) return `in ${Math.max(Math.floor(mins / 60), 1)}h`;
+      return `in ${Math.floor(mins / 1440)}d`;
+    }
+
+    function factConfHtml(f) {
+      const c = Number(f.confidence);
+      if (!Number.isFinite(c)) return '';
+      return `<span class="knowledge-fact-conf ${c >= 0.8 ? 'is-hi' : 'is-mid'}">${c.toFixed(2)}</span>`;
+    }
+
+    function renderCache(data) {
+      const list = document.getElementById('cache-list');
+      const total = data.total || 0;
+      document.getElementById('cache-summary-count').textContent =
+        total ? `${total} Track${total === 1 ? '' : 's'}` : 'None Yet';
+      if (!data.items.length) {
+        list.innerHTML = '<p class="hint">No cached tracks for this filter yet.</p>';
+        document.getElementById('cache-range').textContent = '0 of 0';
+      } else {
+        const from = cacheOffset + 1;
+        const to = cacheOffset + data.items.length;
+        document.getElementById('cache-range').textContent = `${from}–${to} of ${total}`;
+        list.innerHTML = data.items.map(e => {
+          const facts = (e.facts || []).map(f =>
+            `<li>${factConfHtml(f)}<span class="knowledge-fact-cat">${escapeHtml(f.category)}</span> ${escapeHtml(f.text)}</li>`
+          ).join('');
+          const cached = agoLabel(e.updated_at);
+          const expires = inLabel(e.expires_at);
+          const times = (cached || expires)
+            ? `<p class="knowledge-cache-times">` +
+              (cached ? `<span><span class="k">Cached</span>${cached}</span>` : '') +
+              (expires ? `<span><span class="k">Expires</span>${expires}</span>` : '') +
+              `</p>`
+            : '';
+          const body = e.failure_reason
+            ? `<p class="knowledge-cache-error">${escapeHtml(e.failure_reason)}</p>`
+            : (facts ? `${times}<ul class="knowledge-fact-list">${facts}</ul>` : '<p class="hint">No facts stored.</p>');
+          return `
+            <details class="knowledge-cache-row">
+              <summary>
+                <span class="knowledge-cache-track">${escapeHtml(e.title)}</span>
+                <span class="knowledge-cache-artist">${escapeHtml(e.artist)}</span>
+                <span class="knowledge-cache-badge is-${escapeHtml(e.status)}">${escapeHtml(e.status)}</span>
+                <span class="hint">${e.fact_count} fact${e.fact_count === 1 ? '' : 's'}</span>
+              </summary>
+              <div class="knowledge-cache-row-body">
+                ${body}
+                <button type="button" class="btn btn-sm" data-refresh="${escapeHtml(e.item_id)}">Refresh Track</button>
+              </div>
+            </details>`;
+        }).join('');
+      }
+      document.getElementById('cache-prev').disabled = cacheOffset === 0;
+      document.getElementById('cache-next').disabled = cacheOffset + CACHE_PAGE_SIZE >= total;
+    }
+
+    async function loadCache() {
+      if (!document.getElementById('cache-details').open) return;
+      const qs = new URLSearchParams({ offset: cacheOffset, limit: CACHE_PAGE_SIZE });
+      if (cacheStatus) qs.set('status', cacheStatus);
+      if (cacheQuery) qs.set('q', cacheQuery);
+      try {
+        renderCache(await adminFetchJSON('/api/admin/knowledge/cache?' + qs));
+      } catch (err) {
+        document.getElementById('cache-list').innerHTML =
+          `<p class="hint">${escapeHtml(err.message)}</p>`;
+      }
+    }
+
+    document.getElementById('cache-details').addEventListener('toggle', loadCache);
+
+    let cacheSearchTimer = null;
+    document.getElementById('cache-q').addEventListener('input', (e) => {
+      clearTimeout(cacheSearchTimer);
+      cacheSearchTimer = setTimeout(() => {
+        cacheQuery = e.target.value.trim();
+        cacheOffset = 0;
+        loadCache();
+      }, 300);
+    });
+
+    document.querySelector('.knowledge-cache-filters').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-status]');
+      if (!btn) return;
+      document.querySelectorAll('.knowledge-cache-filters [data-status]')
+        .forEach(b => b.classList.toggle('is-active', b === btn));
+      cacheStatus = btn.dataset.status;
+      cacheOffset = 0;
+      loadCache();
+    });
+
+    document.getElementById('cache-prev').addEventListener('click', () => {
+      cacheOffset = Math.max(0, cacheOffset - CACHE_PAGE_SIZE);
+      loadCache();
+    });
+    document.getElementById('cache-next').addEventListener('click', () => {
+      cacheOffset += CACHE_PAGE_SIZE;
+      loadCache();
+    });
+
+    document.getElementById('cache-list').addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-refresh]');
+      if (!btn) return;
+      btn.disabled = true;
+      btn.textContent = 'Queued…';
+      try {
+        await adminFetchJSON('/api/admin/knowledge/refresh/' + encodeURIComponent(btn.dataset.refresh), {
+          method: 'POST',
+        });
+        RadioApp.showAdminToast('Track queued for re-enrichment.', 'success', 4000, 'knowledge');
+      } catch (err) {
+        RadioApp.showAdminToast(err.message, 'error', 8000, 'knowledge');
+        btn.disabled = false;
+        btn.textContent = 'Refresh Track';
       }
     });
 
@@ -482,8 +670,10 @@
       if (!await openPurgeDialog()) return;
       try {
         const r = await adminFetchJSON('/api/admin/knowledge/purge', { method: 'POST' });
-        RadioApp.showAdminToast(`Cleared ${r.deleted} cache entries.`, 'success', 5000, 'knowledge-purge');
+        RadioApp.showAdminToast(`Cleared ${r.deleted} track${r.deleted === 1 ? '' : 's'} and job history.`, 'success', 5000, 'knowledge-purge');
         loadSettings();
+        cacheOffset = 0;
+        loadCache();
       } catch (err) {
         RadioApp.showAdminToast(err.message, 'error', 8000, 'knowledge-purge');
       }

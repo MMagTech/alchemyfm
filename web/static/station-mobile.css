@@ -1,4 +1,5 @@
-/* Station tune-in layout — mobile only (640px and below). Independent from desktop. */
+/* Station page — mobile only (640px and below). Independent from desktop.
+   Stacked hero: art, meta, a centered play row. The rail is desktop-only. */
 
 .header-end nav {
   display: none;
@@ -10,6 +11,16 @@
 
 .header-bio-toggle-short {
   display: inline;
+}
+
+.station-rail {
+  display: none;
+}
+
+.station-heading {
+  font-size: 1.35rem;
+  text-align: center;
+  margin-bottom: 0.9rem;
 }
 
 .station-tune-in {
@@ -54,28 +65,6 @@
   padding: 0;
 }
 
-.tune-in-station-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 0.5rem 0.75rem;
-  margin-bottom: 0.45rem;
-}
-
-.tune-in-station-row h2 {
-  margin: 0;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--muted);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.tune-in-station-row .live-badge {
-  margin: 0;
-}
-
 .tune-in-track {
   width: 100%;
 }
@@ -99,78 +88,61 @@
   text-align: center;
 }
 
-.tune-in-player {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0;
-  flex-shrink: 0;
-  margin: 0.85rem 0 0;
-  padding: 0.9rem 1rem 0.95rem;
-  align-self: stretch;
-  overflow: visible;
+.tune-in-metarow {
+  justify-content: center;
 }
 
-.tune-in-player-controls {
-  padding-bottom: 0.85rem;
+.tune-in-metarow .live-status-dot,
+.tune-in-metarow .live-status-text {
+  grid-area: auto;
+}
+
+.tune-in-metarow .live-timer {
+  font-size: 1.05rem;
+}
+
+/* Play row: big button centered, operator heart beside it. */
+.tune-in-play-col {
+  flex-direction: row;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 0.2rem;
+}
+
+.tune-in-play-col .live-play-btn {
+  width: 58px;
+  height: 58px;
+  font-size: 1.2rem;
+}
+
+.tune-in-play-col .live-volume {
+  display: none !important;
+}
+
+.tune-in-play-col .operator-station-heart-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tune-in-play-col .operator-station-heart-slot[hidden] {
+  display: none !important;
+}
+
+.tune-in-play-col .operator-station-heart-slot .operator-station-heart-row {
+  margin-top: 0;
+}
+
+.tune-in-play-col .operator-station-heart-row .operator-heart-btn {
+  width: 2.35rem;
+  height: 2.35rem;
 }
 
 .tune-in-meta .operator-station-heart-meta-slot {
   display: none !important;
 }
 
-.operator-station-heart-slot {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: 0.15rem;
-}
-
-.operator-station-heart-slot[hidden] {
-  display: none !important;
-}
-
-.operator-station-heart-slot .operator-station-heart-row {
-  margin-top: 0;
-}
-
-.tune-in-player .operator-station-heart-row .operator-heart-btn {
-  width: 2.35rem;
-  height: 2.35rem;
-}
-
-.tune-in-player .live-player-center {
-  flex: 1;
-  min-width: 0;
-  width: auto;
-  line-height: 1.2;
-}
-
-.tune-in-player .live-timer {
-  font-size: 1.15rem;
-}
-
-.tune-in-player-divider {
-  display: block;
-  flex-shrink: 0;
-  width: 100%;
-  height: 2px;
-  margin: 0;
-  border: 0;
-  border-radius: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--border) 10%,
-    color-mix(in srgb, var(--accent) 50%, var(--border)) 50%,
-    var(--border) 90%,
-    transparent 100%
-  );
-}
-
-.tune-in-player .live-volume {
-  display: none !important;
-}
+/* ---------- Knowledge popover: centered sheet ---------- */
 
 .tune-in-art-wrap .knowledge-tip {
   position: absolute;
@@ -189,10 +161,6 @@
   position: fixed;
   z-index: 1000;
   top: 50%;
-  left: 1rem;
-  right: 1rem;
-  width: auto;
-  max-width: none;
   margin: 0;
   padding: 0.9rem 1.05rem;
   max-height: min(70dvh, 22rem);
@@ -231,6 +199,19 @@
   pointer-events: auto;
 }
 
+/* Bigger touch targets for the fact nav on a phone. */
+.knowledge-arrow {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.knowledge-dot {
+  width: 9px;
+  height: 9px;
+}
+
+/* ---------- Bio, foot, panels ---------- */
+
 .tune-in-artist-bio {
   margin-top: 0.85rem;
   padding: 0.75rem 0.85rem;
@@ -263,7 +244,7 @@
   border-top: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  align-items: stretch;
+  align-items: center;
   gap: 0.7rem;
 }
 

@@ -8,10 +8,10 @@
   <link rel="icon" href="/static/icons/favicon.ico?v=2" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png?v=2">
   <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png?v=2">
-  <link rel="stylesheet" href="/static/style.css?v=142">
-  <link rel="stylesheet" href="/static/themes.css?v=2">
-  <link rel="stylesheet" href="/static/admin-mobile.css?v=13" media="(max-width: 640px)">
-  <script src="/static/themes.js?v=14"></script>
+  <link rel="stylesheet" href="/static/style.css?v=149">
+  <link rel="stylesheet" href="/static/themes.css?v=3">
+  <link rel="stylesheet" href="/static/admin-mobile.css?v=14" media="(max-width: 640px)">
+  <script src="/static/themes.js?v=15"></script>
 </head>
 <body>
   <header>
@@ -49,6 +49,23 @@
       <h2>Stations</h2>
       <p class="admin-lede">On-air channels. Queues refill automatically in the background.</p>
     </header>
+
+    <div class="admin-sumbar" id="stations-sumbar" hidden>
+      <span class="admin-sum is-live"><b id="sum-live">–</b><span id="sum-live-label">live</span></span>
+      <span class="admin-sum-div"></span>
+      <span class="admin-sum"><b id="sum-listeners">–</b>listening</span>
+      <span class="admin-sum-div"></span>
+      <span class="admin-sum is-warn" id="sum-attn-wrap" hidden><b id="sum-attn">0</b>need attention</span>
+      <span class="admin-sum-div" id="sum-attn-div" hidden></span>
+      <span class="admin-sum"><b id="sum-featured">–</b>featured</span>
+    </div>
+
+    <div class="admin-restart-banner" id="restart-pending-banner" hidden>
+      <span class="admin-restart-banner-icon" aria-hidden="true">&#9888;</span>
+      <p><b>Icecast restart pending.</b> A saved change needs more source slots than the running
+      server enforces. Stations stay off air until you restart.</p>
+      <button class="btn btn-danger btn-sm" type="button" id="banner-restart-btn">Restart Icecast</button>
+    </div>
 
     <section class="admin-panel" id="stations-section">
       <div class="admin-designer-callout" id="channel-designer-callout">
@@ -127,6 +144,33 @@
     </div>
   </div>
 
+  <div id="icecast-restart-dialog" class="admin-dialog" hidden>
+    <div class="admin-dialog-backdrop" data-dialog-dismiss></div>
+    <div
+      class="admin-dialog-panel admin-dialog-panel-danger"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="icecast-restart-title"
+      aria-describedby="icecast-restart-desc"
+    >
+      <div class="admin-dialog-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.75">
+          <path d="M12 3v4M8.5 4.8 10.6 8.2M15.5 4.8 13.4 8.2M5 12H3M21 12h-2M7.2 16.2l-1.4 2.8M16.8 16.2l1.4 2.8M12 20v1"/>
+          <circle cx="12" cy="12" r="4"/>
+        </svg>
+      </div>
+      <h3 id="icecast-restart-title" class="admin-dialog-title">Restart Icecast?</h3>
+      <p id="icecast-restart-desc" class="admin-dialog-lede">
+        Live streams will drop for a few seconds while Icecast restarts.
+        Listeners should reconnect automatically once mounts are back.
+      </p>
+      <div class="admin-dialog-actions">
+        <button type="button" class="btn btn-secondary" data-dialog-dismiss>Cancel</button>
+        <button type="button" class="btn btn-danger" id="icecast-restart-confirm">Restart Icecast</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/static/app.js?v=55"></script>
   <script>
     function redirectToLogin() {
@@ -159,6 +203,84 @@
     });
 
     let adminStationsCache = [];
+    const rowHtmlCache = new Map();
+
+    function stationHealth(s) {
+      if (!s.enabled) return { cls: 'admin-pill-standby', label: '—', level: 'standby' };
+      if (s.pool_count === 0) return { cls: 'admin-pill-bad', label: 'No pool', level: 'bad' };
+      if (!s.source_healthy) return { cls: 'admin-pill-warn', label: 'Refill', level: 'warn' };
+      return { cls: 'admin-pill-ok', label: 'OK', level: 'ok' };
+    }
+
+    function stationRowHtml(s, featuredCap) {
+      const health = stationHealth(s);
+      const onAir = s.enabled
+        ? '<span class="admin-pill admin-pill-live">Live</span>'
+        : '<span class="admin-pill admin-pill-off">Off</span>';
+      const queueTitle = `${s.queued_count} tracks queued · ~${s.buffer_minutes} min buffer` +
+        (s.pool_count > 0 ? ` · ${s.pool_count} in pool` : '');
+      const queueLine = `<span class="admin-queue-compact" title="${RadioApp.escapeAttr(queueTitle)}">` +
+        `<span>${s.queued_count}</span><span class="admin-queue-dot">·</span>` +
+        `<span>~${s.buffer_minutes}m</span>` +
+        (s.pool_count > 0 ? `<span class="admin-queue-dot">·</span><span class="admin-queue-pool">${s.pool_count}p</span>` : '') +
+        `</span>`;
+      const toggleClass = s.enabled ? 'btn-admin-disable' : 'btn-admin-enable';
+      const toggleLabel = s.enabled ? 'Off' : 'On';
+      const starClass = s.featured ? 'admin-star-btn is-featured' : 'admin-star-btn';
+      const starTitle = s.featured ? 'Remove from Featured' : `Add to Featured (up to ${featuredCap})`;
+      const reorderGroup = s.featured ? 'Featured' : 'All Stations';
+      const listeners = Number(s.listeners) || 0;
+      // Stations rarely have uploaded artwork; the on-air cover is the thumb.
+      const coverUrl = s.artwork_url ||
+        (s.now_playing?.cover_url ? s.now_playing.cover_url.replace(/size=\d+/, 'size=64') : '');
+      const art = coverUrl
+        ? `<img src="${RadioApp.escapeAttr(coverUrl)}" alt="" loading="lazy" decoding="async">`
+        : '<span aria-hidden="true">♪</span>';
+      // source_last_error is the reliable health detail; on_air is not.
+      const reason = s.enabled && s.source_last_error && health.level !== 'ok'
+        ? `<p class="admin-reason-line ${health.level === 'bad' ? 'is-bad' : 'is-warn'}">` +
+          `<span class="lbl">Why</span>${RadioApp.escape(s.source_last_error)}</p>`
+        : '';
+      return `
+      <div class="admin-station-card admin-strow ${s.enabled ? 'admin-row-live' : 'admin-row-off'}">
+        <div class="adm-c adm-c-station">
+          <span class="admin-st-art${s.enabled ? '' : ' is-off'}">${art}</span>
+          <a class="admin-station-link" href="/station.html?slug=${encodeURIComponent(s.slug)}">${RadioApp.escape(s.name)}</a>
+        </div>
+        <div class="adm-c adm-c-onair">${onAir}</div>
+        <div class="adm-c adm-c-health"><span class="admin-pill ${health.cls}">${health.label}</span></div>
+        <div class="adm-c adm-c-mount"><span class="admin-chip admin-chip-mount" title="${RadioApp.escapeAttr(s.icecast_mount)}">${RadioApp.escape(s.icecast_mount)}</span></div>
+        <div class="adm-c adm-c-queue">${queueLine}</div>
+        <div class="adm-c adm-c-listeners"><span class="admin-listeners${listeners > 0 ? ' is-live' : ''}" title="Live listeners">${listeners}</span></div>
+        <div class="adm-c adm-c-acts admin-actions admin-actions-ops">
+          <button class="${starClass}" data-action="feature" data-id="${s.id}" data-featured="${s.featured}" title="${starTitle}" aria-label="${starTitle}">&#9733;</button>
+          <button class="admin-reorder-btn" data-action="reorder-up" data-id="${s.id}" title="Move earlier in ${reorderGroup}">&#9650;</button>
+          <button class="admin-reorder-btn" data-action="reorder-down" data-id="${s.id}" title="Move later in ${reorderGroup}">&#9660;</button>
+          <button class="btn btn-sm ${toggleClass}" data-action="toggle" data-id="${s.id}" data-enabled="${s.enabled}" title="${s.enabled ? 'Take station off air' : 'Put station on air'}">${toggleLabel}</button>
+        </div>
+        ${reason}
+      </div>`;
+    }
+
+    function renderSummary(stations) {
+      const bar = document.getElementById('stations-sumbar');
+      if (!bar) return;
+      const live = stations.filter((s) => s.enabled).length;
+      const listeners = stations.reduce((sum, s) => sum + (Number(s.listeners) || 0), 0);
+      const attn = stations.filter((s) => {
+        const level = stationHealth(s).level;
+        return level === 'warn' || level === 'bad';
+      }).length;
+      const featured = stations.filter((s) => s.featured).length;
+      document.getElementById('sum-live').textContent = String(live);
+      document.getElementById('sum-live-label').textContent = `of ${stations.length} live`;
+      document.getElementById('sum-listeners').textContent = String(listeners);
+      document.getElementById('sum-featured').textContent = String(featured);
+      document.getElementById('sum-attn').textContent = String(attn);
+      document.getElementById('sum-attn-wrap').hidden = attn === 0;
+      document.getElementById('sum-attn-div').hidden = attn === 0;
+      bar.hidden = false;
+    }
 
     async function loadAdminStations() {
       const body = document.getElementById('stations-body');
@@ -170,65 +292,111 @@
         }
         const enabledCount = stations.filter((s) => s.enabled).length;
         const featuredCap = enabledCount >= 15 ? 6 : 3;
-        body.innerHTML = stations.map((s) => {
-          let healthClass = 'admin-pill-ok';
-          let healthLabel = 'OK';
-          if (s.pool_count === 0) {
-            healthClass = 'admin-pill-bad';
-            healthLabel = 'No pool';
-          } else if (!s.source_healthy) {
-            healthClass = 'admin-pill-warn';
-            healthLabel = 'Refill';
-          }
-          const onAir = s.enabled
-            ? '<span class="admin-pill admin-pill-live">Live</span>'
-            : '<span class="admin-pill admin-pill-off">Off</span>';
-          const health = s.enabled
-            ? `<span class="admin-pill ${healthClass}">${healthLabel}</span>`
-            : '<span class="admin-pill admin-pill-standby">—</span>';
-          const queueTitle = `${s.queued_count} tracks queued · ~${s.buffer_minutes} min buffer` +
-            (s.pool_count > 0 ? ` · ${s.pool_count} in pool` : '');
-          const queueLine = `<span class="admin-queue-compact" title="${RadioApp.escapeAttr(queueTitle)}">` +
-            `<span>${s.queued_count}</span><span class="admin-queue-dot">·</span>` +
-            `<span>~${s.buffer_minutes}m</span>` +
-            (s.pool_count > 0 ? `<span class="admin-queue-dot">·</span><span class="admin-queue-pool">${s.pool_count}p</span>` : '') +
-            `</span>`;
-          const toggleClass = s.enabled ? 'btn-admin-disable' : 'btn-admin-enable';
-          const toggleLabel = s.enabled ? 'Off' : 'On';
-          const starClass = s.featured ? 'admin-star-btn is-featured' : 'admin-star-btn';
-          const starTitle = s.featured ? 'Remove from Featured' : `Add to Featured (up to ${featuredCap})`;
-          const reorderGroup = s.featured ? 'Featured' : 'All Stations';
-          const reorder = `
-                <button class="admin-reorder-btn" data-action="reorder-up" data-id="${s.id}" title="Move earlier in ${reorderGroup}">&#9650;</button>
-                <button class="admin-reorder-btn" data-action="reorder-down" data-id="${s.id}" title="Move later in ${reorderGroup}">&#9660;</button>`;
-          return `
-          <div class="admin-station-card ${s.enabled ? 'admin-row-live' : 'admin-row-off'}">
-            <div class="admin-station-top">
-              <a class="admin-station-link" href="/station.html?slug=${encodeURIComponent(s.slug)}">${RadioApp.escape(s.name)}</a>
-              <span class="admin-pill-row">${onAir}${health}</span>
-            </div>
-            <div class="admin-station-meta">
-              <div class="admin-station-field">
-                <span class="admin-station-field-label">Mount</span>
-                <span class="admin-chip admin-chip-mount" title="${RadioApp.escapeAttr(s.icecast_mount)}">${RadioApp.escape(s.icecast_mount)}</span>
-              </div>
-              <div class="admin-station-field">
-                <span class="admin-station-field-label">Queue</span>
-                ${queueLine}
-              </div>
-              <div class="admin-actions admin-actions-ops admin-station-actions">
-                <button class="${starClass}" data-action="feature" data-id="${s.id}" data-featured="${s.featured}" title="${starTitle}" aria-label="${starTitle}">&#9733;</button>
-                ${reorder}
-                <button class="btn btn-sm ${toggleClass}" data-action="toggle" data-id="${s.id}" data-enabled="${s.enabled}" title="${s.enabled ? 'Take station off air' : 'Put station on air'}">${toggleLabel}</button>
-              </div>
-            </div>
+        // Featured first (by featured_order), then the rest (by sort_order) —
+        // the same grouping the home page renders.
+        const featured = stations.filter((s) => s.featured)
+          .sort((a, b) => a.featured_order - b.featured_order);
+        const rest = stations.filter((s) => !s.featured)
+          .sort((a, b) => a.sort_order - b.sort_order);
+        const head = `
+          <div class="admin-sthead" aria-hidden="true">
+            <span>Station</span><span>On air</span><span>Health</span><span>Mount</span>
+            <span>Queue</span><span>Listeners</span><span class="adm-head-acts">Featured &amp; control</span>
           </div>`;
-        }).join('');
+        const rowHtml = (s) => stationRowHtml(s, featuredCap)
+          .replace('class="admin-station-card', `data-station-id="${s.id}" class="admin-station-card`);
+        const group = (label, rows) => rows.length
+          ? `<h3 class="admin-group-title admin-stations-group">${label}</h3>` +
+            rows.map(rowHtml).join('')
+          : '';
+        // The poll refetches every 15s and cover thumbs carry no cache
+        // headers — a blanket innerHTML would re-download all 21 images each
+        // tick. Replace only rows whose rendered content actually changed.
+        const ordered = featured.concat(rest);
+        const structure = ordered.map((s) => `${s.id}|${s.featured ? 1 : 0}`).join(',');
+        if (body.dataset.structure === structure) {
+          ordered.forEach((s) => {
+            const el = body.querySelector(`[data-station-id="${s.id}"]`);
+            const html = rowHtml(s);
+            if (!el || rowHtmlCache.get(s.id) === html) return;
+            el.outerHTML = html;
+            rowHtmlCache.set(s.id, html);
+          });
+        } else {
+          body.innerHTML = head +
+            (featured.length
+              ? group('Featured', featured) + group('All Stations', rest)
+              : rest.map(rowHtml).join(''));
+          body.dataset.structure = structure;
+          rowHtmlCache.clear();
+          ordered.forEach((s) => rowHtmlCache.set(s.id, rowHtml(s)));
+        }
         adminStationsCache = stations;
+        renderSummary(stations);
       } catch (err) {
         body.innerHTML = `<p class="admin-empty">${RadioApp.escape(err.message)}</p>`;
       }
     }
+
+    async function refreshRestartBanner() {
+      try {
+        const s = await adminFetchJSON('/api/admin/broadcast');
+        const banner = document.getElementById('restart-pending-banner');
+        if (banner) {
+          banner.hidden = !(s.icecast_restart_pending && s.icecast_restart_available);
+        }
+      } catch { /* banner just stays as-is */ }
+    }
+
+    let icecastRestartDialogResolver = null;
+
+    function closeIcecastRestartDialog(confirmed = false) {
+      const dialog = document.getElementById('icecast-restart-dialog');
+      dialog.hidden = true;
+      document.body.classList.remove('admin-dialog-open');
+      const resolve = icecastRestartDialogResolver;
+      icecastRestartDialogResolver = null;
+      resolve?.(confirmed);
+    }
+
+    function openIcecastRestartDialog() {
+      const dialog = document.getElementById('icecast-restart-dialog');
+      return new Promise((resolve) => {
+        icecastRestartDialogResolver = resolve;
+        dialog.hidden = false;
+        document.body.classList.add('admin-dialog-open');
+        document.getElementById('icecast-restart-confirm')?.focus();
+      });
+    }
+
+    document.getElementById('icecast-restart-dialog')?.addEventListener('click', (e) => {
+      if (e.target.closest('[data-dialog-dismiss]')) closeIcecastRestartDialog(false);
+    });
+    document.getElementById('icecast-restart-confirm')?.addEventListener('click', () => {
+      closeIcecastRestartDialog(true);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !document.getElementById('icecast-restart-dialog')?.hidden) {
+        closeIcecastRestartDialog(false);
+      }
+    });
+
+    document.getElementById('banner-restart-btn')?.addEventListener('click', async (e) => {
+      const confirmed = await openIcecastRestartDialog();
+      if (!confirmed) return;
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try {
+        await adminFetchJSON('/api/admin/broadcast/restart-icecast', { method: 'POST' });
+        RadioApp.showAdminToast('', 'success', 6000, 'icecast');
+        refreshRestartBanner();
+        loadAdminStations();
+      } catch (err) {
+        RadioApp.showAdminToast(err.message, 'error', 8000, 'icecast');
+      } finally {
+        btn.disabled = false;
+      }
+    });
 
     document.getElementById('stations-body').addEventListener('click', async (e) => {
       const toggleBtn = e.target.closest('button[data-action="toggle"]');
@@ -236,12 +404,19 @@
         const id = toggleBtn.dataset.id;
         try {
           const enabled = toggleBtn.dataset.enabled !== 'true';
-          await adminFetchJSON(`/api/admin/stations/${id}`, {
+          const saved = await adminFetchJSON(`/api/admin/stations/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enabled }),
           });
-          RadioApp.showAdminToast(enabled ? 'Station enabled.' : 'Station disabled.', 'success', 4000);
+          // Enabling can leave Icecast short on source slots: surface the
+          // warning transiently and re-check the persistent pending banner.
+          if (enabled && saved?.icecast_warning) {
+            RadioApp.showAdminToast(saved.icecast_warning, 'error', 8000);
+          } else {
+            RadioApp.showAdminToast(enabled ? 'Station enabled.' : 'Station disabled.', 'success', 4000);
+          }
+          refreshRestartBanner();
           loadAdminStations();
         } catch (err) {
           RadioApp.showAdminToast(err.message, 'error');
@@ -307,6 +482,8 @@
     });
 
     loadAdminStations();
+    refreshRestartBanner();
+    setInterval(loadAdminStations, 15000);
 
     fetch('/api/health').then(r => r.json()).then(h => {
       const link = document.getElementById('admin-knowledge-link');

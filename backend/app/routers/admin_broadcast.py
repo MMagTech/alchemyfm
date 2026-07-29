@@ -17,9 +17,12 @@ from app.services.backup import create_backup, prune_old_backups
 from app.services.broadcast_settings import (
     apply_broadcast_settings,
     get_broadcast_settings,
+    icecast_restart_pending,
+    record_icecast_restarted,
     update_broadcast_settings,
 )
 from app.services.icecast_restart import icecast_restart_enabled, restart_icecast_container
+from app.themes import normalize_theme
 
 router = APIRouter(
     prefix="/api/admin/broadcast",
@@ -45,16 +48,18 @@ _APPLY_TRIGGER_FIELDS = {
 def read_broadcast_settings(db: Session = Depends(get_db)):
     row = get_broadcast_settings(db)
     return BroadcastSettingsRead.model_validate(row).model_copy(
-        update={"icecast_restart_available": icecast_restart_enabled()}
+        update={
+            "icecast_restart_available": icecast_restart_enabled(),
+            "icecast_restart_pending": icecast_restart_pending(db),
+        }
     )
 
 
 @router.get("/appearance", response_model=AppearanceSettingsRead)
 def read_appearance_settings(db: Session = Depends(get_db)):
     row = get_broadcast_settings(db)
-    theme = row.default_theme or "violet"
     return AppearanceSettingsRead(
-        default_theme=theme,
+        default_theme=normalize_theme(row.default_theme),
         artist_bio_enabled=bool(row.artist_bio_enabled),
         default_navidrome_playlist_id=row.default_navidrome_playlist_id or "",
     )
@@ -73,7 +78,7 @@ def save_appearance_settings(
         },
     )
     return AppearanceSettingsRead(
-        default_theme=row.default_theme or "violet",
+        default_theme=normalize_theme(row.default_theme),
         artist_bio_enabled=bool(row.artist_bio_enabled),
         default_navidrome_playlist_id=row.default_navidrome_playlist_id or "",
     )
@@ -92,16 +97,21 @@ def save_broadcast_settings(
         # level doesn't touch Liquidsoap/Icecast, so no station restart needed.
         logging.getLogger().setLevel(getattr(logging, row.log_level, logging.INFO))
     return BroadcastSettingsRead.model_validate(row).model_copy(
-        update={"icecast_restart_available": icecast_restart_enabled()}
+        update={
+            "icecast_restart_available": icecast_restart_enabled(),
+            "icecast_restart_pending": icecast_restart_pending(db),
+        }
     )
 
 
 @router.post("/restart-icecast", response_model=IcecastRestartResponse)
-def restart_icecast():
+def restart_icecast(db: Session = Depends(get_db)):
     try:
         container_name = restart_icecast_container()
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    # The restarted Icecast now enforces whatever icecast.xml holds.
+    record_icecast_restarted(db)
     return IcecastRestartResponse(ok=True, container=container_name)
 
 

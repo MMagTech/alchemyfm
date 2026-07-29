@@ -19,6 +19,7 @@ from app.config import settings
 from app.database import SessionLocal, Station, init_db
 from app.rate_limit import limiter
 from app.schemas import BroadcastStatsRead, HealthResponse
+from app.themes import normalize_theme
 from app.middleware import SecurityHeadersMiddleware
 from app.routers import (
     admin,
@@ -298,7 +299,9 @@ def health():
     try:
         count = db.query(Station).filter(Station.enabled.is_(True)).count()
         bs = get_broadcast_settings(db)
-        default_theme = bs.default_theme or "violet"
+        default_theme = normalize_theme(bs.default_theme)
+        encode_format = bs.encode_format or "mp3"
+        bitrate = bs.aac_bitrate if encode_format == "aac" else bs.mp3_bitrate
     finally:
         db.close()
     return {
@@ -308,6 +311,8 @@ def health():
         "default_theme": default_theme,
         "git_sha": settings.git_sha,
         "started_at": _started_at.isoformat(),
+        "encode_format": encode_format,
+        "bitrate": bitrate or 0,
     }
 
 

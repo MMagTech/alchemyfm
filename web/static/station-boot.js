@@ -9,12 +9,15 @@
     let artistBioUserVisible = true;
     let lastNowPlaying = null;
     let knowledgeFacts = [];
+    let knowledgeFactsSig = '';
     let knowledgeFactIndex = 0;
     let knowledgeRotateTimer = null;
     let knowledgeTipTimer = null;
     let knowledgeTrackKey = '';
     let stationDescription = '';
     const KNOWLEDGE_TIP_AUTO_CLOSE_MS = 6000;
+    const reduceMotion = window.matchMedia
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     function clearKnowledgeRotation() {
       clearInterval(knowledgeRotateTimer);
@@ -57,20 +60,12 @@
       }, KNOWLEDGE_TIP_AUTO_CLOSE_MS);
     }
 
-    function applyKnowledgeTip() {
-      const tip = document.getElementById('knowledge-tip');
-      if (!tip) return;
+    function paintKnowledgeFact() {
       const textEl = document.getElementById('knowledge-fact-text');
       const linkEl = document.getElementById('knowledge-fact-source');
-
-      if (!knowledgeFeature || !knowledgeFacts.length) {
-        tip.hidden = true;
-        closeKnowledgeTip();
-        return;
-      }
-
-      tip.hidden = false;
+      const dotsEl = document.getElementById('knowledge-dots');
       const fact = knowledgeFacts[knowledgeFactIndex % knowledgeFacts.length];
+      if (!fact) return;
       if (textEl) textEl.textContent = fact.text;
       const src = (fact.sources && fact.sources[0]) || null;
       if (linkEl) {
@@ -83,6 +78,97 @@
           linkEl.removeAttribute('href');
         }
       }
+      if (dotsEl) {
+        [...dotsEl.children].forEach((dot, i) => {
+          dot.classList.toggle('is-current', i === knowledgeFactIndex);
+          dot.setAttribute('aria-current', i === knowledgeFactIndex ? 'true' : 'false');
+        });
+      }
+    }
+
+    function rebuildKnowledgeDots() {
+      const dotsEl = document.getElementById('knowledge-dots');
+      const nav = document.getElementById('knowledge-popover-nav');
+      if (!dotsEl || !nav) return;
+      nav.hidden = knowledgeFacts.length < 2;
+      const frag = document.createDocumentFragment();
+      knowledgeFacts.forEach((_, i) => {
+        const dot = document.createElement('button');
+        dot.type = 'button';
+        dot.className = 'knowledge-dot';
+        dot.setAttribute('aria-label', `Fact ${i + 1} of ${knowledgeFacts.length}`);
+        dot.addEventListener('click', (e) => {
+          e.stopPropagation();
+          goToKnowledgeFact(i, true);
+        });
+        frag.appendChild(dot);
+      });
+      dotsEl.replaceChildren(frag);
+    }
+
+    /** Slide to fact n; manual moves restart the auto-rotation clock. */
+    function goToKnowledgeFact(n, manual = false) {
+      if (!knowledgeFacts.length) return;
+      const from = knowledgeFactIndex;
+      const next = ((n % knowledgeFacts.length) + knowledgeFacts.length) % knowledgeFacts.length;
+      if (next === from && manual) return;
+      const dir = (next > from || (from === knowledgeFacts.length - 1 && next === 0)) ? 1 : -1;
+      knowledgeFactIndex = next;
+      const body = document.getElementById('knowledge-popover-body');
+      if (reduceMotion || !body) {
+        paintKnowledgeFact();
+      } else {
+        body.style.opacity = '0';
+        body.style.transform = `translateX(${dir * 10}px)`;
+        setTimeout(() => {
+          paintKnowledgeFact();
+          body.style.transform = `translateX(${-dir * 10}px)`;
+          requestAnimationFrame(() => {
+            body.style.opacity = '1';
+            body.style.transform = 'translateX(0)';
+          });
+        }, 160);
+      }
+      if (manual) restartKnowledgeRotation();
+    }
+
+    let knowledgeRotateMs = 15000;
+
+    function restartKnowledgeRotation() {
+      clearKnowledgeRotation();
+      if (knowledgeFacts.length < 2) return;
+      knowledgeRotateTimer = setInterval(() => {
+        goToKnowledgeFact(knowledgeFactIndex + 1, false);
+      }, knowledgeRotateMs);
+    }
+
+    function applyKnowledgeTip() {
+      const tip = document.getElementById('knowledge-tip');
+      if (!tip) return;
+
+      if (!knowledgeFeature || !knowledgeFacts.length) {
+        tip.hidden = true;
+        closeKnowledgeTip();
+        return;
+      }
+
+      tip.hidden = false;
+      rebuildKnowledgeDots();
+      paintKnowledgeFact();
+    }
+
+    /** Spring-pop the ✦ in when facts land after the track already rendered. */
+    function popKnowledgeStar() {
+      const btn = document.querySelector('#knowledge-tip .knowledge-tip-btn');
+      if (!btn || reduceMotion) return;
+      btn.classList.remove('is-arriving');
+      void btn.offsetWidth;
+      btn.classList.add('is-arriving');
+      btn.addEventListener(
+        'animationend',
+        () => btn.classList.remove('is-arriving'),
+        { once: true }
+      );
     }
 
     function wireKnowledgeTip() {
@@ -97,6 +183,28 @@
       tip.addEventListener('mouseleave', () => {
         tip.classList.remove('suppress-hover');
       });
+      document.getElementById('knowledge-prev')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        goToKnowledgeFact(knowledgeFactIndex - 1, true);
+      });
+      document.getElementById('knowledge-next')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        goToKnowledgeFact(knowledgeFactIndex + 1, true);
+      });
+      const pop = document.getElementById('knowledge-popover');
+      if (pop) {
+        let touchX = null;
+        pop.addEventListener('touchstart', (e) => {
+          touchX = e.touches[0]?.clientX ?? null;
+        }, { passive: true });
+        pop.addEventListener('touchend', (e) => {
+          if (touchX == null) return;
+          const dx = (e.changedTouches[0]?.clientX ?? touchX) - touchX;
+          touchX = null;
+          if (Math.abs(dx) < 30) return;
+          goToKnowledgeFact(knowledgeFactIndex + (dx < 0 ? 1 : -1), true);
+        }, { passive: true });
+      }
       document.addEventListener('click', (e) => {
         if (!tip.hidden && !tip.contains(e.target)) {
           closeKnowledgeTip(true);
@@ -112,6 +220,7 @@
       if (!knowledgeFeature) {
         clearKnowledgeRotation();
         knowledgeFacts = [];
+        knowledgeFactsSig = '';
         applyKnowledgeTip();
         applyStationDescLine();
         return;
@@ -121,26 +230,28 @@
       if (!block || !block.facts || !block.facts.length) {
         clearKnowledgeRotation();
         knowledgeFacts = [];
+        knowledgeFactsSig = '';
         knowledgeTrackKey = trackKey || '';
         closeKnowledgeTip();
         applyKnowledgeTip();
         applyStationDescLine();
         return;
       }
-      if (trackKey !== knowledgeTrackKey) {
-        knowledgeTrackKey = trackKey;
-        knowledgeFacts = block.facts;
-        knowledgeFactIndex = 0;
-        clearKnowledgeRotation();
-        closeKnowledgeTip();
-        applyKnowledgeTip();
-        applyStationDescLine();
-        const interval = (block.rotation_interval_sec || 15) * 1000;
-        knowledgeRotateTimer = setInterval(() => {
-          knowledgeFactIndex = (knowledgeFactIndex + 1) % knowledgeFacts.length;
-          applyKnowledgeTip();
-        }, interval);
-      }
+      const factsSig = block.facts.map((f) => f.text).join('\0');
+      const trackChanged = trackKey !== knowledgeTrackKey;
+      if (!trackChanged && factsSig === knowledgeFactsSig) return;
+      // Facts landing after the track already rendered bare — the star pops in.
+      const lateArrival = !trackChanged && !knowledgeFacts.length;
+      knowledgeTrackKey = trackKey;
+      knowledgeFacts = block.facts;
+      knowledgeFactsSig = factsSig;
+      knowledgeFactIndex = 0;
+      closeKnowledgeTip();
+      applyKnowledgeTip();
+      applyStationDescLine();
+      knowledgeRotateMs = (block.rotation_interval_sec || 15) * 1000;
+      restartKnowledgeRotation();
+      if (lateArrival) popKnowledgeStar();
     }
 
     function browserStreamUrl(station) {
@@ -150,7 +261,13 @@
     function renderShell(s) {
       RadioApp.updateTabTitle({ stationName: s.name, playing: false });
       document.getElementById('content').innerHTML = `
+        <aside class="shelf-rail station-rail" aria-labelledby="shelf-rail-label">
+          <p class="shelf-rail-label" id="shelf-rail-label">Stations<span class="shelf-rail-count" id="shelf-rail-count"></span></p>
+          <ul class="shelf-rail-list" id="shelf-rail-list"></ul>
+        </aside>
+        <div class="shelf-main station-main">
         <div class="panel station-tune-in">
+          <h2 class="station-heading" id="station-name"></h2>
           <div class="tune-in-top">
             <div class="tune-in-art-wrap">
               <div id="hero-art" class="tune-in-art-mount"></div>
@@ -159,36 +276,40 @@
                 <button type="button" class="knowledge-tip-btn" aria-label="Track trivia" aria-expanded="false" aria-controls="knowledge-popover" title="Did you know?">✦</button>
                 <div id="knowledge-popover" class="knowledge-popover" role="tooltip">
                   <p class="knowledge-popover-label">Did you know?</p>
-                  <p class="knowledge-popover-text" id="knowledge-fact-text"></p>
-                  <a class="knowledge-popover-source" id="knowledge-fact-source" href="#" target="_blank" rel="noopener noreferrer" hidden>Source</a>
+                  <div class="knowledge-popover-body" id="knowledge-popover-body">
+                    <p class="knowledge-popover-text" id="knowledge-fact-text"></p>
+                    <a class="knowledge-popover-source" id="knowledge-fact-source" href="#" target="_blank" rel="noopener noreferrer" hidden>Source</a>
+                  </div>
+                  <div class="knowledge-popover-nav" id="knowledge-popover-nav" hidden>
+                    <button type="button" class="knowledge-arrow" id="knowledge-prev" aria-label="Previous fact">&#8249;</button>
+                    <div class="knowledge-dots" id="knowledge-dots"></div>
+                    <button type="button" class="knowledge-arrow" id="knowledge-next" aria-label="Next fact">&#8250;</button>
+                  </div>
                 </div>
               </div>` : ''}
             </div>
             <div class="tune-in-meta">
-              <div class="tune-in-station-row">
-                <h2 id="station-name"></h2>
-              </div>
               <div id="now-playing-body" class="tune-in-track"></div>
               <p class="tune-in-desc hint" id="station-desc"></p>
-              <div id="operator-station-heart-meta-slot" class="operator-station-heart-meta-slot" hidden></div>
-            </div>
-            <div class="tune-in-player">
-              <div class="tune-in-player-controls">
-                <button type="button" class="live-play-btn" id="live-play-btn" aria-label="Play">
-                  <span class="live-play-icon" aria-hidden="true"></span>
-                </button>
-                <div class="live-player-center">
+              <div class="tune-in-metarow">
+                <span class="tune-in-listeners" id="station-listeners" hidden></span>
+                <span class="tune-in-status">
                   <span class="live-status-dot" id="live-status-dot" aria-hidden="true"></span>
                   <span id="live-status-text" class="live-status-text">Ready</span>
-                  <span class="live-timer" id="live-timer" aria-label="Time listened">0:00</span>
-                </div>
-                <div id="operator-station-heart-slot" class="operator-station-heart-slot" hidden></div>
+                </span>
+                <span class="live-timer" id="live-timer" aria-label="Time listened">0:00</span>
+                <div id="operator-station-heart-meta-slot" class="operator-station-heart-meta-slot" hidden></div>
               </div>
-              <div class="tune-in-player-divider" aria-hidden="true"></div>
+            </div>
+            <div class="tune-in-play-col">
+              <button type="button" class="live-play-btn" id="live-play-btn" aria-label="Play">
+                <span class="live-play-icon" aria-hidden="true"></span>
+              </button>
               <div class="live-volume">
                 <input type="range" id="live-volume" class="live-volume-slider"
                   min="0" max="1" step="0.05" value="1" aria-label="Volume" tabindex="-1">
               </div>
+              <div id="operator-station-heart-slot" class="operator-station-heart-slot" hidden></div>
             </div>
           </div>
           <div id="artist-bio" class="tune-in-artist-bio" hidden>
@@ -213,18 +334,24 @@
               <button type="button" class="copy-link" id="copy-m3u-url"
                 title="Copy playlist URL">listen.m3u</button>
             </p>
-            <button type="button" class="viz-fullscreen-btn" id="viz-fullscreen-btn" hidden>
-              Fullscreen Visuals
-            </button>
+            <span class="tune-in-foot-right">
+              <span class="format-badge" id="stream-format-badge" hidden></span>
+              <button type="button" class="viz-fullscreen-btn" id="viz-fullscreen-btn" hidden>
+                Fullscreen Visuals
+              </button>
+            </span>
           </div>
         </div>
-        <div class="panel">
-          <h3>Up Next</h3>
-          <ul class="track-list" id="up-next-list"></ul>
+        <div class="station-panels">
+          <div class="panel">
+            <h3>Up Next</h3>
+            <ul class="track-list track-rows" id="up-next-list"></ul>
+          </div>
+          <div class="panel">
+            <h3>Recently Played</h3>
+            <ul class="track-list track-rows" id="recent-list"></ul>
+          </div>
         </div>
-        <div class="panel">
-          <h3>Recently Played</h3>
-          <ul class="track-list" id="recent-list"></ul>
         </div>`;
 
       const audio = GlobalLivePlayer.prepareStationAudio(s);
@@ -273,8 +400,75 @@
       if (audio) wireFullscreenViz(audio);
       wireKnowledgeTip();
       wireArtistBioActions();
+      startRail();
+      void loadFormatBadge();
       shellReady = true;
       AdminLibraryControls?.onStationShellReady?.();
+    }
+
+    /* ---------- Station rail (desktop sidebar) ---------- */
+
+    let railTimer = null;
+    const RAIL_POLL_MS = 30000;
+
+    function syncRailViewing() {
+      document.querySelectorAll('.shelf-rail-item').forEach((li) => {
+        li.classList.toggle('is-viewing', li.dataset.slug === slug);
+      });
+    }
+
+    async function refreshRail() {
+      if (typeof AlchemyHome === 'undefined') return;
+      try {
+        const stations = await RadioApp.fetchJSON('/api/stations');
+        if (!document.getElementById('shelf-rail-list')) return;
+        AlchemyHome.writeStationsCache(stations);
+        AlchemyHome.renderRail(stations);
+        syncRailViewing();
+      } catch {
+        /* rail is decorative — the cached render (if any) stands */
+      }
+    }
+
+    function startRail() {
+      stopRail();
+      if (typeof AlchemyHome === 'undefined') return;
+      // renderRail keys off AlchemyHome._railKey; a fresh empty list needs a
+      // fresh key or the rebuild is skipped and the rail stays empty.
+      AlchemyHome._railKey = '';
+      const cached = AlchemyHome.readStationsCache();
+      if (cached?.length) {
+        AlchemyHome.renderRail(cached);
+        syncRailViewing();
+      }
+      void refreshRail();
+      railTimer = setInterval(() => void refreshRail(), RAIL_POLL_MS);
+    }
+
+    function stopRail() {
+      clearInterval(railTimer);
+      railTimer = null;
+    }
+
+    /* ---------- Stream format badge (from /api/health) ---------- */
+
+    let healthPromise = null;
+
+    async function loadFormatBadge() {
+      const badge = document.getElementById('stream-format-badge');
+      if (!badge) return;
+      try {
+        healthPromise = healthPromise || RadioApp.fetchJSON('/api/health');
+        const health = await healthPromise;
+        const fmt = (health.encode_format || '').toUpperCase();
+        if (!fmt) return;
+        const el = document.getElementById('stream-format-badge');
+        if (!el) return;
+        el.textContent = health.bitrate ? `${fmt} ${health.bitrate}` : fmt;
+        el.hidden = false;
+      } catch {
+        healthPromise = null;
+      }
     }
 
     function resetHeroPlaceholder() {
@@ -529,12 +723,77 @@
       requestAnimationFrame(() => syncArtistBioActions(bioUrl));
     }
 
-    function updateTrackList(el, tracks, emptyMsg) {
+    /** played_at is naive UTC from the backend — pin it before parsing. */
+    function playedAgoText(playedAt) {
+      if (!playedAt) return '';
+      const iso = /[zZ]|[+-]\d\d:?\d\d$/.test(playedAt) ? playedAt : `${playedAt}Z`;
+      const then = Date.parse(iso);
+      if (!Number.isFinite(then)) return '';
+      const mins = Math.floor((Date.now() - then) / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return `${mins} min ago`;
+      const hrs = Math.floor(mins / 60);
+      return hrs === 1 ? '1 hr ago' : `${hrs} hr ago`;
+    }
+
+    function trackRowHtml(t, { withAgo }) {
+      const cover = t.cover_url || '';
+      const ago = withAgo ? playedAgoText(t.played_at) : '';
+      return `
+        <li class="trow" data-item-id="${RadioApp.escapeAttr(t.item_id || '')}">
+          <span class="trow-art">${
+            cover
+              ? `<img src="${RadioApp.escapeAttr(cover)}" alt="" loading="lazy" decoding="async">`
+              : '<span class="trow-art-placeholder" aria-hidden="true">♪</span>'
+          }</span>
+          <span class="trow-name">
+            <b>${RadioApp.escape(t.title)}</b>
+            <span>${RadioApp.escape(t.artist)}</span>
+          </span>${ago ? `
+          <span class="trow-ago">${RadioApp.escape(ago)}</span>` : ''}
+        </li>`;
+    }
+
+    /**
+     * Keyed render: the station poll runs sub-second while listening, and
+     * rebuilding <img> rows every tick flickers. Rebuild only when the rows
+     * actually change; otherwise just refresh the "N min ago" labels.
+     */
+    function updateTrackList(el, tracks, emptyMsg, { withAgo = false, withHearts = false } = {}) {
+      const key = tracks
+        .map((t) => `${t.item_id}|${t.played_at || ''}|${t.cover_url || ''}`)
+        .join(',');
+      if (el.dataset.rowsKey === key) {
+        if (withAgo) {
+          el.querySelectorAll('.trow').forEach((li, i) => {
+            const agoEl = li.querySelector('.trow-ago');
+            if (agoEl && tracks[i]) agoEl.textContent = playedAgoText(tracks[i].played_at);
+          });
+        }
+        return;
+      }
+      el.dataset.rowsKey = key;
       el.innerHTML = tracks.length
-        ? tracks.map(t =>
-            `<li><span class="artist">${RadioApp.escape(t.artist)}</span> — ${RadioApp.escape(t.title)}</li>`
-          ).join('')
+        ? tracks.map((t) => trackRowHtml(t, { withAgo })).join('')
         : `<li class="muted">${emptyMsg}</li>`;
+      if (withHearts) AdminLibraryControls?.onRecentListRendered?.();
+    }
+
+    function updateListeners(s) {
+      const el = document.getElementById('station-listeners');
+      if (!el) return;
+      if (s.on_air === false) {
+        el.hidden = false;
+        el.textContent = 'Off air';
+        el.classList.add('is-off-air');
+        el.classList.remove('is-live');
+        return;
+      }
+      const count = Number(s.listeners) || 0;
+      el.hidden = false;
+      el.classList.remove('is-off-air');
+      el.classList.toggle('is-live', count > 0);
+      el.textContent = count === 1 ? '1 listening' : `${count} listening`;
     }
 
     let pollTimer = null;
@@ -573,6 +832,7 @@
       refreshToken += 1;
       clearInterval(pollTimer);
       pollTimer = null;
+      stopRail();
       shellReady = false;
       currentStation = null;
       lastNowPlaying = null;
@@ -646,6 +906,11 @@
       syncArtistBioToggle();
       knowledgeFeature = Boolean(s.knowledge_feature);
       updateKnowledge(s.now_playing, s);
+      updateListeners(s);
+      document.querySelector('.station-tune-in')
+        ?.classList.toggle('is-off-air', s.on_air === false);
+      if (typeof AlchemyHome !== 'undefined') AlchemyHome.syncRailPlaying();
+      syncRailViewing();
       updateTrackList(
         document.getElementById('up-next-list'),
         s.up_next,
@@ -654,7 +919,8 @@
       updateTrackList(
         document.getElementById('recent-list'),
         s.recently_played,
-        'Nothing played yet'
+        'Nothing played yet',
+        { withAgo: true, withHearts: true }
       );
       if (audio) {
         GlobalLivePlayer.notifyStationMeta(s);
@@ -732,6 +998,7 @@
       lastNowPlaying = null;
       clearInterval(pollTimer);
       pollTimer = null;
+      stopRail();
       lastStreamEpoch = null;
       const content = document.getElementById('content');
       if (content) content.innerHTML = '<p class="empty">Loading…</p>';

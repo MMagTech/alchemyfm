@@ -10,6 +10,12 @@ class TrackRef(BaseModel):
     item_id: str
     title: str
     artist: str
+    # Small same-origin thumbnail. These render 15-20 to a list while a
+    # stream is buffering, so the queue asks for 64px rather than the 300px
+    # default used for hero art.
+    cover_url: str | None = None
+    # Only set on recently-played rows; up-next hasn't happened yet.
+    played_at: datetime | None = None
 
 
 class TrackInfo(TrackRef):
@@ -137,15 +143,21 @@ class StationAdmin(StationDetail):
     created_at: datetime
     has_uploaded_artwork: bool = False
     external_artwork_url: str = ""
+    # Set when this create/update left Icecast short on source slots (the
+    # station is saved but cannot come on air until Icecast restarts).
+    icecast_warning: str = ""
 
 
 class HealthResponse(BaseModel):
     status: Literal["ok"]
     stations_enabled: int
     knowledge_feature: bool = False
-    default_theme: str = "violet"
+    default_theme: str = "amber"
     git_sha: str = "unknown"
     started_at: str
+    # What listeners are actually receiving, so the player can say so.
+    encode_format: str = "mp3"
+    bitrate: int = 0
 
 
 class BroadcastStatsRead(BaseModel):
@@ -161,8 +173,12 @@ class BroadcastSettingsRead(BaseModel):
     genre: str
     crossfade_sec: int
     max_listeners: int
-    default_theme: str = "violet"
+    default_theme: str = "amber"
     icecast_restart_available: bool = False
+    # Set when the running Icecast enforces fewer source slots than the
+    # written config needs, so the UI can say so persistently rather than
+    # only in the one response that triggered it.
+    icecast_restart_pending: bool = False
     backup_keep_count: int = 7
     backup_auto_enabled: bool = True
     log_level: str = "INFO"
@@ -176,7 +192,7 @@ class IcecastRestartResponse(BaseModel):
 
 
 class AppearanceSettingsRead(BaseModel):
-    default_theme: str = "violet"
+    default_theme: str = "amber"
     artist_bio_enabled: bool = True
     default_navidrome_playlist_id: str = ""
 
@@ -269,6 +285,9 @@ class KnowledgeSettingsRead(BaseModel):
     searxng_url: str
     ollama_url: str
     ollama_model: str
+    llm_provider: str = "ollama"
+    llm_base_url: str = ""
+    llm_model: str = ""
     providers_from_env: bool = True
     search_ok: bool | None = None
     search_message: str = ""
@@ -276,6 +295,8 @@ class KnowledgeSettingsRead(BaseModel):
     searxng_message: str = ""
     ollama_ok: bool | None = None
     ollama_message: str = ""
+    llm_ok: bool | None = None
+    llm_message: str = ""
     cache_entries: int = 0
     cache_ready: int = 0
     jobs_pending: int = 0
@@ -300,6 +321,12 @@ class KnowledgePurgeResponse(BaseModel):
     deleted: int
 
 
+class KnowledgeCacheFact(BaseModel):
+    category: str
+    text: str
+    confidence: float
+
+
 class KnowledgeCacheEntry(BaseModel):
     item_id: str
     status: str
@@ -308,6 +335,8 @@ class KnowledgeCacheEntry(BaseModel):
     album: str
     year: int | None = None
     fact_count: int
+    facts: list[KnowledgeCacheFact] = []
+    failure_reason: str = ""
     updated_at: datetime
     expires_at: datetime
 

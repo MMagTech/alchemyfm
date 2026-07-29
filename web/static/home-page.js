@@ -8,6 +8,98 @@ const AlchemyHome = {
   _stationsCacheKey: 'alchemyfm-stations-cache',
   _stationsBySlug: new Map(),
   _playInFlight: null,
+  /** Signature of what the rail is showing, so a poll doesn't rebuild it. */
+  _railKey: '',
+
+  dayGreeting() {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good Morning';
+    if (hour < 18) return 'Good Afternoon';
+    return 'Good Evening';
+  },
+
+  /**
+   * Greeting plus the one live number worth knowing. The listener total is
+   * summed here rather than fetched — every station already carries its own
+   * count, so this costs no extra request.
+   */
+  renderGreeting(stations) {
+    const greetEl = document.getElementById('home-greeting');
+    if (greetEl) greetEl.textContent = this.dayGreeting();
+
+    const lineEl = document.getElementById('home-broadcast-line');
+    if (!lineEl) return;
+
+    const count = stations.length;
+    const total = stations.reduce((sum, s) => sum + (Number(s.listeners) || 0), 0);
+    const stationPart = count === 1 ? '1 station' : `${count} stations`;
+    const listenPart = total === 0
+      ? 'no one listening yet'
+      : (total === 1 ? '1 listening now' : `${total} listening now`);
+
+    lineEl.innerHTML =
+      `${stationPart}<span class="home-line-sep" aria-hidden="true">·</span>` +
+      `<span class="home-listen-count${total > 0 ? ' is-live' : ''}">${listenPart}</span>`;
+  },
+
+  /**
+   * Desktop rail. Rebuilt only when the station set actually changes, since
+   * this polls every 8s and blowing the DOM away each time would kill hover
+   * and scroll position.
+   */
+  renderRail(stations) {
+    const list = document.getElementById('shelf-rail-list');
+    if (!list) return;
+
+    const key = stations
+      .map((s) => `${s.slug}|${s.name}|${this.coverFor(s)}|${s.on_air ? 1 : 0}`)
+      .join(',');
+    if (key === this._railKey) {
+      this.syncRailPlaying();
+      return;
+    }
+    this._railKey = key;
+
+    const countEl = document.getElementById('shelf-rail-count');
+    if (countEl) countEl.textContent = stations.length ? ` · ${stations.length}` : '';
+
+    const frag = document.createDocumentFragment();
+    stations.forEach((s) => {
+      const cover = this.coverFor(s);
+      const li = document.createElement('li');
+      li.className = `shelf-rail-item${s.on_air === false ? ' is-off-air' : ''}`;
+      li.dataset.slug = s.slug;
+      li.innerHTML = `
+        <a class="shelf-rail-link" href="/station.html?slug=${encodeURIComponent(s.slug)}">
+          <span class="shelf-rail-art">${
+            cover
+              ? `<img src="${RadioApp.escapeAttr(cover)}" alt="" loading="lazy" decoding="async">`
+              : '<span class="shelf-rail-art-placeholder" aria-hidden="true">♪</span>'
+          }</span>
+          <span class="shelf-rail-name">${RadioApp.escape(s.name)}</span>
+          <span class="shelf-rail-eq" aria-hidden="true"><i></i><i></i><i></i></span>
+        </a>`;
+      frag.appendChild(li);
+    });
+    list.replaceChildren(frag);
+    this.syncRailPlaying();
+  },
+
+  coverFor(s) {
+    const np = s.now_playing;
+    return (np && np.cover_url) ? np.cover_url : (s.artwork_url || '');
+  },
+
+  /** Mark the rail entry for whatever is actually coming out of the speakers. */
+  syncRailPlaying() {
+    if (typeof GlobalLivePlayer === 'undefined') return;
+    const audio = GlobalLivePlayer.getAudio();
+    const wantLive = audio?.dataset?.wantLive === '1';
+    document.querySelectorAll('.shelf-rail-item').forEach((li) => {
+      const playing = wantLive && GlobalLivePlayer.isPlayingSlug(li.dataset.slug);
+      li.classList.toggle('is-playing', Boolean(playing));
+    });
+  },
 
   artMountHtml() {
     return `<div class="station-card-art-mount" data-img-class="station-card-art"
@@ -37,7 +129,9 @@ const AlchemyHome = {
   },
 
   ensureCard(s) {
-    let card = document.querySelector(`[data-slug="${CSS.escape(s.slug)}"]`);
+    // Scoped to .station-card: the rail carries data-slug too, and an
+    // unscoped lookup will happily hand back a rail item instead.
+    let card = document.querySelector(`.station-card[data-slug="${CSS.escape(s.slug)}"]`);
     if (card) return card;
 
     card = document.createElement('article');
@@ -121,11 +215,12 @@ const AlchemyHome = {
     document.querySelectorAll('.station-card[data-slug]').forEach((card) => {
       this.syncCardPlayUi(card);
     });
+    this.syncRailPlaying();
   },
 
   pulseCardSwitch(slug) {
     if (!slug) return;
-    const card = document.querySelector(`[data-slug="${CSS.escape(slug)}"]`);
+    const card = document.querySelector(`.station-card[data-slug="${CSS.escape(slug)}"]`);
     const artMount = card ? this.ensureArtMount(card) : null;
     if (!artMount) return;
 
@@ -216,11 +311,24 @@ const AlchemyHome = {
     const coverUrl = (np && np.cover_url) ? np.cover_url : (s.artwork_url || '');
 
     card.querySelector('h2').textContent = s.name;
+
+    // Off air means the station is enabled but its mount isn't streaming — a
+    // different thing from an admin-disabled station, which never reaches here.
+    const offAir = s.on_air === false;
+    card.classList.toggle('is-off-air', offAir);
+
     const listenersEl = card.querySelector('.station-card-listeners');
     const count = Number(s.listeners) || 0;
-    listenersEl.textContent = count === 1 ? '1 Listening' : `${count} Listening`;
-    listenersEl.classList.toggle('is-live', count > 0);
-    listenersEl.setAttribute('aria-label', `${count} live listeners`);
+    listenersEl.classList.toggle('is-off-air', offAir);
+    if (offAir) {
+      listenersEl.textContent = 'Off air';
+      listenersEl.classList.remove('is-live');
+      listenersEl.setAttribute('aria-label', 'Station is off air');
+    } else {
+      listenersEl.textContent = count === 1 ? '1 Listening' : `${count} Listening`;
+      listenersEl.classList.toggle('is-live', count > 0);
+      listenersEl.setAttribute('aria-label', `${count} live listeners`);
+    }
     const trackEl = card.querySelector('.now-track');
     if (trackEl.dataset.trackKey !== trackKey) {
       trackEl.dataset.trackKey = trackKey || '';
@@ -252,6 +360,9 @@ const AlchemyHome = {
   renderStations(stations) {
     const root = document.getElementById('stations');
     if (!root || !stations?.length) return false;
+
+    this.renderGreeting(stations);
+    this.renderRail(stations);
 
     const featuredSection = document.getElementById('featured-section');
     const featuredRoot = document.getElementById('stations-featured');
@@ -286,7 +397,7 @@ const AlchemyHome = {
 
     [root, featuredRoot].forEach((container) => {
       if (!container) return;
-      container.querySelectorAll('[data-slug]').forEach((el) => {
+      container.querySelectorAll('.station-card[data-slug]').forEach((el) => {
         if (!seen.has(el.dataset.slug)) {
           this._stationsBySlug.delete(el.dataset.slug);
           el.remove();
@@ -346,6 +457,9 @@ const AlchemyHome = {
   mount() {
     if (!document.getElementById('stations')) return;
     this.unmount();
+    // The rail list is fresh DOM after a soft-nav; a stale key would make
+    // renderRail skip the rebuild and leave it empty.
+    this._railKey = '';
     this.bindGridUi();
     this.loadStations();
     this._pollTimer = setInterval(() => this.loadStations(), 8000);

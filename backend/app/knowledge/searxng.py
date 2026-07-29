@@ -26,7 +26,7 @@ async def search(base_url: str, query: str, limit: int = 8) -> list[dict]:
             {
                 "url": url,
                 "title": str(row.get("title") or url)[:200],
-                "snippet": str(row.get("content") or row.get("snippet") or "")[:500],
+                "snippet": str(row.get("content") or row.get("snippet") or ""),
             }
         )
     return snippets

@@ -15,6 +15,13 @@ from app.database import (
 )
 from app.schemas import TrackRef
 from app.services.audiomuse import audiomuse_client
+from app.services.daypart import (
+    local_hour,
+    select_by_daypart,
+    target_energy,
+    target_mood,
+)
+from app.services.ordering import harmonic_order
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +34,12 @@ LIVE_SOURCE_TYPES = frozenset(
         SourceType.mood_centroid.value,
         SourceType.alchemy_anchor.value,
         SourceType.similar_seed.value,
+        SourceType.journey.value,
     }
 )
+
+
+MAX_PER_ARTIST = 3
 
 
 def filter_track_refs(
@@ -36,25 +47,69 @@ def filter_track_refs(
     exclude: set[str],
     blocked_artists: set[str],
     target: int,
+    *,
+    max_per_artist: int = MAX_PER_ARTIST,
 ) -> list[TrackRef]:
-    filtered: list[TrackRef] = []
-    seen_artists: set[str] = set()
-    for ref in refs:
-        if ref.item_id in exclude:
-            continue
-        artist_key = ref.artist.lower()
-        if artist_key in blocked_artists or artist_key in seen_artists:
-            continue
-        filtered.append(ref)
-        seen_artists.add(artist_key)
-        if len(filtered) >= target:
-            break
-    return filtered
+    """Pick up to `target` refs, loosening soft rules rather than starving.
+
+    Artist rules are preferences; repeating a track is not. So `exclude` (queued
+    or just-played ids) is never relaxed, while the artist constraints give way
+    one at a time. The first sweep is the old strict behaviour -- one track per
+    artist -- so a healthy station picks exactly what it always did, and the
+    later sweeps only run when that would return a short batch (thin library,
+    narrow filters, or a pool dominated by a few artists).
+    """
+    picked: list[TrackRef] = []
+    taken: set[str] = set()
+    per_artist: dict[str, int] = {}
+
+    def sweep(*, artist_cap: int | None, respect_separation: bool) -> None:
+        for ref in refs:
+            if len(picked) >= target:
+                return
+            if ref.item_id in exclude or ref.item_id in taken:
+                continue
+            artist_key = ref.artist.lower()
+            if respect_separation and artist_key in blocked_artists:
+                continue
+            if artist_cap is not None and per_artist.get(artist_key, 0) >= artist_cap:
+                continue
+            picked.append(ref)
+            taken.add(ref.item_id)
+            per_artist[artist_key] = per_artist.get(artist_key, 0) + 1
+
+    sweep(artist_cap=1, respect_separation=True)
+    if len(picked) < target:
+        sweep(artist_cap=max(1, max_per_artist), respect_separation=True)
+    if len(picked) < target:
+        sweep(artist_cap=None, respect_separation=True)
+    if len(picked) < target:
+        # Last resort: ignore artist separation. Still never repeats a track.
+        sweep(artist_cap=None, respect_separation=False)
+    return picked
 
 
 async def fetch_programming_batch(station: Station, count: int) -> list[TrackRef]:
-    """Best-effort batch from the station's AudioMuse programming source."""
-    return await audiomuse_client.fetch_tracks(
+    """Best-effort batch from the station's AudioMuse programming source.
+
+    Only safe to await while `station` is attached to a live session. When the
+    caller releases the DB across the await, use programming_fetch_args() to
+    snapshot the attributes first.
+    """
+    return await audiomuse_client.fetch_tracks(*programming_fetch_args(station, count))
+
+
+def programming_fetch_args(station: Station, count: int) -> tuple[str, str, int, str | None]:
+    """Snapshot the ORM attributes a programming fetch needs.
+
+    An `async def` body runs at await time, not at call time. Callers that hand
+    a coroutine to fetch_without_holding_db therefore execute it *after* the
+    session was committed and closed -- and commit expires attributes
+    (expire_on_commit defaults to True), so a lazy read there raises
+    DetachedInstanceError and the whole programming tier is lost. Reading the
+    values up front, while the session is still live, avoids that entirely.
+    """
+    return (
         station.source_type,
         station.source_ref,
         count,
@@ -219,7 +274,13 @@ async def collect_refill_candidates(
 
     # Tier 0 — new recommendation batch (best effort; failure is OK)
     try:
-        batch = await fetch_without_holding_db(fetch_programming_batch(station, max(target * 3, 60)))
+        # Snapshot the station's attributes while the session is still live:
+        # fetch_without_holding_db commits and closes before awaiting, and
+        # commit expires attributes, so reading them inside the coroutine would
+        # raise DetachedInstanceError and lose this tier on every refill.
+        batch = await fetch_without_holding_db(
+            audiomuse_client.fetch_tracks(*programming_fetch_args(station, max(target * 3, 60)))
+        )
         if batch:
             import_batch_to_pool(db, station, batch)
             station.source_last_ok_at = datetime.utcnow()
@@ -296,6 +357,83 @@ async def collect_refill_candidates(
                 logger.warning("Station %s: similar-last tier failed: %s", station.slug, exc)
 
     return collected, source_error, db, station
+
+
+def harmonic_ordering_enabled(station: Station) -> bool:
+    """Whether this station opted into smooth (harmonic/tempo) refill ordering."""
+    profile = _station_profile(station)
+    ordering = profile.get("ordering")
+    return bool(isinstance(ordering, dict) and ordering.get("harmonic"))
+
+
+def daypart_level_now(station: Station) -> float | None:
+    """Target energy level [0,1] for this station's current local hour, or None."""
+    profile = _station_profile(station)
+    daypart = profile.get("daypart")
+    if not isinstance(daypart, dict) or not daypart.get("enabled"):
+        return None
+    hour = local_hour(str(daypart.get("timezone") or ""))
+    return target_energy(str(daypart.get("preset") or ""), hour)
+
+
+def daypart_mood_now(station: Station) -> str | None:
+    """Mood tag to favour for this station's current local hour, or None."""
+    profile = _station_profile(station)
+    daypart = profile.get("daypart")
+    if not isinstance(daypart, dict) or not daypart.get("enabled"):
+        return None
+    preset = str(daypart.get("mood_preset") or "").strip()
+    if not preset or preset == "off":
+        return None
+    hour = local_hour(str(daypart.get("timezone") or ""))
+    return target_mood(preset, hour)
+
+
+async def shape_refill_batch(
+    refs: list[TrackRef],
+    seed_id: str | None,
+    target: int,
+    *,
+    harmonic: bool,
+    daypart_level: float | None,
+    daypart_mood: str | None = None,
+) -> list[TrackRef]:
+    """Trim/sequence a refill batch by daypart energy and/or harmonic mixing.
+
+    A single AudioMuse score call (tempo/key/scale/energy) feeds both concerns:
+    daypart selects the tracks closest to the hour's target energy, then harmonic
+    ordering chains them into a smooth key/tempo sequence. Best-effort — any
+    failure or missing analysis falls back to the batch head trimmed to target,
+    so a refill is never blocked. Caller must not hold a DB connection across
+    this await.
+    """
+    if not refs or (not harmonic and daypart_level is None and not daypart_mood):
+        return refs
+    ids = [r.item_id for r in refs]
+    if seed_id:
+        ids = ids + [seed_id]
+    try:
+        scores = await audiomuse_client.fetch_scores(ids)
+    except Exception as exc:
+        logger.warning("Refill shaping: score fetch failed, keeping source order: %s", exc)
+        return refs[:target] if len(refs) > target else refs
+
+    result = refs
+    if daypart_level is not None or daypart_mood:
+        result = select_by_daypart(
+            result,
+            scores,
+            target,
+            energy_level=daypart_level,
+            mood_tag=daypart_mood,
+        )
+    elif len(result) > target:
+        result = result[:target]
+
+    if harmonic:
+        seed_score = scores.get(seed_id) if seed_id else None
+        result = harmonic_order(result, scores, seed_score=seed_score)
+    return result
 
 
 async def fetch_bootstrap_batch(station: Station) -> list[TrackRef]:

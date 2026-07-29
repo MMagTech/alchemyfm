@@ -16,6 +16,7 @@ from app.knowledge.scheduler import (
     running_jobs_count,
 )
 from app.knowledge.settings import (
+    effective_llm_provider,
     get_knowledge_settings,
     knowledge_feature_enabled,
     processing_enabled,
@@ -81,6 +82,10 @@ async def _process_one_job() -> bool:
 async def _release_gpu_when_idle(ksettings) -> None:
     global _gpu_release_armed, _finishing_running_job
     if not _gpu_release_armed:
+        return
+    if effective_llm_provider() != "ollama":
+        # No local GPU to unload when routing to a cloud provider.
+        _gpu_release_armed = False
         return
     kdb = KnowledgeSessionLocal()
     try:

@@ -12,11 +12,21 @@ from app.services.icecast import fetch_mount_now_playing
 from app.services.navidrome import navidrome_client
 from app.services.refill import (
     collect_refill_candidates,
+    daypart_level_now,
+    daypart_mood_now,
     establish_station_identity,
     fetch_bootstrap_batch,
     filter_track_refs,
+    harmonic_ordering_enabled,
     import_batch_to_pool,
+    last_played_item_id,
+    pool_count,
+    shape_refill_batch,
 )
+
+# When daypart is active, gather this multiple of the target so there is room
+# to select the tracks closest to the hour's target energy.
+DAYPART_OVERFETCH = 2
 from app.schemas import KnowledgeBlock, NowPlaying, TrackRef, TrackInfo
 
 logger = logging.getLogger(__name__)
@@ -38,12 +48,22 @@ def _format_m3u_line(track: TrackInfo) -> str:
 
 
 def rebuild_m3u_from_db(db: Session, station: Station) -> None:
-    """Rewrite queue.m3u from pending queue items with fresh Navidrome stream URLs."""
+    """Rewrite queue.m3u from queued items with fresh Navidrome stream URLs.
+
+    The PLAYING item is deliberately excluded. Liquidsoap consumes this file
+    with playlist(mode="normal", reload_mode="watch"): every rewrite triggers
+    a reload, and a reload can reset the playlist cursor to the top. When the
+    on-air track was still the head of the file, that reset made Liquidsoap
+    pull the same track again at song end — an audible back-to-back repeat
+    (invisible in play history, because the duplicate track-start callback is
+    deduped). With only queued tracks in the file, a cursor reset lands on
+    whatever should air next.
+    """
     items = (
         db.query(QueueItem)
         .filter(
             QueueItem.station_id == station.id,
-            QueueItem.status.in_([QueueItemStatus.queued, QueueItemStatus.playing]),
+            QueueItem.status == QueueItemStatus.queued,
         )
         .order_by(QueueItem.position.asc(), QueueItem.id.asc())
         .all()
@@ -140,7 +160,14 @@ async def extend_queue(
 
     try:
         target = count or station.queue_target
-        blocked_ids = _recent_item_ids(db, station.id)
+        # Clamp the no-repeat window to the pool. A fixed 200-track history can
+        # cover a small library entirely, leaving every candidate excluded and
+        # the refill starving; keep enough headroom to actually fill a batch.
+        pool_size = pool_count(db, station.id)
+        recent_limit = 200
+        if pool_size:
+            recent_limit = max(20, min(200, pool_size - target))
+        blocked_ids = _recent_item_ids(db, station.id, limit=recent_limit)
         blocked_artists = _blocked_artists(db, station)
 
         queued_ids = {
@@ -160,10 +187,18 @@ async def extend_queue(
             .scalar()
         ) or 0
 
+        harmonic = harmonic_ordering_enabled(station)
+        daypart_level = daypart_level_now(station)
+        daypart_mood = daypart_mood_now(station)
+        # Over-collect when daypart is active so there's a surplus to select
+        # the hour's target energy/mood from; otherwise gather exactly the target.
+        daypart_active = daypart_level is not None or bool(daypart_mood)
+        collect_target = target * DAYPART_OVERFETCH if daypart_active else target
+
         filtered, _err, db, station = await collect_refill_candidates(
             db,
             station,
-            target,
+            collect_target,
             exclude,
             blocked_artists,
             queued_ids,
@@ -174,6 +209,25 @@ async def extend_queue(
         if not filtered:
             logger.warning("No new tracks to add for station %s", station.slug)
             return 0, db, station
+
+        # Optional daypart energy selection + smooth (harmonic/tempo) sequencing.
+        # One AudioMuse score call feeds both; releases the DB across the network
+        # call, like the enrich step below.
+        if harmonic or daypart_active:
+            seed_id = last_played_item_id(db, station.id) if harmonic else None
+            db.close()
+            try:
+                filtered = await shape_refill_batch(
+                    filtered,
+                    seed_id,
+                    target,
+                    harmonic=harmonic,
+                    daypart_level=daypart_level,
+                    daypart_mood=daypart_mood,
+                )
+            finally:
+                db = SessionLocal()
+                station = db.merge(station)
 
         db.close()
         try:
@@ -541,6 +595,18 @@ async def sync_station_from_icecast(
     return current
 
 
+def queue_thumb_url(item_id: str | None, size: int = 64) -> str | None:
+    """Same-origin cover thumbnail for a queue row.
+
+    Deliberately small: these lists render 15-20 images at a time, on a page
+    that is also buffering a live stream, so they ask for a thumbnail rather
+    than the 300px hero size.
+    """
+    if not item_id:
+        return None
+    return f"/api/cover/{item_id}?size={size}"
+
+
 def get_up_next(db: Session, station: Station, limit: int = 8) -> list[TrackRef]:
     items = (
         db.query(QueueItem)
@@ -552,7 +618,15 @@ def get_up_next(db: Session, station: Station, limit: int = 8) -> list[TrackRef]
         .limit(limit)
         .all()
     )
-    return [TrackRef(item_id=i.item_id, title=i.title, artist=i.artist) for i in items]
+    return [
+        TrackRef(
+            item_id=i.item_id,
+            title=i.title,
+            artist=i.artist,
+            cover_url=queue_thumb_url(i.item_id),
+        )
+        for i in items
+    ]
 
 
 def get_recently_played(db: Session, station: Station, limit: int = 10) -> list[TrackRef]:
@@ -563,6 +637,28 @@ def get_recently_played(db: Session, station: Station, limit: int = 10) -> list[
         .limit(limit * 3)
         .all()
     )
+    # History rows are written at track START (artist separation depends on
+    # that), so the newest row is usually the track still on air. Skip that
+    # one row — "recently played" means finished tracks — but only the
+    # newest, so a genuine earlier play of the same track stays visible.
+    playing = (
+        db.query(QueueItem)
+        .filter(
+            QueueItem.station_id == station.id,
+            QueueItem.status == QueueItemStatus.playing,
+        )
+        .order_by(QueueItem.id.desc())
+        .first()
+    )
+    if rows and playing and _same_track(
+        rows[0].artist,
+        rows[0].title,
+        rows[0].item_id or "",
+        playing.artist,
+        playing.title,
+        playing.item_id or "",
+    ):
+        rows = rows[1:]
     result: list[TrackRef] = []
     seen: set[tuple[str, str, str]] = set()
     for row in rows:
@@ -574,7 +670,15 @@ def get_recently_played(db: Session, station: Station, limit: int = 10) -> list[
         if key in seen:
             continue
         seen.add(key)
-        result.append(TrackRef(item_id=row.item_id, title=row.title, artist=row.artist))
+        result.append(
+            TrackRef(
+                item_id=row.item_id,
+                title=row.title,
+                artist=row.artist,
+                cover_url=queue_thumb_url(row.item_id),
+                played_at=row.played_at,
+            )
+        )
         if len(result) >= limit:
             break
     return result
@@ -632,14 +736,30 @@ def mark_track_started(db: Session, station: Station, artist: str, title: str) -
     if matched:
         knowledge_item_id = matched.item_id
         passed = True
+        swept = 0
         for item in pending:
             if item.id == matched.id:
                 item.status = QueueItemStatus.playing
                 passed = False
             elif passed:
                 item.status = QueueItemStatus.played
+                swept += 1
             else:
                 break
+        if swept > 3:
+            # With Liquidsoap playing queue.m3u in order, a track start should
+            # match at or near the queue head. A deep match means playback
+            # skipped queued tracks (e.g. a playlist reload landing off-head)
+            # and this sweep just discarded them unaired -- worth a trace.
+            logger.warning(
+                "Track start for '%s - %s' on station %s matched %s deep in the "
+                "queue; %s queued tracks marked played without airing",
+                artist,
+                title,
+                station.slug,
+                swept + 1,
+                swept,
+            )
         db.add(
             PlayHistory(
                 station_id=station.id,

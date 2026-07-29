@@ -2,7 +2,7 @@
     <location>Earth</location>
     <admin>admin@localhost</admin>
     <limits>
-        <clients>25</clients>
+        <clients>100</clients>
         <sources>10</sources>
         <queue-size>1048576</queue-size>
         <burst-on-connect>1</burst-on-connect>

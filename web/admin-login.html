@@ -10,9 +10,9 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png?v=2">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="/static/style.css?v=142">
-  <link rel="stylesheet" href="/static/themes.css?v=2">
-  <script src="/static/themes.js?v=14"></script>
+  <link rel="stylesheet" href="/static/style.css?v=149">
+  <link rel="stylesheet" href="/static/themes.css?v=3">
+  <script src="/static/themes.js?v=15"></script>
   <style>
     /* Keep login usable even if shared CSS fails or conflicts */
     body.login-page .login-shell {
@@ -43,7 +43,10 @@
   <div class="login-shell">
     <section class="login-card">
       <div class="login-brand">
-        <p class="login-eyebrow">Alchemy FM</p>
+        <div class="login-mark" aria-hidden="true">
+          <i></i><span>Alchemy<em>FM</em></span>
+        </div>
+        <p class="login-eyebrow">Operator</p>
         <h1>Admin Sign In</h1>
         <p class="login-lede">Manage stations, queues, and broadcast settings.</p>
       </div>
@@ -55,7 +58,10 @@
         </div>
         <div class="login-field">
           <label for="password">Password</label>
-          <input id="password" name="password" type="password" autocomplete="current-password" required>
+          <div class="login-password-wrap">
+            <input id="password" name="password" type="password" autocomplete="current-password" required>
+            <button type="button" class="login-peek" id="password-peek" aria-label="Show password">Show</button>
+          </div>
         </div>
         <button class="btn login-submit" type="submit">Sign In</button>
       </form>
@@ -75,6 +81,15 @@
       el.className = `message ${type}`;
       el.textContent = text;
     }
+
+    document.getElementById('password-peek').addEventListener('click', () => {
+      const input = document.getElementById('password');
+      const btn = document.getElementById('password-peek');
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      btn.textContent = show ? 'Hide' : 'Show';
+      btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+    });
 
     // Focus after paint — autofocus is unreliable in private browsing.
     window.requestAnimationFrame(() => {

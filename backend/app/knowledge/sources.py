@@ -19,11 +19,14 @@ async def gather_snippets(
     *,
     searxng_url: str = "",
     skip_cache: bool = False,
+    extra_snippets: list[dict] | None = None,
 ) -> tuple[list[dict], list[str]]:
     """Collect web snippets from free APIs (MusicBrainz, Wikipedia, DuckDuckGo).
 
-    Optional SearXNG is used only as a last resort when earlier sources return
-    nothing. Results are memoized for 30 minutes per artist/title/album.
+    ``extra_snippets`` (e.g. the artist biography) are seeded first so they are
+    always available to the summarizer. Optional SearXNG is used only as a last
+    resort when earlier sources return nothing. Results are memoized for 30
+    minutes per artist/title/album.
     """
     if not skip_cache:
         cached = get_cached(track)
@@ -33,6 +36,12 @@ async def gather_snippets(
     snippets: list[dict] = []
     seen_urls: set[str] = set()
     sources_used: list[str] = []
+
+    if extra_snippets:
+        before = len(snippets)
+        merge_snippets(snippets, seen_urls, extra_snippets, limit=SNIPPET_LIMIT)
+        if len(snippets) > before:
+            sources_used.append("artist_bio")
 
     try:
         mb_snippets, wiki_hints = await musicbrainz.fetch_snippets(track)

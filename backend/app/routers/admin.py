@@ -5,8 +5,8 @@ from app.auth import require_admin
 from app.database import QueueItem, QueueItemStatus, SessionLocal, Station, get_db
 from app.schemas import StationAdmin, StationCreate, StationUpdate
 from app.services.broadcast_settings import apply_broadcast_settings, get_broadcast_settings
-from app.services.icecast import fetch_all_mount_stats
 from app.services.liquidsoap import regenerate_liquidsoap_config
+from app.services.icecast import fetch_all_mount_stats
 from app.services.queue import bootstrap_station, delete_station_files, extend_queue, rebuild_m3u_from_db
 from app.services.station_artwork import delete_artwork, save_artwork
 from app.services.stations import create_station_record, station_to_admin, update_station_record
@@ -64,13 +64,16 @@ async def admin_create_station(payload: StationCreate):
             db, station = await create_station_record(db, payload)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        apply_broadcast_settings(db, get_broadcast_settings(db))
+        icecast_warning = apply_broadcast_settings(db, get_broadcast_settings(db))
         queued = (
             db.query(QueueItem)
             .filter(QueueItem.station_id == station.id, QueueItem.status == QueueItemStatus.queued)
             .count()
         )
-        return await station_to_admin(db, station, queued)
+        result = await station_to_admin(db, station, queued)
+        if icecast_warning:
+            result.icecast_warning = icecast_warning
+        return result
     finally:
         db.close()
 
@@ -82,17 +85,28 @@ async def admin_update_station(
     station = db.query(Station).filter(Station.id == station_id).first()
     if not station:
         raise HTTPException(status_code=404, detail="Station not found")
+    was_enabled = bool(station.enabled)
     try:
         station = update_station_record(db, station, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    regenerate_liquidsoap_config(db)
+    icecast_warning = None
+    if bool(station.enabled) != was_enabled:
+        # Enabling a station raises the needed Icecast source limit exactly
+        # like creating one does — run the full apply so the limit check
+        # (and restart, when needed) happens. Plain edits keep the cheap path.
+        icecast_warning = apply_broadcast_settings(db, get_broadcast_settings(db))
+    else:
+        regenerate_liquidsoap_config(db)
     queued = (
         db.query(QueueItem)
         .filter(QueueItem.station_id == station.id, QueueItem.status == QueueItemStatus.queued)
         .count()
     )
-    return await station_to_admin(db, station, queued)
+    result = await station_to_admin(db, station, queued)
+    if icecast_warning:
+        result.icecast_warning = icecast_warning
+    return result
 
 
 @router.post("/{station_id}/artwork", response_model=StationAdmin)
@@ -170,11 +184,22 @@ async def admin_refresh_queue(station_id: int):
         station = db.query(Station).filter(Station.id == station_id).first()
         if not station:
             raise HTTPException(status_code=404, detail="Station not found")
-        need = max(station.queue_target - station.refresh_threshold, 1)
-        try:
-            _added, db, station = await extend_queue(db, station, need)
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        # Top up to target rather than blindly appending a batch: repeated
+        # clicks on an already-full queue must be a no-op, not queue bloat.
+        current_queued = (
+            db.query(QueueItem)
+            .filter(
+                QueueItem.station_id == station.id,
+                QueueItem.status == QueueItemStatus.queued,
+            )
+            .count()
+        )
+        need = station.queue_target - current_queued
+        if need > 0:
+            try:
+                _added, db, station = await extend_queue(db, station, need)
+            except Exception as exc:
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
         queued = (
             db.query(QueueItem)
             .filter(QueueItem.station_id == station.id, QueueItem.status == QueueItemStatus.queued)

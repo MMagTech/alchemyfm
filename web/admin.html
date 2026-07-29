@@ -8,10 +8,10 @@
   <link rel="icon" href="/static/icons/favicon.ico?v=2" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png?v=2">
   <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png?v=2">
-  <link rel="stylesheet" href="/static/style.css?v=142">
-  <link rel="stylesheet" href="/static/themes.css?v=2">
-  <link rel="stylesheet" href="/static/admin-mobile.css?v=13" media="(max-width: 640px)">
-  <script src="/static/themes.js?v=14"></script>
+  <link rel="stylesheet" href="/static/style.css?v=149">
+  <link rel="stylesheet" href="/static/themes.css?v=3">
+  <link rel="stylesheet" href="/static/admin-mobile.css?v=14" media="(max-width: 640px)">
+  <script src="/static/themes.js?v=15"></script>
 </head>
 <body>
   <header>
@@ -50,6 +50,15 @@
       <p class="admin-lede">Appearance, encoding, listener limits, and backups shared by all stations.</p>
     </header>
 
+    <div class="admin-restart-banner" id="restart-pending-banner" hidden>
+      <span class="admin-restart-banner-icon" aria-hidden="true">&#9888;</span>
+      <p><b>Icecast restart pending.</b> A saved change needs more source slots than the running
+      server enforces. Stations stay off air until you restart.</p>
+      <button class="btn btn-danger btn-sm" type="button" id="banner-restart-btn">Restart Icecast</button>
+    </div>
+
+    <div class="admin-cols">
+
     <section class="admin-panel admin-panel-compact" id="appearance-section">
       <div class="admin-panel-head">
         <div>
@@ -59,8 +68,9 @@
       </div>
       <form id="appearance-form">
         <div class="appearance-theme-field">
-          <label for="default_theme">Default station theme</label>
-          <select id="default_theme" name="default_theme" required></select>
+          <label>Default accent</label>
+          <div id="default-accent" class="admin-accent-picker"></div>
+          <p class="hint appearance-hint">The accent new visitors see. Listeners can pick their own, and light or dark follows their device.</p>
         </div>
         <div class="appearance-playlist-field">
           <label for="default_navidrome_playlist_id">Heart Playlist (Navidrome)</label>
@@ -82,7 +92,61 @@
       </form>
     </section>
 
-    <section class="admin-panel" id="broadcast-section">
+    <div class="admin-col">
+    <section class="admin-panel admin-panel-compact" id="status-section">
+      <div class="admin-panel-head">
+        <div>
+          <h2>Status</h2>
+          <p class="admin-lede">Live broadcast numbers and this build.</p>
+        </div>
+      </div>
+      <div class="admin-stat-strip" aria-label="Live broadcast stats">
+        <div class="admin-stat-tile">
+          <p class="k">Listeners</p>
+          <p class="v"><span class="live-dot" id="stat-listeners-dot" hidden></span><span id="stat-listeners">–</span></p>
+        </div>
+        <div class="admin-stat-tile">
+          <p class="k">Outbound</p>
+          <p class="v"><span id="stat-outbound">–</span><small>Mbps</small></p>
+        </div>
+      </div>
+      <div class="admin-buildline" id="admin-buildline" hidden>
+        <span class="admin-beta-chip">Beta</span>
+        <span><span class="k">Build</span> <span class="v" id="build-sha">—</span></span>
+        <span><span class="k">Up</span> <span class="v" id="build-uptime">—</span></span>
+        <span><span class="k">Encoding</span> <span class="v" id="build-encoding">—</span></span>
+      </div>
+    </section>
+
+    <section class="admin-panel admin-panel-compact" id="backups-section">
+      <div class="admin-panel-head">
+        <div>
+          <h2>Backups</h2>
+          <p class="admin-lede">Snapshots of radio.db, knowledge.db (if enabled), and icecast.xml.</p>
+        </div>
+      </div>
+      <div id="backups-message" class="broadcast-toast-host" aria-live="polite" hidden></div>
+      <form id="backups-form">
+        <label class="appearance-checkbox">
+          <input type="checkbox" id="backup_auto_enabled" name="backup_auto_enabled" checked>
+          Automatic daily backup
+        </label>
+        <div class="form-grid form-grid-2">
+          <div>
+            <label for="backup_keep_count">Keep last</label>
+            <input id="backup_keep_count" name="backup_keep_count" type="number" min="1" max="100" value="7">
+          </div>
+        </div>
+        <p class="hint">Older backups beyond this count are deleted automatically, including right after a manual download.</p>
+        <div class="form-actions">
+          <button class="btn" type="submit">Save Backup Settings</button>
+          <button class="btn btn-sm" type="button" id="download-backup-btn">Download Backup Now</button>
+        </div>
+      </form>
+    </section>
+    </div>
+
+    <section class="admin-panel admin-panel-wide" id="broadcast-section">
       <div class="admin-panel-head">
         <div>
           <h2>Broadcast</h2>
@@ -161,32 +225,8 @@
       </form>
     </section>
 
-    <section class="admin-panel admin-panel-compact" id="backups-section">
-      <div class="admin-panel-head">
-        <div>
-          <h2>Backups</h2>
-          <p class="admin-lede">Snapshots of radio.db, knowledge.db (if enabled), and icecast.xml.</p>
-        </div>
-      </div>
-      <div id="backups-message" class="broadcast-toast-host" aria-live="polite" hidden></div>
-      <form id="backups-form">
-        <label class="appearance-checkbox">
-          <input type="checkbox" id="backup_auto_enabled" name="backup_auto_enabled" checked>
-          Automatic daily backup
-        </label>
-        <div class="form-grid form-grid-2">
-          <div>
-            <label for="backup_keep_count">Keep last</label>
-            <input id="backup_keep_count" name="backup_keep_count" type="number" min="1" max="100" value="7">
-          </div>
-        </div>
-        <p class="hint">Older backups beyond this count are deleted automatically, including right after a manual download.</p>
-        <div class="form-actions">
-          <button class="btn" type="submit">Save Backup Settings</button>
-          <button class="btn btn-sm" type="button" id="download-backup-btn">Download Backup Now</button>
-        </div>
-      </form>
-    </section>
+    </div>
+
   </main>
 
   <div id="admin-help-dialog" class="admin-dialog admin-help-dialog" hidden>
@@ -394,6 +434,10 @@
         document.getElementById('backup_auto_enabled').checked = s.backup_auto_enabled !== false;
         updateEncodeFormatUi();
         syncIcecastRestartUi(s.icecast_restart_available);
+        const banner = document.getElementById('restart-pending-banner');
+        if (banner) {
+          banner.hidden = !(s.icecast_restart_pending && s.icecast_restart_available);
+        }
       } catch (err) {
         RadioApp.showAdminToast(err.message, 'error');
       }
@@ -408,20 +452,44 @@
         : 'Restart manually: docker compose restart icecast';
     }
 
-    document.getElementById('restart-icecast-btn').addEventListener('click', async () => {
+    async function confirmAndRestartIcecast(btn) {
       const confirmed = await openIcecastRestartDialog();
       if (!confirmed) return;
-      const btn = document.getElementById('restart-icecast-btn');
       btn.disabled = true;
       try {
         await adminFetchJSON('/api/admin/broadcast/restart-icecast', { method: 'POST' });
         RadioApp.showAdminToast('', 'success', 6000, 'icecast');
+        // A completed restart clears the pending state — re-read to drop the banner.
+        loadBroadcastSettings();
       } catch (err) {
         RadioApp.showAdminToast(err.message, 'error', 8000, 'icecast');
       } finally {
         btn.disabled = false;
       }
+    }
+
+    document.getElementById('restart-icecast-btn').addEventListener('click', (e) => {
+      void confirmAndRestartIcecast(e.currentTarget);
     });
+    document.getElementById('banner-restart-btn')?.addEventListener('click', (e) => {
+      void confirmAndRestartIcecast(e.currentTarget);
+    });
+
+    async function refreshStatStrip() {
+      try {
+        const stats = await adminFetchJSON('/api/broadcast/stats');
+        const listeners = Number(stats.listeners) || 0;
+        const mbps = (Number(stats.outgoing_kbps) || 0) / 1000;
+        document.getElementById('stat-listeners').textContent = String(listeners);
+        document.getElementById('stat-listeners-dot').hidden = listeners === 0;
+        document.getElementById('stat-outbound').textContent =
+          mbps >= 10 ? String(Math.round(mbps)) : mbps.toFixed(1);
+      } catch {
+        /* header stats show the same numbers; the strip just goes stale */
+      }
+    }
+    refreshStatStrip();
+    setInterval(refreshStatStrip, 15000);
 
     document.getElementById('encode_format').addEventListener('change', updateEncodeFormatUi);
 
@@ -599,11 +667,31 @@
     loadBroadcastSettings();
     loadAppearanceSettings();
 
+    function formatUptime(startedAt) {
+      const started = Date.parse(startedAt);
+      if (!Number.isFinite(started)) return '';
+      let mins = Math.max(0, Math.floor((Date.now() - started) / 60000));
+      const days = Math.floor(mins / 1440);
+      mins -= days * 1440;
+      const hrs = Math.floor(mins / 60);
+      mins -= hrs * 60;
+      return days > 0 ? `${days}d ${hrs}h ${mins}m` : (hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`);
+    }
+
     fetch('/api/health').then(r => r.json()).then(h => {
       const link = document.getElementById('admin-knowledge-link');
       if (link && h.knowledge_feature) link.hidden = false;
       const knowledgeHelp = document.getElementById('admin-help-knowledge');
       if (knowledgeHelp && !h.knowledge_feature) knowledgeHelp.hidden = true;
+      const buildline = document.getElementById('admin-buildline');
+      if (buildline && h.git_sha) {
+        document.getElementById('build-sha').textContent = h.git_sha.slice(0, 7);
+        document.getElementById('build-uptime').textContent = formatUptime(h.started_at) || '—';
+        document.getElementById('build-encoding').textContent = h.encode_format
+          ? `${h.encode_format.toUpperCase()} ${h.bitrate || ''}`.trim()
+          : '—';
+        buildline.hidden = false;
+      }
     }).catch(() => {});
 
     const knowledgeNotice = new URLSearchParams(window.location.search).get('knowledge');

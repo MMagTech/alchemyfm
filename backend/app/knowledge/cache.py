@@ -111,19 +111,16 @@ def save_track_knowledge(
 
 
 def purge_all_cache(db: Session) -> int:
-    from app.knowledge.database import KnowledgeJob, KnowledgeJobStatus
+    """Clear all cached facts and the whole job table."""
+    from app.knowledge.database import KnowledgeJob
 
     count = db.query(TrackKnowledge).count()
     db.query(TrackKnowledge).delete()
-    db.query(KnowledgeJob).filter(
-        KnowledgeJob.status.in_(
-            [
-                KnowledgeJobStatus.pending,
-                KnowledgeJobStatus.running,
-                KnowledgeJobStatus.cancelled,
-            ]
-        )
-    ).delete(synchronize_session=False)
+    # Everything, not just in-flight work. Leaving `failed` rows behind kept a
+    # stale "last job error" and a Jobs Failed count that never reset, so an old
+    # failure was indistinguishable from a new one. Nothing ever pruned `done`
+    # rows either, so they grew unbounded -- one per enrichment, forever.
+    db.query(KnowledgeJob).delete(synchronize_session=False)
     db.commit()
     return count
 

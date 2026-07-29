@@ -50,6 +50,14 @@ class Settings(BaseSettings):
     searxng_url: str = ""
     ollama_url: str = ""
     ollama_model: str = ""
+    # Language model backend for enrichment: "ollama" (default, local) or
+    # "openai" (any OpenAI-compatible endpoint — OpenAI, Gemini, OpenRouter).
+    # When "openai", set the base URL + model + key below. The key is env-only
+    # and is never written to knowledge.db or returned by the admin API.
+    knowledge_llm_provider: str = "ollama"
+    knowledge_llm_base_url: str = ""
+    knowledge_llm_model: str = ""
+    knowledge_llm_api_key: str = ""
 
     # Automatic backups of radio.db + knowledge.db + icecast.xml
     backup_interval_hours: int = 24

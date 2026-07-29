@@ -67,20 +67,68 @@ def _format_length(ms: int | None) -> str:
     return f"{minutes}:{seconds:02d}"
 
 
+# Recordings whose title/disambiguation contain these are alternate versions
+# (remixes, edits, interludes, screwed/chopped, live) — prefer the plain studio
+# recording so we don't caption facts with a 0:47 interlude or a 5.1 remix.
+_ALT_VERSION_HINTS = (
+    "remix",
+    "mix",
+    "live",
+    "instrumental",
+    "acoustic",
+    "demo",
+    "karaoke",
+    "reprise",
+    "interlude",
+    "edit",
+    "version",
+    "screwed",
+    "chopped",
+    "a cappella",
+    "acapella",
+    "rerecord",
+    "re-record",
+    "making of",
+    "documentary",
+    "commentary",
+    "snippet",
+)
+
+
 def _pick_recording(recordings: list[dict], track: dict[str, Any]) -> dict | None:
     if not recordings:
         return None
     title_needle = str(track.get("title") or "").strip().lower()
     artist_needle = str(track.get("artist") or "").strip().lower()
+    album_needle = str(track.get("album") or "").strip().lower()
     artist_mbid = str(track.get("artist_mbid") or "").strip().lower()
 
     def score(row: dict) -> int:
         s = 0
-        row_title = str(row.get("title") or "").lower()
-        if title_needle and title_needle in row_title:
+        row_title = str(row.get("title") or "").strip().lower()
+        disambig = str(row.get("disambiguation") or "").strip().lower()
+        if title_needle and row_title == title_needle:
+            s += 6
+        elif title_needle and title_needle in row_title:
             s += 2
-        if row_title == title_needle:
-            s += 2
+        # Prefer the recording that actually appears on the album now playing,
+        # so a famous title doesn't resolve to a documentary/making-of cut.
+        if album_needle:
+            for release in row.get("releases") or []:
+                rel_title = str(release.get("title") or "").strip().lower()
+                if not rel_title:
+                    continue
+                if album_needle not in rel_title and rel_title not in album_needle:
+                    continue
+                leftover = rel_title.replace(album_needle, "")
+                if any(hint in leftover for hint in _ALT_VERSION_HINTS):
+                    continue  # e.g. "The Making of A Night at the Opera"
+                s += 5
+                break
+        # Penalise alternate versions unless the requested title itself asks for one.
+        extra = f"{row_title} {disambig}".replace(title_needle, "", 1)
+        if any(hint in extra for hint in _ALT_VERSION_HINTS):
+            s -= 4
         for credit in row.get("artist-credit") or []:
             artist = credit.get("artist") or {}
             name = str(artist.get("name") or credit.get("name") or "").lower()
@@ -94,6 +142,91 @@ def _pick_recording(recordings: list[dict], track: dict[str, Any]) -> dict | Non
         return s
 
     return max(recordings, key=score)
+
+
+def _credit_snippets(detail: dict, mbid: str, title: str) -> list[Snippet]:
+    """Producer/performer/sample facts from recording-level relationships."""
+    relations = detail.get("relations") or []
+    producers: list[str] = []
+    performers: list[str] = []
+    samples: list[str] = []
+    for rel in relations:
+        rel_type = str(rel.get("type") or "").lower()
+        artist_name = str((rel.get("artist") or {}).get("name") or "").strip()
+        if artist_name:
+            if rel_type in ("producer", "co-producer", "executive producer"):
+                producers.append(artist_name)
+            elif rel_type in ("vocal", "performer", "instrument", "performing orchestra"):
+                attrs = ", ".join(a for a in (rel.get("attributes") or []) if a)
+                performers.append(f"{artist_name} ({attrs})" if attrs else artist_name)
+        sampled = rel.get("recording") or {}
+        if sampled and rel_type in ("samples material", "interpolates", "samples"):
+            s_title = str(sampled.get("title") or "").strip()
+            s_artist = ", ".join(
+                str((c.get("artist") or {}).get("name") or "").strip()
+                for c in sampled.get("artist-credit") or []
+            ).strip(", ")
+            if s_title:
+                verb = "Interpolates" if "interpolat" in rel_type else "Samples"
+                samples.append(f'{verb} "{s_title}"' + (f" by {s_artist}" if s_artist else ""))
+
+    lines: list[str] = []
+    if producers:
+        lines.append(f'"{title}" produced by {", ".join(dict.fromkeys(producers))}.')
+    if performers:
+        lines.append(f"Performers: {'; '.join(dict.fromkeys(performers))}.")
+    if samples:
+        lines.append(" ".join(dict.fromkeys(samples)) + ".")
+    if not lines:
+        return []
+    return [
+        {
+            "url": f"https://musicbrainz.org/recording/{mbid}",
+            "title": f"{title} — credits (MusicBrainz)",
+            "snippet": " ".join(lines),
+        }
+    ]
+
+
+async def _work_context(
+    client: httpx.AsyncClient, detail: dict
+) -> tuple[list[Snippet], list[str]]:
+    """Composer/lyricist and any song-level Wikipedia link from the linked work."""
+    work_id = ""
+    for rel in detail.get("relations") or []:
+        work = rel.get("work") or {}
+        if work.get("id"):
+            work_id = str(work["id"]).strip()
+            break
+    if not work_id:
+        return [], []
+    work = await _get(client, f"/work/{work_id}?inc=artist-rels+url-rels&fmt=json")
+    if not work:
+        return [], []
+    writers: dict[str, list[str]] = {"composer": [], "lyricist": [], "writer": []}
+    for rel in work.get("relations") or []:
+        rel_type = str(rel.get("type") or "").lower()
+        name = str((rel.get("artist") or {}).get("name") or "").strip()
+        if name and rel_type in writers:
+            writers[rel_type].append(name)
+    wiki_urls = _wikipedia_urls_from_rels(work.get("relations") or [])
+    bits: list[str] = []
+    for role, names in writers.items():
+        if names:
+            bits.append(f"{role.capitalize()}: {', '.join(dict.fromkeys(names))}")
+    if not bits:
+        return [], wiki_urls
+    work_title = str(work.get("title") or "").strip()
+    return (
+        [
+            {
+                "url": f"https://musicbrainz.org/work/{work_id}",
+                "title": f"{work_title or 'Work'} — writers (MusicBrainz)",
+                "snippet": ". ".join(bits) + ".",
+            }
+        ],
+        wiki_urls,
+    )
 
 
 async def _artist_context(
@@ -155,7 +288,7 @@ async def fetch_snippets(track: dict[str, Any]) -> tuple[list[Snippet], list[str
         if query:
             search = await _get(
                 client,
-                f"/recording?query={quote(query, safe='')}&fmt=json&limit=5",
+                f"/recording?query={quote(query, safe='')}&fmt=json&limit=10",
             )
             recordings = (search or {}).get("recordings") or []
             recording = _pick_recording(recordings, track)
@@ -177,7 +310,9 @@ async def fetch_snippets(track: dict[str, Any]) -> tuple[list[Snippet], list[str
 
         detail = await _get(
             client,
-            f"/recording/{mbid}?inc=artist-credits+releases+url-rels&fmt=json",
+            f"/recording/{mbid}"
+            "?inc=artist-credits+releases+url-rels+work-rels+recording-rels+artist-rels"
+            "&fmt=json",
         )
         if not detail:
             detail = recording
@@ -217,6 +352,11 @@ async def fetch_snippets(track: dict[str, Any]) -> tuple[list[Snippet], list[str
                 "snippet": " ".join(lines),
             }
         )
+
+        snippets.extend(_credit_snippets(detail, mbid, title))
+        work_snippets, work_wiki = await _work_context(client, detail)
+        snippets.extend(work_snippets)
+        wikipedia_urls.extend(work_wiki)
 
         wikipedia_urls.extend(_wikipedia_urls_from_rels(detail.get("relations") or []))
 

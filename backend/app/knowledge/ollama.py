@@ -6,21 +6,35 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You extract short music trivia for radio listeners from the provided snippets only.
+SYSTEM_PROMPT = """You write short, surprising music trivia for radio listeners, grounded strictly in the provided snippets.
 
-Priority: facts about the exact track (title + artist) first. MusicBrainz recording snippets are valid for song_fact (featured artists, length, which album it appears on).
+Pick the most INTERESTING facts available, from wherever they come. A great fact about the album or the artist beats a dull one about the exact track. Never manufacture a weak fact about the track just to cover the track itself.
+
+What makes a GOOD fact (aim for these):
+- Specific, concrete detail a casual fan would not already know: how it was written or recorded, who produced it and how, what it samples or interpolates, an unusual instrument or technique, chart records, awards, notable covers or media placements, the story behind it.
+- Prefer detail from Composition/Recording/Background/Production/Legacy/sample sections.
+
+NEVER return these as facts on their own -- this is catalogue metadata, not trivia:
+- A track's running time or duration ("listed at 3:19").
+- Which album a track appears on, or its track number.
+- Bare songwriting/composer credits with no story ("credited as written by X", "the songwriting credits list five writers").
+- An artist's active years, origin country, or formation date ("active 1997-present, originate from the United States").
+- Band lineup or roster listings ("X on vocals, Y on drums").
+- "<Title> is a song by <Artist>" restatements.
+Use such details ONLY as supporting context inside a fact that is interesting for some other reason, or when a snippet itself frames them as remarkable (a record-breaking chart run, a surprising credit).
 
 Rules:
-- Use ONLY information explicitly stated in the snippets. Do not invent or guess.
-- If a detail is directly stated, include it. Do not infer across snippets unless the link is explicit.
-- Prefer song_fact when snippets support it. Use album_fact or artist_fact only when nothing track-specific is available.
-- Focus on music: release, collaborators, production, samples, charts. Skip gossip, rumors, crime, and personal drama unless clearly about this track in the snippets.
-- Categories: song_fact, artist_fact, album_fact, producer_fact, sample_fact.
+- Use ONLY information explicitly stated in the snippets. Do not invent, guess, or combine unrelated snippets.
+- A snippet ending in "…" was cut short. Never state a name or detail that sits at the cut -- the text you can see may be only part of it.
+- Each fact must stand on its own and be genuinely interesting. Do not pad to reach the maximum count -- one strong fact beats one strong plus two filler.
+- Each fact MUST be under {max_chars} characters. Write a complete sentence that fits within that budget; never start a thought you cannot finish inside it.
+- Focus on music: songwriting, production, collaborators, samples, charts, awards, cultural impact. Skip gossip, rumors, crime, and personal drama unless clearly about this track in the snippets.
+- Categories: song_fact, artist_fact, album_fact, producer_fact, sample_fact. Use producer_fact for production credits and sample_fact for samples/interpolations when the snippets support them.
 - Each fact needs confidence 0.0-1.0 and source URLs copied exactly from the snippet URLs.
-- Confidence: 0.85+ if verbatim in snippet; 0.65+ if clearly supported; omit below 0.65.
+- Confidence: 0.85+ if verbatim in a snippet; 0.65+ if clearly supported; omit below 0.65.
 - Return up to {max_facts} distinct facts (different angles, no repeats).
 - JSON only: {{"facts":[{{"category":"...","text":"...","confidence":0.8,"sources":[{{"url":"...","title":"..."}}]}}]}}
-- If nothing reliable, return {{"facts":[]}}."""
+- If nothing reliable and interesting, return {{"facts":[]}}."""
 
 
 def _extract_json(text: str) -> dict:
@@ -35,28 +49,34 @@ def _extract_json(text: str) -> dict:
     raise ValueError("No JSON object in model response")
 
 
+def build_user_prompt(track: dict, snippets: list[dict]) -> str:
+    """Shared user prompt for both the local (Ollama) and cloud summarizers."""
+    snippet_block = "\n\n".join(
+        f"Title: {s['title']}\nURL: {s['url']}\nSnippet: {s['snippet']}"
+        for s in snippets[:12]
+    )
+    return (
+        f"Listeners are hearing \"{track.get('title')}\" by {track.get('artist')} right now.\n"
+        f"Album: {track.get('album') or 'unknown'}\n"
+        f"Year: {track.get('year') or 'unknown'}\n\n"
+        f"Search snippets:\n{snippet_block}"
+    )
+
+
 async def summarize_facts(
     base_url: str,
     model: str,
     track: dict,
     snippets: list[dict],
     max_facts: int,
+    max_chars: int = 200,
 ) -> list[dict]:
     if not base_url:
         raise RuntimeError("Ollama URL is not configured")
     if not snippets:
         return []
 
-    snippet_block = "\n\n".join(
-        f"Title: {s['title']}\nURL: {s['url']}\nSnippet: {s['snippet']}"
-        for s in snippets[:12]
-    )
-    user_prompt = (
-        f"Listeners are hearing \"{track.get('title')}\" by {track.get('artist')} right now.\n"
-        f"Album: {track.get('album') or 'unknown'}\n"
-        f"Year: {track.get('year') or 'unknown'}\n\n"
-        f"Search snippets:\n{snippet_block}"
-    )
+    user_prompt = build_user_prompt(track, snippets)
     payload = {
         "model": model,
         "stream": False,
@@ -64,7 +84,10 @@ async def summarize_facts(
         # Unload weights from GPU immediately after each job — do not hold VRAM.
         "keep_alive": 0,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT.format(max_facts=max_facts)},
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT.format(max_facts=max_facts, max_chars=max_chars),
+            },
             {"role": "user", "content": user_prompt},
         ],
     }
