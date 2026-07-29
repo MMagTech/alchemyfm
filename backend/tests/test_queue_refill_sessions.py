@@ -40,7 +40,7 @@ async def test_extend_queue_survives_session_cycling_and_adds_tracks(sample_stat
     expected_id = sample_station.id
 
     with (
-        patch("app.services.refill.fetch_programming_batch", new=AsyncMock(return_value=batch)),
+        patch("app.services.audiomuse.audiomuse_client.fetch_tracks", new=AsyncMock(return_value=batch)),
         patch("app.services.navidrome.navidrome_client.enrich_tracks", new=AsyncMock(return_value=enriched)),
     ):
         added, returned_db, returned_station = await real_extend_queue(db_session, sample_station, 2)
@@ -103,7 +103,7 @@ async def test_extend_queue_closes_reopened_session_on_enrich_failure(sample_sta
         return session
 
     with (
-        patch("app.services.refill.fetch_programming_batch", new=AsyncMock(return_value=batch)),
+        patch("app.services.audiomuse.audiomuse_client.fetch_tracks", new=AsyncMock(return_value=batch)),
         patch(
             "app.services.navidrome.navidrome_client.enrich_tracks",
             new=AsyncMock(side_effect=RuntimeError("navidrome down")),
