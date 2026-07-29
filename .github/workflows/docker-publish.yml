@@ -8,7 +8,7 @@ on:
     # :test (beta). Add another branch to this list to have it publish :test too.
     # Note :test is shared by every non-master branch, so when more than one is
     # listed, pin compose to the :<sha> tag to be sure which build you are on.
-    branches: [master, knowledge, ui-rebuild]
+    branches: [master]
   push:
     tags: ["v*"]
   workflow_dispatch:
