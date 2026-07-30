@@ -366,6 +366,17 @@ const RadioApp = {
     let listenStartedAt = null;
     let resumeDebounceTimer = null;
     let userPaused = false;
+    // Backgrounded iOS PWAs do not run timers once audio stops. Diagnostic
+    // logs show every reconnect-firing landing with hidden=false, and every
+    // reconnect scheduled while hidden never firing at all -- one gap ran
+    // 10 hours. A 400ms resume debounce did fire; 2s and 12s never did. So
+    // while hidden, recovery has to happen inside the event handler itself,
+    // in the sliver of execution iOS still grants. Timers stay as the
+    // foreground path, where they work fine.
+    let lastImmediateRecoveryAt = 0;
+    let consecutiveImmediateRecoveries = 0;
+    const IMMEDIATE_RECOVERY_FLOOR_MS = 1000;
+    const MAX_CONSECUTIVE_IMMEDIATE_RECOVERIES = 5;
     audio._liveSessionNotify = options.onSessionChange;
 
     const listenSeconds = () => {
@@ -577,6 +588,11 @@ const RadioApp = {
       clearStallWatch();
       pauseAndFlushBuffer();
       audio._liveUi?.setIdleUi?.(message);
+      // scheduleReconnect's 2s floor never elapses in a backgrounded PWA --
+      // three such reconnects in the diagnostic log simply never fired, one
+      // leaving a 10 hour silence. Take the handler's window first; the timer
+      // ladder stays as the foreground path and the retry after a failure.
+      if (document.hidden && recoverNow('stream-offline-hidden')) return;
       scheduleReconnect();
     };
 
@@ -701,6 +717,52 @@ const RadioApp = {
       resumeDebounceTimer = setTimeout(() => resumeIfWanted(), 400);
     };
 
+    /**
+     * Reconnect synchronously, from inside whichever event handler noticed the
+     * interruption -- the only execution window a backgrounded iOS PWA reliably
+     * gets. Returns true if an attempt was started.
+     *
+     * Bounded two ways so a flapping Bluetooth route can't spin this, and so we
+     * stop fighting the OS when it means for playback to stay stopped (earbuds
+     * pulled, speaker genuinely gone): a rate floor, and a cap on consecutive
+     * attempts that reset only once playback actually succeeds.
+     */
+    const recoverNow = (reason) => {
+      if (audio.dataset.wantLive !== '1' || userPaused || connectInFlight) return false;
+      const now = Date.now();
+      if (now - lastImmediateRecoveryAt < IMMEDIATE_RECOVERY_FLOOR_MS) return false;
+      if (consecutiveImmediateRecoveries >= MAX_CONSECUTIVE_IMMEDIATE_RECOVERIES) {
+        if (typeof AlchemyDiag !== 'undefined') {
+          AlchemyDiag.log('recover-now-capped', { reason, consecutiveImmediateRecoveries });
+        }
+        return false;
+      }
+      lastImmediateRecoveryAt = now;
+      consecutiveImmediateRecoveries += 1;
+      if (typeof AlchemyDiag !== 'undefined') {
+        AlchemyDiag.log('recover-now', {
+          reason,
+          attempt: consecutiveImmediateRecoveries,
+          readyState: audio.readyState,
+          networkState: audio.networkState,
+          bufferAheadSec: bufferAheadSec(),
+        });
+      }
+      clearTimeout(reconnectTimer);
+      clearStallWatch();
+      reconnectAttempt = 0;
+      // Deliberately not touching streamLive: it gates armStallWatch, is only
+      // restored by the status poll via setStreamLive, and clearing it here
+      // would leave the recovered stream unwatched until the next poll. The
+      // markStreamOffline path has already cleared it for its own reasons.
+      primeAudioGraph();
+      // Deliberately not awaited: the point is to get the request out during
+      // this handler's execution window. Failures fall through to the timer
+      // backoff, which is only useful in the foreground but costs nothing.
+      connectStream(true).catch(() => scheduleReconnect());
+      return true;
+    };
+
     const skipOpts = this.isMobileStation()
       ? {
           onNext: () => { void GlobalLivePlayer?.switchToAdjacentStation?.(1); },
@@ -723,6 +785,19 @@ const RadioApp = {
       });
       window.addEventListener('pageshow', () => scheduleResumeIfWanted());
       window.addEventListener('focus', () => scheduleResumeIfWanted());
+      // A Bluetooth speaker connecting, dropping or switching fires this, and
+      // it arrives as an event rather than a timer -- so it reaches us even
+      // when the runtime is too suspended to run setTimeout. Guarded because
+      // it also fires for unrelated devices; recoverNow no-ops unless we're
+      // actually wanted-live and paused.
+      try {
+        navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+          if (audio.dataset.wantLive === '1' && audio.paused && !userPaused) {
+            recoverNow('devicechange');
+          }
+          scheduleResumeIfWanted();
+        });
+      } catch { /* not available on this browser */ }
     }
 
     audio.addEventListener('play', () => {
@@ -758,6 +833,11 @@ const RadioApp = {
             networkState: audio.networkState,
           });
         }
+        // Recover from inside this handler rather than only on the 400ms
+        // debounce. The debounce has been observed to fire while hidden, but
+        // it is riding iOS's suspend grace period -- don't gamble on it.
+        // scheduleResumeIfWanted() stays as the foreground backstop.
+        recoverNow('unexpected-pause');
         scheduleResumeIfWanted();
       }
     });
@@ -784,6 +864,10 @@ const RadioApp = {
 
     audio.addEventListener('playing', () => {
       reconnectAttempt = 0;
+      // Audio is actually flowing again, so the immediate-recovery budget has
+      // done its job -- reset it. Only a real recovery clears the cap; a
+      // connect that never reaches 'playing' keeps counting against it.
+      consecutiveImmediateRecoveries = 0;
       clearTimeout(reconnectTimer);
       lastProgressAt = Date.now();
       hasBufferedThisConnect = true;
@@ -803,6 +887,10 @@ const RadioApp = {
       if (typeof AlchemyDiag !== 'undefined' && audio.dataset.wantLive === '1') {
         AlchemyDiag.log('audio-stalled-event', { currentTime: audio.currentTime, bufferAheadSec: bufferAheadSec() });
       }
+      // A stall while hidden has preceded every multi-hour silence in the
+      // diagnostic logs, and the stall watch armed below is a 12s timer that
+      // a backgrounded PWA will never run. Spend the window we have instead.
+      if (document.hidden && recoverNow('stalled-hidden')) return;
       armStallWatch();
     });
 
