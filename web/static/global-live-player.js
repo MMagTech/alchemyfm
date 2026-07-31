@@ -1,8 +1,20 @@
 /**
- * Diagnostic log for the mobile lock-screen/CarPlay station-skip
- * investigation. Persisted to localStorage (survives the app being fully
- * killed while backgrounded, unlike sessionStorage) so a failed skip can be
- * inspected afterward via /?debug=1. Remove once that issue is resolved.
+ * Permanent diagnostic log for mobile playback. Persisted to localStorage
+ * (survives the app being fully killed while backgrounded, unlike
+ * sessionStorage) and read via /?debug=1 or the header long-press gesture.
+ *
+ * KEEP THIS. It began as temporary instrumentation for the lock-screen skip
+ * investigation and was kept deliberately, because the failures it catches
+ * are otherwise invisible: they happen on one device, while backgrounded,
+ * intermittently, and leave no trace server-side. Reading source code and
+ * reasoning about iOS behaviour produced several confident wrong answers;
+ * this log produced the right one in minutes. The behaviour it probes is
+ * undocumented and changes between iOS releases, so the next regression
+ * wants the instrument already in place rather than rebuilt from scratch
+ * while waiting days for a reproduction.
+ *
+ * Cost is four localStorage writes a minute, bounded at MAX_ENTRIES, and no
+ * user-visible surface.
  */
 const AlchemyDiag = {
   KEY: 'alchemyfm-diag-log',
@@ -1566,7 +1578,10 @@ const GlobalLivePlayer = {
    * on the header wordmark TEXT (distinct from the icon button's existing
    * tap-for-home / short-hold-for-operator-signin gestures) navigates the
    * current window in place, same storage context, no URL bar needed.
-   * Remove alongside AlchemyDiag once the investigation concludes.
+   *
+   * Kept permanently alongside AlchemyDiag -- on the installed PWA this
+   * gesture is the ONLY way to reach the log, since there is no address bar
+   * to type /?debug=1 into and Safari reads a different storage partition.
    */
   setupDebugGesture() {
     const el = document.querySelector('.site-wordmark-text');
