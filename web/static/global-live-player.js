@@ -6,7 +6,14 @@
  */
 const AlchemyDiag = {
   KEY: 'alchemyfm-diag-log',
-  MAX_ENTRIES: 250,
+  MAX_ENTRIES: 300,
+  // Heartbeats are ~90% of the volume and the least informative entry, so
+  // they get their own budget and are thinned first. Under a flat 250-entry
+  // cap a 15s heartbeat left only ~1 hour of history, which repeatedly aged
+  // out the failure we were chasing. Keeping 50 heartbeats still shows the
+  // "heartbeats stop here" signal while leaving ~250 slots for real events,
+  // which can span days of intermittent trouble.
+  MAX_HEARTBEATS: 50,
 
   log(event, data = {}) {
     try {
@@ -18,9 +25,40 @@ const AlchemyDiag = {
         visibility: typeof document !== 'undefined' ? document.visibilityState : null,
         ...data,
       });
+      let beats = 0;
+      for (const e of entries) if (e.event === 'heartbeat') beats += 1;
+      while (beats > this.MAX_HEARTBEATS) {
+        const i = entries.findIndex((e) => e.event === 'heartbeat');
+        if (i < 0) break;
+        entries.splice(i, 1);
+        beats -= 1;
+      }
       while (entries.length > this.MAX_ENTRIES) entries.shift();
       localStorage.setItem(this.KEY, JSON.stringify(entries));
     } catch {}
+  },
+
+  /**
+   * One-time context so a pasted log is self-describing: which build, whether
+   * it is the installed PWA or a Safari tab (different storage partitions and
+   * different backgrounding rules), and the platform. Logged once per load.
+   */
+  logSession() {
+    if (this._sessionLogged) return;
+    this._sessionLogged = true;
+    let standalone = null;
+    try {
+      standalone = Boolean(
+        window.navigator.standalone ||
+        window.matchMedia?.('(display-mode: standalone)')?.matches
+      );
+    } catch {}
+    this.log('session-start', {
+      standalone,
+      ua: (navigator.userAgent || '').slice(0, 120),
+      lang: navigator.language || '',
+      screen: `${screen?.width || 0}x${screen?.height || 0}`,
+    });
   },
 
   _read() {
@@ -1607,9 +1645,12 @@ const GlobalLivePlayer = {
   },
 
   init() {
+    // Before the listener-page check but after the debug view bails out, so
+    // viewing the log never appends to it.
     if (this.maybeShowDebugLog()) return null;
     if (!this.isListenerPage()) return null;
 
+    AlchemyDiag.logSession();
     this.setupDebugGesture();
     this.ensureShell();
     document.body.classList.toggle('live-station-page', this.isStationPage());
