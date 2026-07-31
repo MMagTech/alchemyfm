@@ -375,6 +375,17 @@ const RadioApp = {
     // foreground path, where they work fine.
     let lastImmediateRecoveryAt = 0;
     let consecutiveImmediateRecoveries = 0;
+    // Heartbeat drift tracking -- see startHeartbeat.
+    let lastBeatAt = 0;
+    let lastBeatMediaTime = 0;
+    const PLAYBACK_GAP_THRESHOLD_SEC = 0.5;
+
+    /** Station slug parsed back out of the stream URL, for log correlation. */
+    const currentStationSlug = () => {
+      const src = audio.currentSrc || audio.dataset.streamSrc || audio.src || '';
+      const m = /\/api\/stations\/([^/]+)\/listen/.exec(src);
+      return m ? decodeURIComponent(m[1]) : '';
+    };
     const IMMEDIATE_RECOVERY_FLOOR_MS = 1000;
     const MAX_CONSECUTIVE_IMMEDIATE_RECOVERIES = 5;
     audio._liveSessionNotify = options.onSessionChange;
@@ -527,17 +538,25 @@ const RadioApp = {
             AlchemyDiag.log('play-resolved', { src, msSincePlayCall: Date.now() - playStartedAt });
           }
         },
+        // NOTE: the rejection branch below deliberately logs unconditionally.
+        // It used to be gated on skipReset like the resolve branch, which hid
+        // every play() denial outside the lock-screen-skip path -- exactly the
+        // ones that matter when iOS refuses to resume a backgrounded stream.
         (err) => {
           // A newer connectStream() call for a different station already
           // took over and aborted this one (e.g. rapid station switching) --
           // that's expected, not a real failure, so don't treat it as one.
           if (myGeneration !== connectGeneration) return;
-          if (skipReset && typeof AlchemyDiag !== 'undefined') {
+          if (typeof AlchemyDiag !== 'undefined') {
             AlchemyDiag.log('play-rejected', {
+              slug: currentStationSlug(),
               src,
               errorName: err?.name,
               errorMessage: String(err?.message || err),
               msSincePlayCall: Date.now() - playStartedAt,
+              skipReset,
+              readyState: audio.readyState,
+              networkState: audio.networkState,
             });
           }
           throw err;
@@ -607,14 +626,46 @@ const RadioApp = {
 
     const startHeartbeat = () => {
       stopHeartbeat();
+      lastBeatAt = 0;
+      lastBeatMediaTime = 0;
       heartbeatTimer = setInterval(() => {
         if (typeof AlchemyDiag === 'undefined') return;
+        const now = Date.now();
+        const media = audio.currentTime;
+        // Wall clock and media clock should advance together. When they don't,
+        // audio that was delivered never reached the speaker -- an inaudible
+        // 2.5s gap took manual arithmetic across a dozen heartbeats to spot,
+        // so measure it here instead. Note this catches output-path losses
+        // (e.g. a Bluetooth stutter) that fire no media element event at all.
+        let driftSec = null;
+        // media < last means currentTime restarted (a fresh connection), so
+        // the interval spans two streams and the difference is meaningless.
+        // startHeartbeat already resets on 'playing'; this covers any other
+        // path that swaps the source without one.
+        if (lastBeatAt && media >= lastBeatMediaTime) {
+          const wall = (now - lastBeatAt) / 1000;
+          driftSec = Math.round((wall - (media - lastBeatMediaTime)) * 1000) / 1000;
+        }
+        lastBeatAt = now;
+        lastBeatMediaTime = media;
         AlchemyDiag.log('heartbeat', {
+          slug: currentStationSlug(),
           paused: audio.paused,
-          currentTime: audio.currentTime,
+          currentTime: media,
           readyState: audio.readyState,
           networkState: audio.networkState,
+          bufferAheadSec: Math.round(bufferAheadSec() * 100) / 100,
+          driftSec,
         });
+        if (driftSec !== null && driftSec >= PLAYBACK_GAP_THRESHOLD_SEC && !audio.paused) {
+          AlchemyDiag.log('playback-gap', {
+            slug: currentStationSlug(),
+            lostSec: driftSec,
+            currentTime: media,
+            bufferAheadSec: Math.round(bufferAheadSec() * 100) / 100,
+            readyState: audio.readyState,
+          });
+        }
       }, 15000);
     };
 
@@ -792,6 +843,25 @@ const RadioApp = {
       // actually wanted-live and paused.
       try {
         navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+          // Log the output inventory alongside the event. iOS hides device
+          // labels without mic permission, but the count still tells us
+          // whether a speaker appeared or vanished -- the one variable we had
+          // no visibility into while chasing the Bluetooth correlation.
+          navigator.mediaDevices.enumerateDevices?.().then((devs) => {
+            const outs = devs.filter((d) => d.kind === 'audiooutput');
+            AlchemyDiag?.log?.('devicechange', {
+              audioOutputs: outs.length,
+              labels: outs.map((d) => d.label || '(hidden)').slice(0, 4),
+              wantLive: audio.dataset.wantLive === '1',
+              paused: audio.paused,
+            });
+          }).catch(() => {
+            AlchemyDiag?.log?.('devicechange', {
+              audioOutputs: null,
+              wantLive: audio.dataset.wantLive === '1',
+              paused: audio.paused,
+            });
+          });
           if (audio.dataset.wantLive === '1' && audio.paused && !userPaused) {
             recoverNow('devicechange');
           }
