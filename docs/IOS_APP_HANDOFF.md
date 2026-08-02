@@ -49,7 +49,8 @@ All listener endpoints are public (no auth), defined in
 
 `StationSummary` fields the app cares about: `slug`, `name`, `description`,
 `artwork_url`, `on_air`, `listeners`, `stream_url` (the direct Icecast URL —
-prefer this over the `/listen` redirect for the player), `stream_epoch`
+useful for external players, but **not** what `AVPlayer` should be given; see
+the playback note below), `stream_epoch`
 (increments when the broadcast restarts; the web player uses it to cache-bust
 reconnects — do the same on stream failure), and `now_playing`
 (`title`, `artist`, `cover_url`, optional `artist_bio`, optional `knowledge`
@@ -62,9 +63,22 @@ truth; the API is.
 
 ## iOS implementation notes
 
-- **Playback:** `AVPlayer` with the station's `stream_url`. Live stream —
-  duration is indefinite; hide/disable seeking. "Pause" should stop the stream
-  and "play" should re-tune live (fresh connection), not resume a buffer.
+- **Playback:** `AVPlayer` pointed at **`/api/stations/{slug}/listen`**, *not*
+  at the direct Icecast `stream_url`. Before opening a real playback
+  connection, iOS sniffs a media resource with a small `Range: bytes=0-1`
+  probe. Icecast ignores the range and answers with an endless `200`, so the
+  probe never terminates: the connection registers as a listener and produces
+  no audio, with no error to observe. The backend endpoint answers that probe
+  with a bounded `206` (`_probe_range_end` in `backend/app/routers/stations.py`)
+  and streams normally otherwise. Live stream — duration is indefinite;
+  hide/disable seeking. "Pause" should stop the stream and "play" should
+  re-tune live (fresh connection), not resume a buffer.
+- **Leave `automaticallyWaitsToMinimizeStalling` alone.** Setting it `false`
+  looks right for live radio — start now, don't sit buffering — but it also
+  means a `play()` issued before the item reaches `.readyToPlay` is dropped and
+  never retried. The player then sits at `rate == 0` buffering forever while
+  `timeControlStatus` still reports `.playing`. Same silent-but-healthy-looking
+  failure as the probe problem above, and the two together cost a full session.
 - **Background audio:** enable the *Audio, AirPlay, and Picture in Picture*
   background mode; configure `AVAudioSession` category `.playback`. Handle
   interruptions (calls/Siri) and route changes (headphones unplugged) via the
@@ -99,7 +113,9 @@ both in context. Backend/web code is untouched by iOS work.
 1. Xcode project scaffold in `ios/`, builds and runs empty in the Simulator.
 2. Station list screen fed by `GET /api/stations` (name, artwork, on-air badge,
    listener count).
-3. Tune-in: tap a station → `AVPlayer` plays `stream_url`; audible in Simulator.
+3. Tune-in: tap a station → `AVPlayer` plays `/api/stations/{slug}/listen`.
+   Confirm it is **audible**, not merely connected — a station can show a
+   listener on the server while the player renders nothing.
 4. Now-playing screen with polling metadata (title/artist/cover, up next,
    recently played).
 5. Background audio + lock-screen controls + interruption handling.
