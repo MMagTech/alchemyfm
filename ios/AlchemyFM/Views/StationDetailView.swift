@@ -278,7 +278,7 @@ struct StationDetailView: View {
             .padding(.vertical, 13)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.accentColor)
+                    .fill(.tint)
             )
         }
         .buttonStyle(.plain)

@@ -4,6 +4,8 @@ struct RootView: View {
     @Environment(ServerConfig.self) private var server
     @Environment(AdminSession.self) private var admin
 
+    @AppStorage(DisplayPreference.accent) private var accent = AccentTheme.server.rawValue
+
     var body: some View {
         Group {
             if server.isConfigured {
@@ -12,10 +14,16 @@ struct RootView: View {
                 ServerSetupView()
             }
         }
+        // Applied once here rather than per-view: `.tint` propagates, so
+        // everything drawn with `.tint` picks up the accent without each
+        // call site resolving it. Views must not use Color.accentColor,
+        // which reads the asset catalog and would ignore this.
+        .tint(AccentTheme.resolve(accent, serverTheme: server.serverTheme))
         // Credentials are stored per host, so switching servers re-evaluates
         // from scratch rather than carrying a sign-in across.
         .task(id: server.baseURL) {
             guard let baseURL = server.baseURL else { return }
+            await server.refreshServerTheme()
             await admin.restore(for: baseURL)
         }
     }

@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage(DisplayPreference.showArtistBio) private var showArtistBio = true
     @AppStorage(DisplayPreference.showTrackTrivia) private var showTrackTrivia = true
     @AppStorage(DisplayPreference.appearance) private var appearance = AppearanceMode.system.rawValue
+    @AppStorage(DisplayPreference.accent) private var accent = AccentTheme.server.rawValue
 
     var body: some View {
         NavigationStack {
@@ -29,13 +30,31 @@ struct SettingsView: View {
 
                 AdminSection()
 
-                Section("Appearance") {
+                Section {
                     Picker("Theme", selection: $appearance) {
                         ForEach(AppearanceMode.allCases) { mode in
                             Text(mode.label).tag(mode.rawValue)
                         }
                     }
                     .pickerStyle(.segmented)
+
+                    Picker("Accent", selection: $accent) {
+                        ForEach(AccentTheme.allCases) { theme in
+                            Label {
+                                Text(theme == .server ? serverAccentLabel : theme.label)
+                            } icon: {
+                                Circle()
+                                    .fill(theme.color ?? serverAccentColor)
+                                    .frame(width: 14, height: 14)
+                            }
+                            .tag(theme.rawValue)
+                        }
+                    }
+                } header: {
+                    Text("Appearance")
+                } footer: {
+                    Text("The same accents the web player offers. \"Match server\" "
+                         + "follows whatever this server is set to.")
                 }
 
                 Section {
@@ -73,6 +92,18 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private var serverAccent: AccentTheme {
+        AccentTheme.fromServer(server.serverTheme)
+    }
+
+    private var serverAccentLabel: String {
+        server.serverTheme == nil ? "Match server" : "Match server (\(serverAccent.label))"
+    }
+
+    private var serverAccentColor: Color {
+        serverAccent.color ?? .gray
     }
 
     private static var version: String {

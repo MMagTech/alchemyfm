@@ -10,6 +10,15 @@ final class ServerConfig {
 
     private(set) var baseURL: URL?
 
+    /// The accent this server tells its listeners to use, so the app can match
+    /// the web player by default instead of picking its own colour.
+    private(set) var serverTheme: String?
+
+    func refreshServerTheme() async {
+        guard let api else { return }
+        serverTheme = try? await api.health().defaultTheme
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         if let stored = defaults.string(forKey: Self.defaultsKey) {

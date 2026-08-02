@@ -113,4 +113,6 @@ struct ServerHealth: Codable {
     var encodeFormat: String = "mp3"
     var bitrate: Int = 0
     var gitSha: String = "unknown"
+    /// One of the accents in backend/app/themes.py.
+    var defaultTheme: String = "amber"
 }

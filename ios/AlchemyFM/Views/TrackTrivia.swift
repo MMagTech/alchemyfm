@@ -14,7 +14,7 @@ struct TriviaBadge: View {
                 .frame(width: 28, height: 28)
                 .background(.ultraThinMaterial, in: Circle())
                 .overlay(
-                    Circle().strokeBorder(Color.accentColor.opacity(0.55), lineWidth: 1)
+                    Circle().strokeBorder(.tint.opacity(0.55), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
