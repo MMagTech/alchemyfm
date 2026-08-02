@@ -9,6 +9,9 @@ struct StationDetailView: View {
     @Environment(ServerConfig.self) private var server
     @State private var loader = StationDetailLoader()
 
+    @AppStorage(DisplayPreference.showArtistBio) private var showArtistBio = true
+    @AppStorage(DisplayPreference.showTrackTrivia) private var showTrackTrivia = true
+
     private var isTuned: Bool { player.isTuned(to: station.slug) }
 
     /// When this *is* the tuned station, reuse the player's fast poll rather
@@ -38,7 +41,7 @@ struct StationDetailView: View {
                 trackInfo
                 transport
 
-                if let bio = nowPlaying?.artistBio, !bio.isEmpty {
+                if showArtistBio, let bio = nowPlaying?.artistBio, !bio.isEmpty {
                     section("About \(nowPlaying?.artist ?? "the artist")") {
                         Text(bio)
                             .font(.callout)
@@ -46,7 +49,7 @@ struct StationDetailView: View {
                     }
                 }
 
-                if let facts = nowPlaying?.knowledge?.facts, !facts.isEmpty {
+                if showTrackTrivia, let facts = nowPlaying?.knowledge?.facts, !facts.isEmpty {
                     section("Did you know") {
                         VStack(alignment: .leading, spacing: 10) {
                             ForEach(Array(facts.enumerated()), id: \.offset) { _, fact in

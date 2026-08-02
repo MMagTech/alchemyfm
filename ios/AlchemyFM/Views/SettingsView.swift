@@ -5,6 +5,9 @@ struct SettingsView: View {
     @Environment(RadioPlayer.self) private var player
     @Environment(\.dismiss) private var dismiss
 
+    @AppStorage(DisplayPreference.showArtistBio) private var showArtistBio = true
+    @AppStorage(DisplayPreference.showTrackTrivia) private var showTrackTrivia = true
+
     var body: some View {
         NavigationStack {
             Form {
@@ -21,6 +24,16 @@ struct SettingsView: View {
                         dismiss()
                     }
                     .padding(.vertical, 4)
+                }
+
+                Section {
+                    Toggle("Artist info", isOn: $showArtistBio)
+                    Toggle("Track trivia", isOn: $showTrackTrivia)
+                } header: {
+                    Text("On station pages")
+                } footer: {
+                    Text("Applies to this device only — the web player keeps "
+                         + "showing whatever the server has enabled.")
                 }
 
                 Section {
