@@ -15,9 +15,14 @@ struct NowPlayingDisplayView: View {
     @Environment(ServerConfig.self) private var server
     @Environment(RadioPlayer.self) private var player
 
-    /// Set on appear from `isTuned`. Once following, the screen tracks the
-    /// player rather than the station it was opened with — otherwise skipping
-    /// would change what's playing while this kept showing the old station.
+    /// Once following, the screen tracks the player rather than the station it
+    /// was opened with — otherwise skipping would change what's playing while
+    /// this kept showing the old station.
+    ///
+    /// Set on appear, and again if the player later tunes to the station this
+    /// was opened on. Setting it only on appear meant opening display mode on a
+    /// station you weren't listening to left it stuck: pressing play here tuned
+    /// the station, but skip and heart stayed hidden forever.
     @State private var following = false
     @State private var controlsVisible = true
     @State private var hideTask: Task<Void, Never>?
@@ -47,6 +52,10 @@ struct NowPlayingDisplayView: View {
         // .gesture it claims the touch sequence and taps never land.
         .simultaneousGesture(dismissDrag)
         .statusBarHidden(!controlsVisible)
+        // Catches the hand-over when play is pressed from inside this screen.
+        .onChange(of: player.station?.slug) { _, slug in
+            if !following, slug == station.slug { following = true }
+        }
         .onAppear {
             following = isTuned
             setScreenAwake(true)
