@@ -167,10 +167,14 @@ struct StationDetailView: View {
     /// queue below does not".
     private var nowPlayingCard: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: 8) {
                 titleBlock
                 Spacer(minLength: 0)
                 if canHeart { heartButton }
+                // Bluetooth speakers and AirPlay destinations both live here.
+                RoutePickerButton(tint: .secondary, activeTint: .accentColor)
+                    .frame(width: 40, height: 40)
+                    .accessibilityLabel("Choose audio output")
             }
 
             listenButton
