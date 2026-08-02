@@ -171,7 +171,10 @@ struct StationDetailView: View {
             HStack(alignment: .top, spacing: 8) {
                 titleBlock
                 Spacer(minLength: 0)
-                if canHeart { heartButton }
+                // Output controls group together on the left; the heart is an
+                // action on the track, not on where it plays, so it sits apart
+                // at the trailing edge.
+                //
                 // Only worth the space once a receiver is actually on the
                 // network — otherwise it's a button that opens an empty list.
                 if cast.hasDevices {
@@ -184,6 +187,8 @@ struct StationDetailView: View {
                 RoutePickerButton(tint: .secondary, activeTint: .accentColor)
                     .frame(width: 40, height: 40)
                     .accessibilityLabel("Choose audio output")
+
+                if canHeart { heartButton }
             }
 
             listenButton

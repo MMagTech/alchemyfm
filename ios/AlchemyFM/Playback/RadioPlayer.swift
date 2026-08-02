@@ -540,6 +540,14 @@ final class RadioPlayer {
             Task { @MainActor [weak self] in self?.toggle() }
             return .success
         }
+        // Whether iOS surfaces this on the Lock Screen is its call — it's
+        // reliably shown on CarPlay and the Watch, less so on the phone. Wiring
+        // it costs little and it's the only route to a heart in the *system*
+        // now-playing UI; a custom one would mean a Live Activity.
+        center.likeCommand.addTarget { [weak self] _ in
+            Task { @MainActor [weak self] in self?.toggleHeart() }
+            return .success
+        }
 
         // There is no next *track* to skip to — everyone hears the same
         // broadcast — so these tune to the next station instead, which is the
@@ -593,7 +601,30 @@ final class RadioPlayer {
         info[MPNowPlayingInfoPropertyIsLiveStream] = true
         info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
         center.nowPlayingInfo = info
+        updateHeartCommand()
         refreshArtworkIfNeeded()
+    }
+
+    /// `hearted` is only sent to a signed-in operator, so its presence is what
+    /// decides whether the heart is offered at all — same gate as the button on
+    /// the station page.
+    private func updateHeartCommand() {
+        let like = MPRemoteCommandCenter.shared().likeCommand
+        let hearted = nowPlaying?.hearted
+        like.isEnabled = hearted != nil && nowPlaying?.itemId != nil
+        like.isActive = hearted ?? false
+        like.localizedTitle = (hearted ?? false) ? "Unheart" : "Heart"
+    }
+
+    /// Exposed for the remote command; the station page has its own optimistic
+    /// path because it can show the result immediately.
+    func toggleHeart() {
+        guard let api, let itemId = nowPlaying?.itemId else { return }
+        let target = !(nowPlaying?.hearted ?? false)
+        Task {
+            _ = try? await api.setHeart(itemId: itemId, hearted: target)
+            // The next poll brings back the authoritative value.
+        }
     }
 
     private func refreshArtworkIfNeeded() {
