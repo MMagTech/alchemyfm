@@ -91,6 +91,14 @@ final class RadioPlayer {
     func tune(to station: StationSummary, api: AlchemyAPI) {
         self.api = api
         if self.station?.slug != station.slug {
+            // Only when switching *between* stations while listening — not on
+            // the first tune-in, and not when casting, where the audio is
+            // coming out of a speaker this burst wouldn't reach.
+            if wantsLive, self.station != nil, !CastController.shared.isCasting,
+               UserDefaults.standard.object(forKey: DisplayPreference.tuningStatic) as? Bool ?? true
+            {
+                TuningStatic.shared.play()
+            }
             teardownPlayer()
             pollTask?.cancel()
             pollTask = nil

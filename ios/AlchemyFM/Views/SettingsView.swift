@@ -9,6 +9,7 @@ struct SettingsView: View {
     @AppStorage(DisplayPreference.showTrackTrivia) private var showTrackTrivia = true
     @AppStorage(DisplayPreference.appearance) private var appearance = AppearanceMode.system.rawValue
     @AppStorage(DisplayPreference.accent) private var accent = AccentTheme.server.rawValue
+    @AppStorage(DisplayPreference.tuningStatic) private var tuningStatic = true
 
     var body: some View {
         NavigationStack {
@@ -55,6 +56,13 @@ struct SettingsView: View {
                 } footer: {
                     Text("The same accents the web player offers. \"Match server\" "
                          + "follows whatever this server is set to.")
+                }
+
+                Section {
+                    Toggle("Tuning static", isOn: $tuningStatic)
+                } footer: {
+                    Text("A short burst of static when you switch stations, "
+                         + "like the web player.")
                 }
 
                 Section {

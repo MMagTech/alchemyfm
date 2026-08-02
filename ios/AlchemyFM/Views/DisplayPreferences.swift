@@ -12,6 +12,7 @@ enum DisplayPreference {
     static let showTrackTrivia = "alchemyfm.showTrackTrivia"
     static let appearance = "alchemyfm.appearance"
     static let accent = "alchemyfm.accent"
+    static let tuningStatic = "alchemyfm.tuningStatic"
 }
 
 /// The same six accents the web player offers, with the same hex values —
