@@ -86,6 +86,21 @@ struct AlchemyAPI: Sendable {
         return health
     }
 
+    /// The stream URL to hand `AVPlayer`.
+    ///
+    /// Deliberately the backend's same-origin `/listen` endpoint rather than
+    /// the direct Icecast `stream_url`. Before opening a real playback
+    /// connection, iOS sniffs a media resource with a tiny `Range: bytes=0-1`
+    /// probe. Icecast ignores the range and answers with an endless `200`, so
+    /// the probe never terminates and playback never starts — the connection
+    /// registers as a listener while producing no audio. `/listen` answers the
+    /// probe with a bounded `206` (see `_probe_range_end` in
+    /// backend/app/routers/stations.py) and streams normally otherwise.
+    func listenURL(slug: String) -> URL? {
+        let escaped = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? slug
+        return URL(string: "/api/stations/\(escaped)/listen", relativeTo: baseURL)?.absoluteURL
+    }
+
     private func get<T: Decodable>(_ path: String) async throws -> T {
         guard let url = URL(string: path, relativeTo: baseURL) else { throw APIError.badURL }
         let (data, response) = try await Self.session.data(from: url)

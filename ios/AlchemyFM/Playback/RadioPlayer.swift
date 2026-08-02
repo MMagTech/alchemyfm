@@ -145,9 +145,10 @@ final class RadioPlayer {
 
         let item = AVPlayerItem(url: url)
         let player = AVPlayer(playerItem: item)
-        // Live radio: don't sit buffering in the hope of a stall-free future.
-        // Start immediately and let failures surface fast so we can re-tune.
-        player.automaticallyWaitsToMinimizeStalling = false
+        // Left at its default (true) on purpose. Setting it false means a
+        // `play()` issued before the item reaches `.readyToPlay` is dropped and
+        // never retried — the player then buffers forever at rate 0, which
+        // looks exactly like a working connection that produces no sound.
         player.allowsExternalPlayback = true
         self.player = player
 
@@ -164,7 +165,12 @@ final class RadioPlayer {
     /// this; the extra nonce covers repeat attempts *within* one epoch, where an
     /// unchanged URL can come back from a stale cached connection.
     private func streamURL(for station: StationSummary) -> URL? {
-        guard let base = api?.resolve(station.streamUrl) ?? URL(string: station.streamUrl) else {
+        // Falls back to the direct Icecast URL only if we somehow have no API
+        // client — see `listenURL` for why that is the worse option on iOS.
+        let candidate = api?.listenURL(slug: station.slug)
+            ?? api?.resolve(station.streamUrl)
+            ?? URL(string: station.streamUrl)
+        guard let base = candidate else {
             return nil
         }
         guard var components = URLComponents(url: base, resolvingAgainstBaseURL: true) else {
@@ -361,6 +367,13 @@ final class RadioPlayer {
         frozenSamples += 1
         // ~6s of a live stream delivering nothing while it claims to be playing.
         if frozenSamples >= 3 {
+            // Worth logging the playhead too: a frozen marker with a moving
+            // playhead means the stream died, while both frozen at zero means
+            // the player never actually started (see openStream).
+            NSLog(
+                "[AlchemyFM] stall: marker=%.0f playhead=%.1f rate=%.1f",
+                marker, CMTimeGetSeconds(player?.currentTime() ?? .zero), player?.rate ?? -1
+            )
             scheduleReconnect(reason: "no audio arriving")
         }
     }
