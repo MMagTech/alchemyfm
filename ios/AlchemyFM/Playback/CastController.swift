@@ -39,13 +39,22 @@ final class CastController: NSObject {
         // Keep the session alive when the app is backgrounded — the whole point
         // is that the speakers keep playing.
         options.suspendSessionsWhenBackgrounded = false
+        // Defaults to true, which defers discovery until a cast button is
+        // tapped. Since the button here only appears once a device has been
+        // found, that deadlocks: no button, so no scan, so no devices, so no
+        // button — and the local network prompt never fires either, because
+        // nothing ever touches the network.
+        options.startDiscoveryAfterFirstTapOnCastButton = false
         GCKCastContext.setSharedInstanceWith(options)
 
         GCKCastContext.sharedInstance().sessionManager.add(self)
 
         let discovery = GCKCastContext.sharedInstance().discoveryManager
-        discovery.passiveScan = true
         discovery.add(self)
+        // Active, not passive: passive scans are lower power but far slower to
+        // notice a device, which reads as "casting doesn't work".
+        discovery.passiveScan = false
+        discovery.startDiscovery()
         hasDevices = discovery.deviceCount > 0
     }
 
