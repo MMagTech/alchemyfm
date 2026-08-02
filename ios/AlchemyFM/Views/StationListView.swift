@@ -7,7 +7,22 @@ struct StationListView: View {
 
     @State private var store = StationStore()
     @State private var path: [StationSummary] = []
-    @State private var showingSettings = false
+    @State private var sheet: ListSheet?
+
+    /// One `.sheet` modifier, two presentations. Stacking two `.sheet`s on a
+    /// single view is unreliable.
+    private enum ListSheet: Identifiable {
+        case settings
+        /// The tuned station, opened from the mini player.
+        case nowPlaying(StationSummary)
+
+        var id: String {
+            switch self {
+            case .settings: return "settings"
+            case .nowPlaying(let station): return "now-playing-\(station.slug)"
+            }
+        }
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -19,7 +34,7 @@ struct StationListView: View {
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
-                            showingSettings = true
+                            sheet = .settings
                         } label: {
                             Image(systemName: "gearshape")
                         }
@@ -28,12 +43,19 @@ struct StationListView: View {
                 }
                 .safeAreaInset(edge: .bottom) {
                     if let tuned = player.station {
-                        MiniPlayerBar { path.append(tuned) }
+                        // Rises from the bar it was tapped on, rather than
+                        // sliding in from the side like a list row would.
+                        MiniPlayerBar { sheet = .nowPlaying(tuned) }
                     }
                 }
         }
-        .sheet(isPresented: $showingSettings) {
-            SettingsView()
+        .sheet(item: $sheet) { item in
+            switch item {
+            case .settings:
+                SettingsView()
+            case .nowPlaying(let station):
+                NowPlayingSheet(station: station)
+            }
         }
         .task(id: server.baseURL) {
             store.reset()
@@ -56,7 +78,7 @@ struct StationListView: View {
             } description: {
                 Text(message)
             } actions: {
-                Button("Server settings") { showingSettings = true }
+                Button("Server settings") { sheet = .settings }
             }
         } else if store.stations.isEmpty && store.hasLoaded {
             ContentUnavailableView(
@@ -128,6 +150,33 @@ struct StationListView: View {
                     )
                 }
             }
+    }
+}
+
+/// The tuned station, presented from the mini player.
+///
+/// A push would slide in from the trailing edge, which is the right gesture
+/// for a list row but the wrong one for a bar pinned to the bottom — this
+/// rises from where it was tapped and can be pulled back down.
+struct NowPlayingSheet: View {
+    let station: StationSummary
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            StationDetailView(station: station)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "chevron.down")
+                        }
+                        .accessibilityLabel("Close")
+                    }
+                }
+        }
     }
 }
 
