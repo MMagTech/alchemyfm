@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import MediaPlayer
+import Network
 import Observation
 import UIKit
 
@@ -20,6 +21,10 @@ final class RadioPlayer {
         case connecting
         case playing
         case reconnecting(attempt: Int)
+        /// No network path at all. Distinct from reconnecting: there is
+        /// nothing to retry against, and saying "Reconnecting… (17)" while
+        /// someone is in a tunnel is both wrong and alarming.
+        case offline
         case interrupted
         case failed(String)
     }
@@ -59,6 +64,41 @@ final class RadioPlayer {
     @ObservationIgnored private var currentArtworkKey: String?
     @ObservationIgnored private var remoteCommandsInstalled = false
     @ObservationIgnored private var isInterrupted = false
+    @ObservationIgnored private let pathMonitor = NWPathMonitor()
+    @ObservationIgnored private var isOnline = true
+
+    init() {
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let satisfied = path.status == .satisfied
+            Task { @MainActor [weak self] in self?.networkChanged(online: satisfied) }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "fm.alchemy.path"))
+    }
+
+    /// Losing the network tears the player down and stops retrying — there is
+    /// nothing to retry against, and the backoff would only mean waiting up to
+    /// 15s after the connection returns. Regaining it reconnects immediately,
+    /// which is the behaviour a radio should have: walk back into signal and it
+    /// comes back on its own.
+    private func networkChanged(online: Bool) {
+        guard isOnline != online else { return }
+        isOnline = online
+
+        guard wantsLive, !CastController.shared.isCasting else { return }
+
+        if online {
+            NSLog("[AlchemyFM] network back — resuming")
+            attempt = 0
+            cancelReconnect()
+            openStream()
+        } else {
+            NSLog("[AlchemyFM] network lost — holding")
+            cancelReconnect()
+            teardownPlayer()
+            endBackgroundTask()
+            state = .offline
+        }
+    }
 
     // MARK: - Derived state for the UI
 
@@ -78,7 +118,12 @@ final class RadioPlayer {
         case .idle: return "Stopped"
         case .connecting: return "Tuning in…"
         case .playing: return "Live"
-        case .reconnecting(let n): return n <= 1 ? "Reconnecting…" : "Reconnecting… (\(n))"
+        // Deliberately stops counting. Live radio keeps trying indefinitely,
+        // and an escalating counter reads as a broken app rather than a
+        // patient one.
+        case .reconnecting(let n):
+            return n <= 3 ? "Reconnecting…" : "Can't reach the station — still trying"
+        case .offline: return "Waiting for a connection"
         case .interrupted: return "Interrupted"
         case .failed(let message): return message
         }
@@ -426,6 +471,14 @@ final class RadioPlayer {
     private func scheduleReconnect(reason: String) {
         guard wantsLive, !isInterrupted, reconnectTask == nil else { return }
 
+        // Nothing to reconnect to. networkChanged will restart us the moment a
+        // path appears, so there is no timer to leave running here.
+        guard isOnline else {
+            teardownPlayer()
+            state = .offline
+            return
+        }
+
         // Buys ~30s of execution time so a reconnect that starts while the
         // screen is locked actually gets to finish before iOS suspends us.
         beginBackgroundTask()
@@ -503,6 +556,7 @@ final class RadioPlayer {
     }
 
     private var pollInterval: Int {
+        guard isOnline else { return 10000 }
         guard wantsLive else { return 5000 }
         // Foreground mirrors the web player's 750ms now-playing poll. In the
         // background the only consumer is the lock screen, which doesn't need
