@@ -47,6 +47,11 @@ struct StationDetailView: View {
 
     @State private var sheet: DetailSheet?
 
+    /// Local heart state while a toggle is in flight, cleared when the track
+    /// changes so a stale override can't bleed onto the next song.
+    @State private var heartOverride: Bool?
+    @State private var heartBusy = false
+
     private var facts: [KnowledgeFact] {
         showTrackTrivia ? (nowPlaying?.knowledge?.facts ?? []) : []
     }
@@ -114,6 +119,7 @@ struct StationDetailView: View {
                 loader.start(slug: station.slug, api: api)
             }
         }
+        .onChange(of: nowPlaying?.trackKey) { _, _ in heartOverride = nil }
         .onDisappear { loader.stop() }
     }
 
@@ -178,11 +184,64 @@ struct StationDetailView: View {
         }
     }
 
+    /// The heart is an operator action, so it only exists once the server has
+    /// told us the current heart state — which it only does for a signed-in
+    /// admin. No sign-in, no `hearted`, no button.
+    private var isHearted: Bool {
+        heartOverride ?? (nowPlaying?.hearted ?? false)
+    }
+
+    private var canHeart: Bool {
+        nowPlaying?.hearted != nil && nowPlaying?.itemId != nil
+    }
+
     private var transport: some View {
         // No skip, no seek — everyone hears the same broadcast.
-        StationPlayButton(station: detail?.summary ?? station, size: .largeTitle)
-            .frame(width: 72, height: 72)
-            .background(.quaternary, in: Circle())
+        HStack(spacing: 0) {
+            // Balances the heart so the play button stays centred.
+            Color.clear.frame(width: 44, height: 44)
+            Spacer(minLength: 12)
+
+            StationPlayButton(station: detail?.summary ?? station, size: .largeTitle)
+                .frame(width: 72, height: 72)
+                .background(.quaternary, in: Circle())
+
+            Spacer(minLength: 12)
+
+            if canHeart {
+                Button(action: toggleHeart) {
+                    Image(systemName: isHearted ? "heart.fill" : "heart")
+                        .font(.title2)
+                        .foregroundStyle(isHearted ? .pink : .secondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(heartBusy)
+                .accessibilityLabel(isHearted ? "Remove heart" : "Heart this track")
+            } else {
+                Color.clear.frame(width: 44, height: 44)
+            }
+        }
+        .frame(maxWidth: 320)
+    }
+
+    private func toggleHeart() {
+        guard let api = server.api, let itemId = nowPlaying?.itemId else { return }
+        let target = !isHearted
+        // Optimistic: the poll that would confirm it is up to 5s away when
+        // browsing, and a heart that lags that far feels broken.
+        heartOverride = target
+        heartBusy = true
+        Task {
+            do {
+                heartOverride = try await api.setHeart(itemId: itemId, hearted: target)
+            } catch {
+                // Fall back to whatever the server says next poll.
+                heartOverride = nil
+            }
+            heartBusy = false
+        }
     }
 
     private func trackList(_ tracks: [TrackRef], showTime: Bool = false) -> some View {

@@ -27,6 +27,8 @@ struct SettingsView: View {
                     .padding(.vertical, 4)
                 }
 
+                AdminSection()
+
                 Section("Appearance") {
                     Picker("Theme", selection: $appearance) {
                         ForEach(AppearanceMode.allCases) { mode in

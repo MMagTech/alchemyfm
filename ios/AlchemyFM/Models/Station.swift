@@ -29,6 +29,9 @@ struct NowPlaying: Codable, Hashable {
     var artistBio: String?
     var artistBioUrl: String?
     var knowledge: KnowledgeBlock?
+    /// Only sent to a signed-in operator, so nil doubles as "not an admin" —
+    /// which is exactly what gates the heart button.
+    var hearted: Bool?
 
     /// Identity for "did the track change?" checks. `item_id` is the real key
     /// when present; title+artist covers stations whose source has no ids.

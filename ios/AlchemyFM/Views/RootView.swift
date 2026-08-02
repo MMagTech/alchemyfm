@@ -2,12 +2,21 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(ServerConfig.self) private var server
+    @Environment(AdminSession.self) private var admin
 
     var body: some View {
-        if server.isConfigured {
-            StationListView()
-        } else {
-            ServerSetupView()
+        Group {
+            if server.isConfigured {
+                StationListView()
+            } else {
+                ServerSetupView()
+            }
+        }
+        // Credentials are stored per host, so switching servers re-evaluates
+        // from scratch rather than carrying a sign-in across.
+        .task(id: server.baseURL) {
+            guard let baseURL = server.baseURL else { return }
+            await admin.restore(for: baseURL)
         }
     }
 }

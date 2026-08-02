@@ -9,8 +9,14 @@ enum APIError: LocalizedError {
         switch self {
         case .badURL:
             return "That doesn't look like a valid address."
+        case .http(let status) where status == 401:
+            return "Wrong username or password."
         case .http(let status) where status == 404:
             return "Not found on this server (404)."
+        case .http(let status) where status == 429:
+            return "Too many attempts — wait a few minutes and try again."
+        case .http(let status) where status == 503:
+            return "Admin is disabled on this server (no ADMIN_PASSWORD set)."
         case .http(let status):
             return "The server returned HTTP \(status)."
         case .notAlchemyServer:
@@ -84,6 +90,56 @@ struct AlchemyAPI: Sendable {
         let health: ServerHealth = try await get("/api/health")
         guard health.status == "ok" else { throw APIError.notAlchemyServer }
         return health
+    }
+
+    // MARK: - Admin (optional)
+
+    /// Exchanges credentials for the `admin_session` cookie.
+    ///
+    /// The cookie, not HTTP Basic, is what unlocks the heart feature: the
+    /// station endpoint decides whether to include `hearted` by looking for a
+    /// session cookie specifically (`admin_user_from_request`), even though
+    /// `require_admin` would also accept Basic auth on the write endpoint.
+    /// URLSession stores and replays the cookie for us.
+    @discardableResult
+    func adminLogin(username: String, password: String) async throws -> String {
+        struct Body: Encodable {
+            let username: String
+            let password: String
+        }
+        struct Reply: Decodable {
+            let username: String
+        }
+        let reply: Reply = try await post(
+            "/api/admin/login", body: Body(username: username, password: password)
+        )
+        return reply.username
+    }
+
+    /// `POST /api/admin/navidrome/songs/{item_id}/heart`
+    @discardableResult
+    func setHeart(itemId: String, hearted: Bool) async throws -> Bool {
+        struct Body: Encodable { let hearted: Bool }
+        struct Reply: Decodable { let hearted: Bool }
+        let escaped = itemId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? itemId
+        let reply: Reply = try await post(
+            "/api/admin/navidrome/songs/\(escaped)/heart", body: Body(hearted: hearted)
+        )
+        return reply.hearted
+    }
+
+    private func post<Body: Encodable, T: Decodable>(_ path: String, body: Body) async throws -> T {
+        guard let url = URL(string: path, relativeTo: baseURL) else { throw APIError.badURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await Self.session.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw APIError.http(status: http.statusCode)
+        }
+        return try Self.decoder.decode(T.self, from: data)
     }
 
     /// The stream URL to hand `AVPlayer`.
