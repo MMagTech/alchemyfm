@@ -27,6 +27,21 @@ struct StationDetailView: View {
     private var listeners: Int { detail?.listeners ?? station.listeners }
     private var onAir: Bool { detail?.onAir ?? station.onAir }
 
+    /// Carries the facts with the presentation. Snapshotting into separate
+    /// @State and using .sheet(isPresented:) loses them — the sheet body builds
+    /// before the snapshot lands, and renders an empty list.
+    private struct TriviaContext: Identifiable {
+        let id: String
+        let facts: [KnowledgeFact]
+        let title: String
+    }
+
+    @State private var trivia: TriviaContext?
+
+    private var facts: [KnowledgeFact] {
+        showTrackTrivia ? (nowPlaying?.knowledge?.facts ?? []) : []
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
@@ -36,6 +51,21 @@ struct StationDetailView: View {
                     .frame(maxWidth: 320)
                     .aspectRatio(1, contentMode: .fit)
                     .shadow(radius: 18, y: 8)
+                    .overlay(alignment: .bottomTrailing) {
+                        if !facts.isEmpty {
+                            TriviaBadge {
+                                // Snapshot on open: the station keeps polling,
+                                // and a track change shouldn't swap the text
+                                // out from under someone mid-read.
+                                trivia = TriviaContext(
+                                    id: nowPlaying?.trackKey ?? station.slug,
+                                    facts: facts,
+                                    title: nowPlaying?.title ?? station.name
+                                )
+                            }
+                            .padding(10)
+                        }
+                    }
                     .padding(.top, 8)
 
                 trackInfo
@@ -46,18 +76,6 @@ struct StationDetailView: View {
                         Text(bio)
                             .font(.callout)
                             .foregroundStyle(.secondary)
-                    }
-                }
-
-                if showTrackTrivia, let facts = nowPlaying?.knowledge?.facts, !facts.isEmpty {
-                    section("Did you know") {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(Array(facts.enumerated()), id: \.offset) { _, fact in
-                                Text(fact.text)
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
                     }
                 }
 
@@ -74,6 +92,9 @@ struct StationDetailView: View {
         }
         .navigationTitle(station.name)
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $trivia) { context in
+            TrackTriviaSheet(facts: context.facts, trackTitle: context.title)
+        }
         .task(id: isTuned) {
             guard let api = server.api else { return }
             if isTuned {
