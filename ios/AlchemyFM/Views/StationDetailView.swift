@@ -211,12 +211,13 @@ struct StationDetailView: View {
 
     private var titleBlock: some View {
         VStack(alignment: .leading, spacing: 3) {
-            // Wraps rather than scrolling: unlike the mini player this screen
-            // has the room, and nothing else on it moves. Capped at two lines
-            // so a 60-character title can't grow the card without limit.
+            // Always two lines tall, occupied or not. Sizing to the title
+            // instead means the card changes height whenever a one-line track
+            // follows a two-line one, and the whole queue below it jumps —
+            // several times an hour, on a screen nobody is interacting with.
             Text(nowPlaying?.title ?? station.name)
                 .font(.title3.bold())
-                .lineLimit(2)
+                .lineLimit(2, reservesSpace: true)
                 .fixedSize(horizontal: false, vertical: true)
 
             artistLine
