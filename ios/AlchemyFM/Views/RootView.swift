@@ -2,7 +2,9 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(ServerConfig.self) private var server
+    @Environment(RadioPlayer.self) private var player
     @Environment(AdminSession.self) private var admin
+    @State private var cast = CastController.shared
 
     @AppStorage(DisplayPreference.accent) private var accent = AccentTheme.server.rawValue
 
@@ -21,6 +23,11 @@ struct RootView: View {
         .tint(AccentTheme.resolve(accent, serverTheme: server.serverTheme))
         // Credentials are stored per host, so switching servers re-evaluates
         // from scratch rather than carrying a sign-in across.
+        // Moves audio between the phone and the receiver when a session
+        // starts or ends, without the listener pressing anything.
+        .onChange(of: cast.isCasting) { _, _ in
+            player.castStateChanged()
+        }
         .task(id: server.baseURL) {
             guard let baseURL = server.baseURL else { return }
             await server.refreshServerTheme()

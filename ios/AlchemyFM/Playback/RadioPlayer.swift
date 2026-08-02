@@ -116,10 +116,22 @@ final class RadioPlayer {
         isInterrupted = false
         cancelReconnect()
         teardownPlayer()
+        // Stops the audio but keeps the Cast session, so the next station
+        // starts on the same speakers without reconnecting to them.
+        CastController.shared.stopPlayback()
         state = .idle
         deactivateSession()
         endBackgroundTask()
         updateNowPlayingInfo()
+    }
+
+    /// Called when a Cast session starts or ends, to move audio between the
+    /// phone and the receiver without the user having to press anything.
+    func castStateChanged() {
+        guard wantsLive else { return }
+        cancelReconnect()
+        attempt = 0
+        openStream()
     }
 
     func toggle() {
@@ -144,6 +156,23 @@ final class RadioPlayer {
         playingEpoch = detail?.streamEpoch ?? station.streamEpoch
         guard let url = streamURL(for: station) else {
             state = .failed("This station has no stream URL.")
+            return
+        }
+
+        // While casting, the receiver fetches the stream itself. Nothing local
+        // to build, and nothing local to watch — the watchdog and reconnect
+        // logic below are AVPlayer's, and there is no AVPlayer.
+        if CastController.shared.isCasting {
+            teardownPlayer()
+            deactivateSession()
+            CastController.shared.load(
+                streamURL: url,
+                title: nowPlaying?.title ?? station.name,
+                artist: nowPlaying?.artist ?? "",
+                station: station.name,
+                artwork: api?.resolve(nowPlaying?.coverUrl) ?? api?.resolve(station.artworkUrl)
+            )
+            state = .playing
             return
         }
 

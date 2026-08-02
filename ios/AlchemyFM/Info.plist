@@ -56,8 +56,17 @@
 		<true/>
 	</dict>
 
-	<!-- iOS 14+ prompts before the first connection to a LAN address. -->
+	<!-- iOS 14+ prompts before the first connection to a LAN address, and
+	     before Chromecast discovery. -->
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Alchemy FM connects to your self-hosted radio server on your local network to list stations and play the live stream.</string>
+	<string>Alchemy FM connects to your self-hosted radio server on your local network to list stations and play the live stream, and finds Chromecast devices to cast to.</string>
+
+	<!-- Chromecast discovery. Both entries are required: the generic Cast
+	     service, and one naming the receiver app id we use. -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_googlecast._tcp</string>
+		<string>_CC1AD845._googlecast._tcp</string>
+	</array>
 </dict>
 </plist>

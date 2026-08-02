@@ -8,6 +8,7 @@ struct StationDetailView: View {
     @Environment(RadioPlayer.self) private var player
     @Environment(ServerConfig.self) private var server
     @State private var loader = StationDetailLoader()
+    @State private var cast = CastController.shared
 
     @AppStorage(DisplayPreference.showArtistBio) private var showArtistBio = true
     @AppStorage(DisplayPreference.showTrackTrivia) private var showTrackTrivia = true
@@ -171,6 +172,14 @@ struct StationDetailView: View {
                 titleBlock
                 Spacer(minLength: 0)
                 if canHeart { heartButton }
+                // Only worth the space once a receiver is actually on the
+                // network — otherwise it's a button that opens an empty list.
+                if cast.hasDevices {
+                    CastButton(tint: cast.isCasting ? .accentColor : .secondary)
+                        .frame(width: 34, height: 34)
+                        .accessibilityLabel("Cast to a device")
+                }
+
                 // Bluetooth speakers and AirPlay destinations both live here.
                 RoutePickerButton(tint: .secondary, activeTint: .accentColor)
                     .frame(width: 40, height: 40)
@@ -210,6 +219,13 @@ struct StationDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// While casting, where the audio is going matters more than the local
+    /// player's state — which reads idle, because there is no local player.
+    private var castingLabel: String? {
+        guard isTuned, cast.isCasting else { return nil }
+        return cast.deviceName.map { "Casting to \($0)" } ?? "Casting"
+    }
+
     /// Sits below the transport, annotating it. Between the artist and the
     /// play button it just split the metadata away from its own heading.
     private var statusLine: some View {
@@ -219,7 +235,7 @@ struct StationDetailView: View {
             }
             // Only the tuned station has playback state worth reporting; for
             // anything else this page is just a preview.
-            Text(isTuned ? player.statusText : (onAir ? "On air" : "Off air"))
+            Text(castingLabel ?? (isTuned ? player.statusText : (onAir ? "On air" : "Off air")))
             if onAir {
                 Text("·")
                 Text(listeners == 1 ? "1 listener" : "\(listeners) listeners")

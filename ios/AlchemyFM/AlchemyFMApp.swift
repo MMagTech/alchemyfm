@@ -9,6 +9,12 @@ struct AlchemyFMApp: App {
 
     @AppStorage(DisplayPreference.appearance) private var appearance = AppearanceMode.system.rawValue
 
+    init() {
+        // Before any Cast UI exists, since GCKUICastButton needs the shared
+        // context to have been configured.
+        CastController.shared.start()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
