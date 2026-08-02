@@ -54,6 +54,10 @@ struct StationDetailView: View {
     @State private var heartBusy = false
     @State private var showingDisplay = false
 
+    /// One inset for both artwork badges, so the pair sits symmetrically on
+    /// opposite corners instead of each drifting to its own margin.
+    private static let badgeInset: CGFloat = 10
+
     private var facts: [KnowledgeFact] {
         showTrackTrivia ? (nowPlaying?.knowledge?.facts ?? []) : []
     }
@@ -72,8 +76,8 @@ struct StationDetailView: View {
                     .frame(maxWidth: 320)
                     .aspectRatio(1, contentMode: .fit)
                     .shadow(radius: 18, y: 8)
-                    // Mirrors the trivia badge in the opposite corner, so the
-                    // gesture below it is discoverable rather than folklore.
+                    // Both badges sit inside the artwork on opposite diagonal
+                    // corners, sharing one inset so they read as a pair.
                     .overlay(alignment: .topTrailing) {
                         Button {
                             showingDisplay = true
@@ -85,12 +89,10 @@ struct StationDetailView: View {
                                 .background(.black.opacity(0.35), in: Circle())
                         }
                         .buttonStyle(.plain)
-                        // Centred on the corner itself rather than inset from
-                        // it, so it reads as attached to the artwork.
-                        .offset(x: 14, y: -14)
+                        .padding(Self.badgeInset)
                         .accessibilityLabel("Full screen")
                     }
-                    .overlay(alignment: .bottomTrailing) {
+                    .overlay(alignment: .bottomLeading) {
                         if !facts.isEmpty {
                             TriviaBadge {
                                 // Snapshot on open: the station keeps polling,
@@ -102,7 +104,7 @@ struct StationDetailView: View {
                                     trackTitle: nowPlaying?.title ?? station.name
                                 )
                             }
-                            .padding(10)
+                            .padding(Self.badgeInset)
                         }
                     }
                     .padding(.top, 8)
