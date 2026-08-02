@@ -98,7 +98,7 @@ struct StationRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Artwork(path: station.artworkUrl, api: server.api)
+            Artwork(path: station.listArtwork, api: server.api)
                 .frame(width: 64, height: 64)
 
             VStack(alignment: .leading, spacing: 3) {

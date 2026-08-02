@@ -46,7 +46,7 @@ final class RadioPlayer {
     @ObservationIgnored private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
     @ObservationIgnored private var attempt = 0
     @ObservationIgnored private var playingEpoch = 0
-    @ObservationIgnored private var lastObservedTime: CMTime = .invalid
+    @ObservationIgnored private var lastProgressMarker: Double?
     @ObservationIgnored private var frozenSamples = 0
     @ObservationIgnored private var currentArtworkKey: String?
     @ObservationIgnored private var remoteCommandsInstalled = false
@@ -154,7 +154,7 @@ final class RadioPlayer {
         observe(player: player, item: item)
         player.play()
 
-        lastObservedTime = .invalid
+        lastProgressMarker = nil
         frozenSamples = 0
         startWatchdog()
         updateNowPlayingInfo()
@@ -190,7 +190,7 @@ final class RadioPlayer {
         player?.pause()
         player?.replaceCurrentItem(with: nil)
         player = nil
-        lastObservedTime = .invalid
+        lastProgressMarker = nil
         frozenSamples = 0
     }
 
@@ -300,39 +300,68 @@ final class RadioPlayer {
     // MARK: - Recovery
 
     /// Catches the failure mode AVPlayer doesn't report: it still claims to be
-    /// playing, but the playhead has stopped moving because no audio is
-    /// arriving. This is the native replacement for the PWA's `setTimeout`
-    /// heartbeat, and unlike that one it keeps running while backgrounded.
+    /// playing, but no audio is actually arriving. This is the native
+    /// replacement for the PWA's `setTimeout` heartbeat, and unlike that one it
+    /// keeps running while backgrounded.
     private func startWatchdog() {
         watchdogTask?.cancel()
         watchdogTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(3))
+                try? await Task.sleep(for: .seconds(2))
                 guard !Task.isCancelled, let self else { return }
                 self.checkForSilentStall()
             }
         }
     }
 
-    private func checkForSilentStall() {
-        guard wantsLive, state == .playing, let player else {
-            frozenSamples = 0
-            return
+    /// A number that must keep rising while the stream is healthy.
+    ///
+    /// Deliberately *not* `player.currentTime()`: on an Icecast stream the
+    /// playhead doesn't advance the way a finite asset's does, so treating a
+    /// static currentTime as a stall tears down a perfectly good connection
+    /// every few seconds. Bytes transferred is the direct measure of the thing
+    /// this check is actually named for.
+    private func streamProgressMarker() -> Double? {
+        guard let item = player?.currentItem else { return nil }
+        // Summed across every event, not just the last one: byte counts are
+        // per-event, so reading only the newest entry makes the total appear to
+        // drop each time AVPlayer opens a new one — which reads as a stall on a
+        // stream that is in fact perfectly healthy.
+        if let events = item.accessLog()?.events, !events.isEmpty {
+            let total = events.reduce(Int64(0)) { $0 + max(0, $1.numberOfBytesTransferred) }
+            if total > 0 { return Double(total) }
         }
-        let now = player.currentTime()
-        defer { lastObservedTime = now }
+        // Before the access log has an entry, the buffered range still grows.
+        if let range = item.loadedTimeRanges.last?.timeRangeValue {
+            return CMTimeGetSeconds(CMTimeRangeGetEnd(range))
+        }
+        return nil
+    }
 
-        guard lastObservedTime.isValid, now.isValid else {
+    private func checkForSilentStall() {
+        guard wantsLive, state == .playing else {
             frozenSamples = 0
             return
         }
-        if CMTimeCompare(now, lastObservedTime) == 0 {
-            frozenSamples += 1
-            if frozenSamples >= 2 {
-                scheduleReconnect(reason: "no audio arriving")
-            }
-        } else {
+        guard let marker = streamProgressMarker() else {
             frozenSamples = 0
+            lastProgressMarker = nil
+            return
+        }
+        defer { lastProgressMarker = marker }
+
+        guard let previous = lastProgressMarker else {
+            frozenSamples = 0
+            return
+        }
+        if marker > previous {
+            frozenSamples = 0
+            return
+        }
+        frozenSamples += 1
+        // ~6s of a live stream delivering nothing while it claims to be playing.
+        if frozenSamples >= 3 {
+            scheduleReconnect(reason: "no audio arriving")
         }
     }
 

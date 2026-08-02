@@ -63,6 +63,13 @@ struct StationSummary: Codable, Hashable, Identifiable {
     var featured: Bool = false
 
     var id: String { slug }
+
+    /// Stations without uploaded artwork report `artwork_url` as an empty
+    /// string, which is common — fall back to the current track's cover so the
+    /// grid isn't a wall of placeholders.
+    var listArtwork: String? {
+        artworkUrl.isEmpty ? nowPlaying?.coverUrl : artworkUrl
+    }
 }
 
 /// `GET /api/stations/{slug}`
