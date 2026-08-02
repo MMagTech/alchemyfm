@@ -15,6 +15,7 @@ struct StationListView: View {
     @State private var store = StationStore()
     @State private var path: [StationSummary] = []
     @State private var sheet: ListSheet?
+    @State private var displayStation: StationSummary?
 
     /// One `.sheet` modifier, two presentations. Stacking two `.sheet`s on a
     /// single view is unreliable.
@@ -55,6 +56,17 @@ struct StationListView: View {
                         MiniPlayerBar { sheet = .nowPlaying(tuned) }
                     }
                 }
+        }
+        .fullScreenCover(item: $displayStation) { snapshot in
+            // Resolved against the store rather than shown as captured, so a
+            // station you aren't listening to still updates as the list
+            // refreshes instead of freezing on the swipe.
+            let live = store.stations.first { $0.slug == snapshot.slug } ?? snapshot
+            NowPlayingDisplayView(
+                station: live,
+                nowPlaying: live.nowPlaying,
+                isTuned: player.isTuned(to: live.slug)
+            )
         }
         .sheet(item: $sheet) { item in
             switch item {
@@ -194,6 +206,14 @@ struct StationListView: View {
                     }
                     .tint(.pink)
                 }
+            }
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                Button {
+                    displayStation = station
+                } label: {
+                    Label("Full screen", systemImage: "arrow.up.left.and.arrow.down.right")
+                }
+                .tint(.indigo)
             }
             .contextMenu {
                 Button {
