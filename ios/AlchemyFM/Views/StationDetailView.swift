@@ -63,7 +63,7 @@ struct StationDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: 0) {
                 Artwork(path: nowPlaying?.coverUrl ?? station.listArtwork,
                         api: server.api,
                         cornerRadius: 16)
@@ -87,15 +87,31 @@ struct StationDetailView: View {
                     }
                     .padding(.top, 8)
 
-                trackInfo
+                // Deliberately uneven spacing: title and artist belong
+                // together, the transport is its own thing, and the status line
+                // annotates the transport rather than dividing the metadata.
+                titleBlock
+                    .padding(.top, 24)
+
                 transport
+                    .padding(.top, 24)
+
+                statusLine
+                    .padding(.top, 14)
+
+                if hasQueue {
+                    Divider()
+                        .padding(.top, 26)
+                }
 
                 if let upNext = detail?.upNext, !upNext.isEmpty {
                     section("Up next") { trackList(upNext) }
+                        .padding(.top, 20)
                 }
 
                 if let recent = detail?.recentlyPlayed, !recent.isEmpty {
                     section("Recently played") { trackList(recent, showTime: true) }
+                        .padding(.top, 20)
                 }
             }
             .padding(.horizontal, 20)
@@ -158,30 +174,37 @@ struct StationDetailView: View {
         }
     }
 
-    private var trackInfo: some View {
-        VStack(spacing: 6) {
+    private var hasQueue: Bool {
+        !(detail?.upNext.isEmpty ?? true) || !(detail?.recentlyPlayed.isEmpty ?? true)
+    }
+
+    private var titleBlock: some View {
+        VStack(spacing: 4) {
             Text(nowPlaying?.title ?? station.name)
                 .font(.title2.bold())
                 .multilineTextAlignment(.center)
 
             artistLine
-
-            HStack(spacing: 6) {
-                if isTuned && player.isPlaying {
-                    Circle().fill(.green).frame(width: 6, height: 6)
-                }
-                // Only the tuned station has playback state worth reporting;
-                // for anything else this page is just a preview.
-                Text(isTuned ? player.statusText : (onAir ? "On air" : "Off air"))
-                if onAir {
-                    Text("·")
-                    Text(listeners == 1 ? "1 listener" : "\(listeners) listeners")
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .padding(.top, 2)
         }
+    }
+
+    /// Sits below the transport, annotating it. Between the artist and the
+    /// play button it just split the metadata away from its own heading.
+    private var statusLine: some View {
+        HStack(spacing: 6) {
+            if isTuned && player.isPlaying {
+                Circle().fill(.green).frame(width: 6, height: 6)
+            }
+            // Only the tuned station has playback state worth reporting; for
+            // anything else this page is just a preview.
+            Text(isTuned ? player.statusText : (onAir ? "On air" : "Off air"))
+            if onAir {
+                Text("·")
+                Text(listeners == 1 ? "1 listener" : "\(listeners) listeners")
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
 
     /// The heart is an operator action, so it only exists once the server has
@@ -202,9 +225,13 @@ struct StationDetailView: View {
             Color.clear.frame(width: 44, height: 44)
             Spacer(minLength: 12)
 
+            // The one thing this screen exists to do, so it stops being the
+            // faintest control on it.
             StationPlayButton(station: detail?.summary ?? station, size: .largeTitle)
-                .frame(width: 72, height: 72)
-                .background(.quaternary, in: Circle())
+                .frame(width: 64, height: 64)
+                .background(Color.accentColor, in: Circle())
+                .foregroundStyle(.white)
+                .tint(.white)
 
             Spacer(minLength: 12)
 
