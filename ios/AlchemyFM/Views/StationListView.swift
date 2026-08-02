@@ -5,15 +5,15 @@ struct StationListView: View {
     @Environment(RadioPlayer.self) private var player
 
     @State private var store = StationStore()
-    @State private var path: [String] = []
+    @State private var path: [StationSummary] = []
     @State private var showingSettings = false
 
     var body: some View {
         NavigationStack(path: $path) {
             content
                 .navigationTitle("Alchemy FM")
-                .navigationDestination(for: String.self) { _ in
-                    NowPlayingView()
+                .navigationDestination(for: StationSummary.self) { station in
+                    StationDetailView(station: station)
                 }
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -26,8 +26,8 @@ struct StationListView: View {
                     }
                 }
                 .safeAreaInset(edge: .bottom) {
-                    if player.station != nil && path.isEmpty {
-                        MiniPlayerBar { path.append("now-playing") }
+                    if let tuned = player.station {
+                        MiniPlayerBar { path.append(tuned) }
                     }
                 }
         }
@@ -68,13 +68,8 @@ struct StationListView: View {
 
     private var stationList: some View {
         List(store.stations) { station in
-            Button {
-                tune(to: station)
-            } label: {
-                StationRow(station: station, isTuned: player.isTuned(to: station.slug))
-            }
-            .buttonStyle(.plain)
-            .listRowBackground(Color.clear)
+            StationRow(station: station) { path.append(station) }
+                .listRowBackground(Color.clear)
         }
         .listStyle(.plain)
         .refreshable {
@@ -82,56 +77,99 @@ struct StationListView: View {
             await store.refresh(api: api)
         }
     }
-
-    private func tune(to station: StationSummary) {
-        guard let api = server.api else { return }
-        player.tune(to: station, api: api)
-        path.append("now-playing")
-    }
 }
 
+/// Two independent controls: the artwork/title area opens the station, the
+/// trailing button plays it. Tapping a row must never change what's playing.
 struct StationRow: View {
     let station: StationSummary
-    let isTuned: Bool
+    let onOpen: () -> Void
 
     @Environment(ServerConfig.self) private var server
+    @Environment(RadioPlayer.self) private var player
+
+    private var isTuned: Bool { player.isTuned(to: station.slug) }
 
     var body: some View {
         HStack(spacing: 12) {
-            Artwork(path: station.listArtwork, api: server.api)
-                .frame(width: 64, height: 64)
+            Button(action: onOpen) {
+                HStack(spacing: 12) {
+                    Artwork(path: station.listArtwork, api: server.api)
+                        .frame(width: 64, height: 64)
 
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(station.name)
-                        .font(.headline)
-                        .lineLimit(1)
-                    if isTuned {
-                        Image(systemName: "waveform")
-                            .font(.caption)
-                            .foregroundStyle(.tint)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(station.name)
+                                .font(.headline)
+                                .lineLimit(1)
+                            if isTuned && player.isPlaying {
+                                Image(systemName: "waveform")
+                                    .font(.caption)
+                                    .foregroundStyle(.tint)
+                                    .accessibilityLabel("Now playing")
+                            }
+                        }
+
+                        if let track = station.nowPlaying {
+                            Text("\(track.title) — \(track.artist)")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        } else if !station.description.isEmpty {
+                            Text(station.description)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+
+                        OnAirBadge(isOnAir: station.onAir, listeners: station.listeners)
                     }
-                }
 
-                if let track = station.nowPlaying {
-                    Text("\(track.title) — \(track.artist)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                } else if !station.description.isEmpty {
-                    Text(station.description)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    Spacer(minLength: 0)
                 }
-
-                OnAirBadge(isOnAir: station.onAir, listeners: station.listeners)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
 
-            Spacer(minLength: 0)
+            StationPlayButton(station: station)
         }
         .padding(.vertical, 4)
-        .contentShape(Rectangle())
+    }
+}
+
+/// Plays *this* station, whatever is playing now. Only shows a stop control
+/// when this is the station currently tuned in.
+struct StationPlayButton: View {
+    let station: StationSummary
+    var size: Font = .title2
+
+    @Environment(RadioPlayer.self) private var player
+    @Environment(ServerConfig.self) private var server
+
+    private var isTuned: Bool { player.isTuned(to: station.slug) }
+    private var isLive: Bool { isTuned && player.wantsLive }
+
+    var body: some View {
+        Button {
+            if isTuned {
+                player.toggle()
+            } else if let api = server.api {
+                player.tune(to: station, api: api)
+            }
+        } label: {
+            ZStack {
+                if isTuned && player.isBusy {
+                    ProgressView()
+                } else {
+                    Image(systemName: isLive ? "stop.fill" : "play.fill")
+                        .font(size)
+                }
+            }
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isLive ? "Stop \(station.name)" : "Play \(station.name)")
     }
 }
 
@@ -152,7 +190,7 @@ struct MiniPlayerBar: View {
                 Text(player.nowPlaying?.title ?? player.station?.name ?? "")
                     .font(.subheadline.weight(.medium))
                     .lineLimit(1)
-                Text(player.isPlaying ? (player.nowPlaying?.artist ?? "") : player.statusText)
+                Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -160,7 +198,9 @@ struct MiniPlayerBar: View {
 
             Spacer(minLength: 0)
 
-            PlayStopButton()
+            if let station = player.station {
+                StationPlayButton(station: station)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -168,28 +208,11 @@ struct MiniPlayerBar: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
     }
-}
 
-/// Live radio: stop, not pause. Restarting always re-tunes to live.
-struct PlayStopButton: View {
-    @Environment(RadioPlayer.self) private var player
-    var size: Font = .title2
-
-    var body: some View {
-        Button {
-            player.toggle()
-        } label: {
-            ZStack {
-                if player.isBusy {
-                    ProgressView()
-                } else {
-                    Image(systemName: player.wantsLive ? "stop.fill" : "play.fill")
-                        .font(size)
-                }
-            }
-            .frame(width: 44, height: 44)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(player.wantsLive ? "Stop" : "Play")
+    private var subtitle: String {
+        guard player.isPlaying else { return player.statusText }
+        let station = player.station?.name ?? ""
+        let artist = player.nowPlaying?.artist ?? ""
+        return artist.isEmpty ? station : "\(artist) · \(station)"
     }
 }

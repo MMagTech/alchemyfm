@@ -1,13 +1,33 @@
 import SwiftUI
 
-struct NowPlayingView: View {
+/// A station's page. Works for any station, not just the tuned one — opening it
+/// starts nothing; only the play button does.
+struct StationDetailView: View {
+    let station: StationSummary
+
     @Environment(RadioPlayer.self) private var player
     @Environment(ServerConfig.self) private var server
+    @State private var loader = StationDetailLoader()
+
+    private var isTuned: Bool { player.isTuned(to: station.slug) }
+
+    /// When this *is* the tuned station, reuse the player's fast poll rather
+    /// than running a second loop against the same endpoint.
+    private var detail: StationDetail? {
+        isTuned ? player.detail : loader.detail
+    }
+
+    private var nowPlaying: NowPlaying? {
+        detail?.nowPlaying ?? station.nowPlaying
+    }
+
+    private var listeners: Int { detail?.listeners ?? station.listeners }
+    private var onAir: Bool { detail?.onAir ?? station.onAir }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                Artwork(path: player.nowPlaying?.coverUrl ?? player.station?.artworkUrl,
+                Artwork(path: nowPlaying?.coverUrl ?? station.listArtwork,
                         api: server.api,
                         cornerRadius: 16)
                     .frame(maxWidth: 320)
@@ -18,15 +38,15 @@ struct NowPlayingView: View {
                 trackInfo
                 transport
 
-                if let bio = player.nowPlaying?.artistBio, !bio.isEmpty {
-                    section("About \(player.nowPlaying?.artist ?? "the artist")") {
+                if let bio = nowPlaying?.artistBio, !bio.isEmpty {
+                    section("About \(nowPlaying?.artist ?? "the artist")") {
                         Text(bio)
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                if let facts = player.nowPlaying?.knowledge?.facts, !facts.isEmpty {
+                if let facts = nowPlaying?.knowledge?.facts, !facts.isEmpty {
                     section("Did you know") {
                         VStack(alignment: .leading, spacing: 10) {
                             ForEach(Array(facts.enumerated()), id: \.offset) { _, fact in
@@ -38,40 +58,51 @@ struct NowPlayingView: View {
                     }
                 }
 
-                if let upNext = player.detail?.upNext, !upNext.isEmpty {
+                if let upNext = detail?.upNext, !upNext.isEmpty {
                     section("Up next") { trackList(upNext) }
                 }
 
-                if let recent = player.detail?.recentlyPlayed, !recent.isEmpty {
+                if let recent = detail?.recentlyPlayed, !recent.isEmpty {
                     section("Recently played") { trackList(recent, showTime: true) }
                 }
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 32)
         }
-        .navigationTitle(player.station?.name ?? "Now Playing")
+        .navigationTitle(station.name)
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: isTuned) {
+            guard let api = server.api else { return }
+            if isTuned {
+                loader.stop()
+            } else {
+                loader.start(slug: station.slug, api: api)
+            }
+        }
+        .onDisappear { loader.stop() }
     }
 
     private var trackInfo: some View {
         VStack(spacing: 6) {
-            Text(player.nowPlaying?.title ?? player.station?.name ?? "")
+            Text(nowPlaying?.title ?? station.name)
                 .font(.title2.bold())
                 .multilineTextAlignment(.center)
 
-            Text(player.nowPlaying?.artist ?? "")
+            Text(nowPlaying?.artist ?? station.description)
                 .font(.title3)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
             HStack(spacing: 6) {
-                if player.isPlaying {
+                if isTuned && player.isPlaying {
                     Circle().fill(.green).frame(width: 6, height: 6)
                 }
-                Text(player.statusText)
-                if let station = player.station, station.onAir {
+                // Only the tuned station has playback state worth reporting;
+                // for anything else this page is just a preview.
+                Text(isTuned ? player.statusText : (onAir ? "On air" : "Off air"))
+                if onAir {
                     Text("·")
-                    Text(station.listeners == 1 ? "1 listener" : "\(station.listeners) listeners")
+                    Text(listeners == 1 ? "1 listener" : "\(listeners) listeners")
                 }
             }
             .font(.caption)
@@ -82,7 +113,7 @@ struct NowPlayingView: View {
 
     private var transport: some View {
         // No skip, no seek — everyone hears the same broadcast.
-        PlayStopButton(size: .largeTitle)
+        StationPlayButton(station: detail?.summary ?? station, size: .largeTitle)
             .frame(width: 72, height: 72)
             .background(.quaternary, in: Circle())
     }
