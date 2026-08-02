@@ -83,7 +83,7 @@ struct TrackTriviaSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private static func categoryLabel(_ raw: String) -> String {
+    static func categoryLabel(_ raw: String) -> String {
         switch raw {
         case "song_fact": return "Song"
         case "album_fact": return "Album"

@@ -27,19 +27,33 @@ struct StationDetailView: View {
     private var listeners: Int { detail?.listeners ?? station.listeners }
     private var onAir: Bool { detail?.onAir ?? station.onAir }
 
-    /// Carries the facts with the presentation. Snapshotting into separate
-    /// @State and using .sheet(isPresented:) loses them — the sheet body builds
-    /// before the snapshot lands, and renders an empty list.
-    private struct TriviaContext: Identifiable {
-        let id: String
-        let facts: [KnowledgeFact]
-        let title: String
+    /// One case per slide-up, carrying its content.
+    ///
+    /// The content travels with the presentation rather than living in separate
+    /// @State read by `.sheet(isPresented:)` — that renders an empty sheet,
+    /// because the body builds before the state lands. A single enum also keeps
+    /// this to one `.sheet` modifier; stacking two on one view is unreliable.
+    private enum DetailSheet: Identifiable {
+        case trivia(key: String, facts: [KnowledgeFact], trackTitle: String)
+        case bio(key: String, artist: String, text: String, source: URL?)
+
+        var id: String {
+            switch self {
+            case .trivia(let key, _, _): return "trivia-\(key)"
+            case .bio(let key, _, _, _): return "bio-\(key)"
+            }
+        }
     }
 
-    @State private var trivia: TriviaContext?
+    @State private var sheet: DetailSheet?
 
     private var facts: [KnowledgeFact] {
         showTrackTrivia ? (nowPlaying?.knowledge?.facts ?? []) : []
+    }
+
+    private var availableBio: String? {
+        guard showArtistBio, let bio = nowPlaying?.artistBio, !bio.isEmpty else { return nil }
+        return bio
     }
 
     var body: some View {
@@ -57,10 +71,10 @@ struct StationDetailView: View {
                                 // Snapshot on open: the station keeps polling,
                                 // and a track change shouldn't swap the text
                                 // out from under someone mid-read.
-                                trivia = TriviaContext(
-                                    id: nowPlaying?.trackKey ?? station.slug,
+                                sheet = .trivia(
+                                    key: nowPlaying?.trackKey ?? station.slug,
                                     facts: facts,
-                                    title: nowPlaying?.title ?? station.name
+                                    trackTitle: nowPlaying?.title ?? station.name
                                 )
                             }
                             .padding(10)
@@ -70,14 +84,6 @@ struct StationDetailView: View {
 
                 trackInfo
                 transport
-
-                if showArtistBio, let bio = nowPlaying?.artistBio, !bio.isEmpty {
-                    section("About \(nowPlaying?.artist ?? "the artist")") {
-                        Text(bio)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                }
 
                 if let upNext = detail?.upNext, !upNext.isEmpty {
                     section("Up next") { trackList(upNext) }
@@ -92,8 +98,13 @@ struct StationDetailView: View {
         }
         .navigationTitle(station.name)
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(item: $trivia) { context in
-            TrackTriviaSheet(facts: context.facts, trackTitle: context.title)
+        .sheet(item: $sheet) { item in
+            switch item {
+            case .trivia(_, let facts, let trackTitle):
+                TrackTriviaSheet(facts: facts, trackTitle: trackTitle)
+            case .bio(_, let artist, let text, let source):
+                ArtistBioSheet(artist: artist, text: text, sourceURL: source)
+            }
         }
         .task(id: isTuned) {
             guard let api = server.api else { return }
@@ -106,16 +117,48 @@ struct StationDetailView: View {
         .onDisappear { loader.stop() }
     }
 
+    /// Tapping the artist's name opens their biography — a self-labelling
+    /// target, which is why this is here rather than a second unlabelled glyph
+    /// on the artwork competing with the trivia badge.
+    @ViewBuilder
+    private var artistLine: some View {
+        let artist = nowPlaying?.artist ?? station.description
+
+        if let bio = availableBio, !artist.isEmpty {
+            Button {
+                sheet = .bio(
+                    key: artist,
+                    artist: artist,
+                    text: bio,
+                    source: nowPlaying?.artistBioUrl.flatMap(URL.init(string:))
+                )
+            } label: {
+                HStack(spacing: 5) {
+                    Text(artist)
+                    Image(systemName: "info.circle")
+                        .font(.footnote)
+                }
+                .font(.title3)
+                .foregroundStyle(.tint)
+                .multilineTextAlignment(.center)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("About \(artist)")
+        } else {
+            Text(artist)
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+    }
+
     private var trackInfo: some View {
         VStack(spacing: 6) {
             Text(nowPlaying?.title ?? station.name)
                 .font(.title2.bold())
                 .multilineTextAlignment(.center)
 
-            Text(nowPlaying?.artist ?? station.description)
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            artistLine
 
             HStack(spacing: 6) {
                 if isTuned && player.isPlaying {
