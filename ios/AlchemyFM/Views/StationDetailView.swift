@@ -211,14 +211,16 @@ struct StationDetailView: View {
 
     private var titleBlock: some View {
         VStack(alignment: .leading, spacing: 3) {
-            // Always two lines tall, occupied or not. Sizing to the title
-            // instead means the card changes height whenever a one-line track
-            // follows a two-line one, and the whole queue below it jumps —
-            // several times an hour, on a screen nobody is interacting with.
-            Text(nowPlaying?.title ?? station.name)
-                .font(.title3.bold())
-                .lineLimit(2, reservesSpace: true)
-                .fixedSize(horizontal: false, vertical: true)
+            // One line, scrolling when it doesn't fit. Wrapping changed the
+            // card's height whenever a one-line track followed a two-line one,
+            // shoving the queue below it around several times an hour;
+            // reserving two lines fixed that but left a gap under every short
+            // title. A single line is always the same height and never padded.
+            MarqueeText(
+                text: nowPlaying?.title ?? station.name,
+                font: .title3,
+                weight: .bold
+            )
 
             artistLine
         }
