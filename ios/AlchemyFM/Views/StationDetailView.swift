@@ -56,7 +56,7 @@ struct StationDetailView: View {
 
     /// One inset for both artwork badges, so the pair sits symmetrically on
     /// opposite corners instead of each drifting to its own margin.
-    private static let badgeInset: CGFloat = 10
+    private static let badgeInset: CGFloat = 8
 
     private var facts: [KnowledgeFact] {
         showTrackTrivia ? (nowPlaying?.knowledge?.facts ?? []) : []
@@ -70,11 +70,16 @@ struct StationDetailView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
+                // aspectRatio BEFORE frame. The other order makes the
+                // aspectRatio wrapper report the full proposed width while the
+                // image inside is capped at 320 — so overlays align to a box
+                // ~20pt wider than the visible cover, and the badges sit far
+                // off the side edges while hugging the top.
                 Artwork(path: nowPlaying?.coverUrl ?? station.listArtwork,
                         api: server.api,
                         cornerRadius: 16)
-                    .frame(maxWidth: 320)
                     .aspectRatio(1, contentMode: .fit)
+                    .frame(maxWidth: 320, maxHeight: 320)
                     .shadow(radius: 18, y: 8)
                     // Both badges sit inside the artwork on opposite diagonal
                     // corners, sharing one inset so they read as a pair.
