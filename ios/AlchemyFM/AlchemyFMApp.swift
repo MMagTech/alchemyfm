@@ -4,6 +4,7 @@ import SwiftUI
 struct AlchemyFMApp: App {
     @State private var server = ServerConfig()
     @State private var player = RadioPlayer()
+    @State private var favorites = FavoritesStore()
 
     @AppStorage(DisplayPreference.appearance) private var appearance = AppearanceMode.system.rawValue
 
@@ -12,6 +13,7 @@ struct AlchemyFMApp: App {
             RootView()
                 .environment(server)
                 .environment(player)
+                .environment(favorites)
                 // nil follows the system setting.
                 .preferredColorScheme(AppearanceMode.resolve(appearance).colorScheme)
         }

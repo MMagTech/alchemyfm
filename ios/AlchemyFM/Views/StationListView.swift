@@ -3,6 +3,7 @@ import SwiftUI
 struct StationListView: View {
     @Environment(ServerConfig.self) private var server
     @Environment(RadioPlayer.self) private var player
+    @Environment(FavoritesStore.self) private var favorites
 
     @State private var store = StationStore()
     @State private var path: [StationSummary] = []
@@ -39,8 +40,9 @@ struct StationListView: View {
             guard let api = server.api else { return }
             store.start(api: api)
         }
-        // Keeps the lock screen's ⏮/⏭ pointed at the same order shown here.
-        .onChange(of: store.stations) { _, stations in
+        // Keeps the lock screen's ⏮/⏭ pointed at the same order shown here,
+        // favourites included — skipping should follow the list you can see.
+        .onChange(of: displayOrder, initial: true) { _, stations in
             player.updateStationOrder(stations)
         }
         .onDisappear { store.stop() }
@@ -70,16 +72,62 @@ struct StationListView: View {
         }
     }
 
+    private var displayOrder: [StationSummary] {
+        let groups = favorites.partition(store.stations)
+        return groups.favorites + groups.others
+    }
+
     private var stationList: some View {
-        List(store.stations) { station in
-            StationRow(station: station) { path.append(station) }
-                .listRowBackground(Color.clear)
+        let groups = favorites.partition(store.stations)
+
+        return List {
+            if groups.favorites.isEmpty {
+                ForEach(store.stations) { row($0) }
+            } else {
+                Section("Favorites") {
+                    ForEach(groups.favorites) { row($0) }
+                }
+                Section("All stations") {
+                    ForEach(groups.others) { row($0) }
+                }
+            }
         }
         .listStyle(.plain)
         .refreshable {
             guard let api = server.api else { return }
             await store.refresh(api: api)
         }
+    }
+
+    /// Favouriting lives on a swipe and a long-press rather than a third button
+    /// in the row — the row already carries "open" and "play", and a third
+    /// target would crowd both of them.
+    private func row(_ station: StationSummary) -> some View {
+        let isFavorite = favorites.isFavorite(station.slug)
+
+        return StationRow(station: station) { path.append(station) }
+            .listRowBackground(Color.clear)
+            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                Button {
+                    favorites.toggle(station.slug)
+                } label: {
+                    Label(
+                        isFavorite ? "Unfavorite" : "Favorite",
+                        systemImage: isFavorite ? "star.slash" : "star"
+                    )
+                }
+                .tint(.yellow)
+            }
+            .contextMenu {
+                Button {
+                    favorites.toggle(station.slug)
+                } label: {
+                    Label(
+                        isFavorite ? "Remove from Favorites" : "Add to Favorites",
+                        systemImage: isFavorite ? "star.slash" : "star"
+                    )
+                }
+            }
     }
 }
 
