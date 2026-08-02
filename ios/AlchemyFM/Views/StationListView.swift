@@ -39,6 +39,10 @@ struct StationListView: View {
             guard let api = server.api else { return }
             store.start(api: api)
         }
+        // Keeps the lock screen's ⏮/⏭ pointed at the same order shown here.
+        .onChange(of: store.stations) { _, stations in
+            player.updateStationOrder(stations)
+        }
         .onDisappear { store.stop() }
     }
 
@@ -187,13 +191,15 @@ struct MiniPlayerBar: View {
                 .frame(width: 40, height: 40)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(player.nowPlaying?.title ?? player.station?.name ?? "")
-                    .font(.subheadline.weight(.medium))
-                    .lineLimit(1)
-                Text(subtitle)
-                    .font(.caption)
+                // The bar is always on screen and has no detail view of its
+                // own, so a truncated title here has nowhere else to be read.
+                MarqueeText(
+                    text: player.nowPlaying?.title ?? player.station?.name ?? "",
+                    font: .subheadline,
+                    weight: .medium
+                )
+                MarqueeText(text: subtitle, font: .caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
             }
 
             Spacer(minLength: 0)

@@ -34,6 +34,14 @@ final class RadioPlayer {
 
     @ObservationIgnored var api: AlchemyAPI?
 
+    /// The station list in display order, kept current by the station list
+    /// screen. Backs the lock screen's ⏮/⏭, which tune between stations.
+    @ObservationIgnored private var stationOrder: [StationSummary] = []
+
+    func updateStationOrder(_ stations: [StationSummary]) {
+        stationOrder = stations
+    }
+
     // MARK: Private state
 
     @ObservationIgnored private var player: AVPlayer?
@@ -504,13 +512,42 @@ final class RadioPlayer {
             return .success
         }
 
+        // There is no next *track* to skip to — everyone hears the same
+        // broadcast — so these tune to the next station instead, which is the
+        // closest thing a radio has to a skip button.
+        center.nextTrackCommand.isEnabled = true
+        center.nextTrackCommand.addTarget { [weak self] _ in
+            Task { @MainActor [weak self] in self?.tuneToAdjacentStation(offset: 1) }
+            return .success
+        }
+        center.previousTrackCommand.isEnabled = true
+        center.previousTrackCommand.addTarget { [weak self] _ in
+            Task { @MainActor [weak self] in self?.tuneToAdjacentStation(offset: -1) }
+            return .success
+        }
+
+        // Seeking stays off: a live stream has no timeline to scrub.
         let unsupported: [MPRemoteCommand] = [
-            center.nextTrackCommand, center.previousTrackCommand,
             center.skipForwardCommand, center.skipBackwardCommand,
             center.seekForwardCommand, center.seekBackwardCommand,
             center.changePlaybackPositionCommand,
         ]
         unsupported.forEach { $0.isEnabled = false }
+    }
+
+    /// Wraps around, so ⏭ off the end of the list returns to the first station
+    /// rather than doing nothing and looking broken.
+    private func tuneToAdjacentStation(offset: Int) {
+        guard let api,
+              !stationOrder.isEmpty,
+              let current = station,
+              let index = stationOrder.firstIndex(where: { $0.slug == current.slug })
+        else { return }
+
+        let count = stationOrder.count
+        let next = stationOrder[((index + offset) % count + count) % count]
+        guard next.slug != current.slug else { return }
+        tune(to: next, api: api)
     }
 
     private func updateNowPlayingInfo() {

@@ -5,12 +5,15 @@ struct AlchemyFMApp: App {
     @State private var server = ServerConfig()
     @State private var player = RadioPlayer()
 
+    @AppStorage(DisplayPreference.appearance) private var appearance = AppearanceMode.system.rawValue
+
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(server)
                 .environment(player)
-                .preferredColorScheme(.dark)
+                // nil follows the system setting.
+                .preferredColorScheme(AppearanceMode.resolve(appearance).colorScheme)
         }
     }
 }

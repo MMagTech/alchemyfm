@@ -7,6 +7,7 @@ struct SettingsView: View {
 
     @AppStorage(DisplayPreference.showArtistBio) private var showArtistBio = true
     @AppStorage(DisplayPreference.showTrackTrivia) private var showTrackTrivia = true
+    @AppStorage(DisplayPreference.appearance) private var appearance = AppearanceMode.system.rawValue
 
     var body: some View {
         NavigationStack {
@@ -24,6 +25,15 @@ struct SettingsView: View {
                         dismiss()
                     }
                     .padding(.vertical, 4)
+                }
+
+                Section("Appearance") {
+                    Picker("Theme", selection: $appearance) {
+                        ForEach(AppearanceMode.allCases) { mode in
+                            Text(mode.label).tag(mode.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
                 }
 
                 Section {
@@ -47,7 +57,8 @@ struct SettingsView: View {
                 Section("About") {
                     LabeledContent("Version", value: Self.version)
                     Text("Alchemy FM is live radio — everyone hears the same "
-                         + "broadcast, so there's no skipping or seeking.")
+                         + "broadcast, so there's no seeking within a track. On "
+                         + "the lock screen, ⏮ and ⏭ change station.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
