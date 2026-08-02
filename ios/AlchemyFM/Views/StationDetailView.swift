@@ -146,17 +146,17 @@ struct StationDetailView: View {
                     Image(systemName: "info.circle")
                         .font(.footnote)
                 }
-                .font(.title3)
+                .font(.subheadline)
                 .foregroundStyle(.tint)
-                .multilineTextAlignment(.center)
+                .multilineTextAlignment(.leading)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("About \(artist)")
         } else {
             Text(artist)
-                .font(.title3)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+                .lineLimit(1)
         }
     }
 
@@ -167,15 +167,20 @@ struct StationDetailView: View {
     /// queue below does not".
     private var nowPlayingCard: some View {
         VStack(spacing: 0) {
-            titleBlock
-            transport
-                .padding(.top, 20)
+            HStack(alignment: .top, spacing: 12) {
+                titleBlock
+                Spacer(minLength: 0)
+                if canHeart { heartButton }
+            }
+
+            listenButton
+                .padding(.top, 16)
+
             statusLine
-                .padding(.top, 12)
+                .padding(.top, 10)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 20)
-        .padding(.horizontal, 16)
+        .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color(.secondarySystemBackground))
@@ -187,13 +192,18 @@ struct StationDetailView: View {
     }
 
     private var titleBlock: some View {
-        VStack(spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
+            // Wraps rather than scrolling: unlike the mini player this screen
+            // has the room, and nothing else on it moves. Capped at two lines
+            // so a 60-character title can't grow the card without limit.
             Text(nowPlaying?.title ?? station.name)
-                .font(.title2.bold())
-                .multilineTextAlignment(.center)
+                .font(.title3.bold())
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
 
             artistLine
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Sits below the transport, annotating it. Between the artist and the
@@ -226,39 +236,52 @@ struct StationDetailView: View {
         nowPlaying?.hearted != nil && nowPlaying?.itemId != nil
     }
 
-    private var transport: some View {
-        // No skip, no seek — everyone hears the same broadcast.
-        HStack(spacing: 0) {
-            // Balances the heart so the play button stays centred.
-            Color.clear.frame(width: 44, height: 44)
-            Spacer(minLength: 12)
-
-            // The one thing this screen exists to do, so it stops being the
-            // faintest control on it.
-            StationPlayButton(station: detail?.summary ?? station, size: .largeTitle)
-                .frame(width: 64, height: 64)
-                .background(Color.accentColor, in: Circle())
-                .foregroundStyle(.white)
-                .tint(.white)
-
-            Spacer(minLength: 12)
-
-            if canHeart {
-                Button(action: toggleHeart) {
-                    Image(systemName: isHearted ? "heart.fill" : "heart")
-                        .font(.title2)
-                        .foregroundStyle(isHearted ? .pink : .secondary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .disabled(heartBusy)
-                .accessibilityLabel(isHearted ? "Remove heart" : "Heart this track")
-            } else {
-                Color.clear.frame(width: 44, height: 44)
-            }
+    private var heartButton: some View {
+        Button(action: toggleHeart) {
+            Image(systemName: isHearted ? "heart.fill" : "heart")
+                .font(.title3)
+                .foregroundStyle(isHearted ? .pink : .secondary)
+                .frame(width: 40, height: 40)
+                .contentShape(Rectangle())
         }
-        .frame(maxWidth: 320)
+        .buttonStyle(.plain)
+        .disabled(heartBusy)
+        .accessibilityLabel(isHearted ? "Remove heart" : "Heart this track")
+    }
+
+    /// Labelled rather than an icon, because "play" is the wrong verb here.
+    /// On live radio it means *tune in to what is already happening*, not
+    /// resume — and no glyph conveys that. No skip, no seek: everyone hears
+    /// the same broadcast.
+    private var listenButton: some View {
+        let isLive = isTuned && player.wantsLive
+
+        return Button {
+            if isTuned {
+                player.toggle()
+            } else if let api = server.api {
+                player.tune(to: detail?.summary ?? station, api: api)
+            }
+        } label: {
+            HStack(spacing: 8) {
+                if isTuned && player.isBusy {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    Image(systemName: isLive ? "stop.fill" : "play.fill")
+                }
+                Text(isLive ? "Stop" : "Listen live")
+                    .font(.headline)
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 13)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.accentColor)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     private func toggleHeart() {
