@@ -52,6 +52,7 @@ struct StationDetailView: View {
     /// changes so a stale override can't bleed onto the next song.
     @State private var heartOverride: Bool?
     @State private var heartBusy = false
+    @State private var showingDisplay = false
 
     private var facts: [KnowledgeFact] {
         showTrackTrivia ? (nowPlaying?.knowledge?.facts ?? []) : []
@@ -71,6 +72,22 @@ struct StationDetailView: View {
                     .frame(maxWidth: 320)
                     .aspectRatio(1, contentMode: .fit)
                     .shadow(radius: 18, y: 8)
+                    // Mirrors the trivia badge in the opposite corner, so the
+                    // gesture below it is discoverable rather than folklore.
+                    .overlay(alignment: .topTrailing) {
+                        Button {
+                            showingDisplay = true
+                        } label: {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 28, height: 28)
+                                .background(.black.opacity(0.35), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(10)
+                        .accessibilityLabel("Full screen")
+                    }
                     .overlay(alignment: .bottomTrailing) {
                         if !facts.isEmpty {
                             TriviaBadge {
@@ -87,6 +104,8 @@ struct StationDetailView: View {
                         }
                     }
                     .padding(.top, 8)
+                    .contentShape(Rectangle())
+                    .onTapGesture { showingDisplay = true }
 
                 nowPlayingCard
                     .padding(.top, 18)
@@ -106,6 +125,13 @@ struct StationDetailView: View {
         }
         .navigationTitle(station.name)
         .navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(isPresented: $showingDisplay) {
+            NowPlayingDisplayView(
+                station: detail?.summary ?? station,
+                nowPlaying: nowPlaying,
+                isTuned: isTuned
+            )
+        }
         .sheet(item: $sheet) { item in
             switch item {
             case .trivia(_, let facts, let trackTitle):
