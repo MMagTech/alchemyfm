@@ -4,6 +4,13 @@ struct StationListView: View {
     @Environment(ServerConfig.self) private var server
     @Environment(RadioPlayer.self) private var player
     @Environment(FavoritesStore.self) private var favorites
+    @Environment(AdminSession.self) private var admin
+
+    /// Tracks hearted from this screen. The list endpoint never reports heart
+    /// state — only the station detail does — so this is the only feedback
+    /// available without a request per row. Keyed by item id, so it clears
+    /// itself when the station moves on to the next track.
+    @State private var heartedItems: Set<String> = []
 
     @State private var store = StationStore()
     @State private var path: [StationSummary] = []
@@ -94,6 +101,23 @@ struct StationListView: View {
         }
     }
 
+    /// One-way on purpose. A swipe action can't show current state — the list
+    /// payload doesn't carry it — and a control that might be hearting or
+    /// un-hearting depending on state you can't see is worse than one that
+    /// only ever hearts. Un-hearting lives on the station page, which does
+    /// know the state.
+    private func heart(itemId: String) {
+        guard let api = server.api else { return }
+        heartedItems.insert(itemId)
+        Task {
+            do {
+                _ = try await api.setHeart(itemId: itemId, hearted: true)
+            } catch {
+                heartedItems.remove(itemId)
+            }
+        }
+    }
+
     private var displayOrder: [StationSummary] {
         let groups = favorites.partition(store.stations)
         return groups.favorites + groups.others
@@ -126,8 +150,12 @@ struct StationListView: View {
     /// target would crowd both of them.
     private func row(_ station: StationSummary) -> some View {
         let isFavorite = favorites.isFavorite(station.slug)
+        let itemId = station.nowPlaying?.itemId
 
-        return StationRow(station: station) { path.append(station) }
+        return StationRow(
+            station: station,
+            isHearted: itemId.map(heartedItems.contains) ?? false
+        ) { path.append(station) }
             .listRowBackground(Color.clear)
             .swipeActions(edge: .leading, allowsFullSwipe: true) {
                 Button {
@@ -139,6 +167,16 @@ struct StationListView: View {
                     )
                 }
                 .tint(.yellow)
+
+                // Operator-only, exactly like the heart on the station page.
+                if admin.isSignedIn, let itemId {
+                    Button {
+                        heart(itemId: itemId)
+                    } label: {
+                        Label("Heart", systemImage: "heart")
+                    }
+                    .tint(.pink)
+                }
             }
             .contextMenu {
                 Button {
@@ -184,6 +222,7 @@ struct NowPlayingSheet: View {
 /// trailing button plays it. Tapping a row must never change what's playing.
 struct StationRow: View {
     let station: StationSummary
+    var isHearted: Bool = false
     let onOpen: () -> Void
 
     @Environment(ServerConfig.self) private var server
@@ -212,10 +251,18 @@ struct StationRow: View {
                         }
 
                         if let track = station.nowPlaying {
-                            Text("\(track.title) — \(track.artist)")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                            HStack(spacing: 5) {
+                                if isHearted {
+                                    Image(systemName: "heart.fill")
+                                        .font(.caption2)
+                                        .foregroundStyle(.pink)
+                                        .accessibilityLabel("Hearted")
+                                }
+                                Text("\(track.title) — \(track.artist)")
+                                    .lineLimit(1)
+                            }
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                         } else if !station.description.isEmpty {
                             Text(station.description)
                                 .font(.subheadline)
