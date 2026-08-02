@@ -171,24 +171,7 @@ struct StationDetailView: View {
             HStack(alignment: .top, spacing: 8) {
                 titleBlock
                 Spacer(minLength: 0)
-                // Output controls group together on the left; the heart is an
-                // action on the track, not on where it plays, so it sits apart
-                // at the trailing edge.
-                //
-                // Only worth the space once a receiver is actually on the
-                // network — otherwise it's a button that opens an empty list.
-                if cast.hasDevices {
-                    CastButton(tint: cast.isCasting ? .accentColor : .secondary)
-                        .frame(width: 34, height: 34)
-                        .accessibilityLabel("Cast to a device")
-                }
-
-                // Bluetooth speakers and AirPlay destinations both live here.
-                RoutePickerButton(tint: .secondary, activeTint: .accentColor)
-                    .frame(width: 40, height: 40)
-                    .accessibilityLabel("Choose audio output")
-
-                if canHeart { heartButton }
+                controls
             }
 
             listenButton
@@ -264,12 +247,43 @@ struct StationDetailView: View {
         nowPlaying?.hearted != nil && nowPlaying?.itemId != nil
     }
 
+    /// Uniform box for every control, so three glyphs from three sources — the
+    /// Cast SDK, AVKit, and SF Symbols — sit on one line instead of three
+    /// slightly different ones.
+    private static let controlSize: CGFloat = 30
+
+    private var controls: some View {
+        HStack(spacing: 10) {
+            // Only worth the space once a receiver is actually on the network
+            // — otherwise it's a button that opens an empty list.
+            if cast.hasDevices {
+                CastButton(tint: cast.isCasting ? .accentColor : .secondary)
+                    .frame(width: Self.controlSize, height: Self.controlSize)
+                    .accessibilityLabel("Cast to a device")
+            }
+
+            // Bluetooth speakers and AirPlay destinations both live here.
+            RoutePickerButton(tint: .secondary, activeTint: .accentColor)
+                .frame(width: Self.controlSize, height: Self.controlSize)
+                .accessibilityLabel("Choose audio output")
+
+            // The heart is an action on the track rather than on where it
+            // plays, so it sits past the two output controls.
+            if canHeart { heartButton }
+        }
+        // Nudged up so the glyphs' centres line up with the title's, rather
+        // than with the top of its line box.
+        .offset(y: -3)
+    }
+
     private var heartButton: some View {
         Button(action: toggleHeart) {
             Image(systemName: isHearted ? "heart.fill" : "heart")
-                .font(.title3)
+                // Matched to the weight the Cast and AirPlay glyphs render at;
+                // .title3's default stroke reads noticeably thinner beside them.
+                .font(.system(size: 20, weight: .medium))
                 .foregroundStyle(isHearted ? .pink : .secondary)
-                .frame(width: 40, height: 40)
+                .frame(width: Self.controlSize, height: Self.controlSize)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
