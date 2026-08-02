@@ -345,8 +345,11 @@ struct MiniPlayerBar: View {
                 MarqueeText(text: subtitle, font: .caption)
                     .foregroundStyle(.secondary)
             }
-
-            Spacer(minLength: 0)
+            // Claims the remaining width outright instead of leaving a Spacer
+            // to compete for it. Both are flexible, so HStack splits the slack
+            // between them — which left the title narrower than the bar and set
+            // titles scrolling that would otherwise have fit.
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if let station = player.station {
                 StationPlayButton(station: station)
