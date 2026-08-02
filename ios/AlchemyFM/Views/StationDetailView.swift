@@ -85,7 +85,9 @@ struct StationDetailView: View {
                                 .background(.black.opacity(0.35), in: Circle())
                         }
                         .buttonStyle(.plain)
-                        .padding(10)
+                        // Centred on the corner itself rather than inset from
+                        // it, so it reads as attached to the artwork.
+                        .offset(x: 14, y: -14)
                         .accessibilityLabel("Full screen")
                     }
                     .overlay(alignment: .bottomTrailing) {
@@ -195,8 +197,10 @@ struct StationDetailView: View {
     private var nowPlayingCard: some View {
         VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 8) {
+                // No Spacer: it and the title are both flexible, so the HStack
+                // divides the slack between them and the title scrolls when it
+                // had room all along. The title claims the width instead.
                 titleBlock
-                Spacer(minLength: 0)
                 controls
             }
 

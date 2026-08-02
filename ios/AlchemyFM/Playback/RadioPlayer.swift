@@ -580,6 +580,13 @@ final class RadioPlayer {
         unsupported.forEach { $0.isEnabled = false }
     }
 
+    /// Same action as the lock screen's ⏭ / ⏮, for on-screen controls.
+    func nextStation() { tuneToAdjacentStation(offset: 1) }
+    func previousStation() { tuneToAdjacentStation(offset: -1) }
+
+    /// True when there is somewhere to skip to — one station is not a carousel.
+    var canSkipStations: Bool { stationOrder.count > 1 }
+
     /// Wraps around, so ⏭ off the end of the list returns to the first station
     /// rather than doing nothing and looking broken.
     private func tuneToAdjacentStation(offset: Int) {

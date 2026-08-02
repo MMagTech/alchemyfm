@@ -15,12 +15,24 @@ struct NowPlayingDisplayView: View {
     @Environment(ServerConfig.self) private var server
     @Environment(RadioPlayer.self) private var player
 
+    /// Set on appear from `isTuned`. Once following, the screen tracks the
+    /// player rather than the station it was opened with — otherwise skipping
+    /// would change what's playing while this kept showing the old station.
+    @State private var following = false
     @State private var controlsVisible = true
     @State private var hideTask: Task<Void, Never>?
     @State private var dragOffset: CGFloat = 0
 
+    private var shownStation: StationSummary {
+        following ? (player.station ?? station) : station
+    }
+
+    private var shownNowPlaying: NowPlaying? {
+        following ? player.nowPlaying : nowPlaying
+    }
+
     private var artworkPath: String? {
-        nowPlaying?.coverUrl ?? station.listArtwork
+        shownNowPlaying?.coverUrl ?? shownStation.listArtwork
     }
 
     var body: some View {
@@ -36,6 +48,7 @@ struct NowPlayingDisplayView: View {
         .simultaneousGesture(dismissDrag)
         .statusBarHidden(!controlsVisible)
         .onAppear {
+            following = isTuned
             setScreenAwake(true)
             scheduleHide()
         }
@@ -90,25 +103,29 @@ struct NowPlayingDisplayView: View {
                 .padding(.horizontal, 32)
 
             VStack(spacing: 6) {
+                // Claims the full width explicitly. Sizing to its content lets
+                // the VStack hand it only as much as the text asks for, so it
+                // scrolls inside a box narrower than the screen it's on.
                 MarqueeText(
-                    text: nowPlaying?.title ?? station.name,
+                    text: shownNowPlaying?.title ?? shownStation.name,
                     font: .title2,
                     weight: .bold
                 )
+                .frame(maxWidth: .infinity)
                 .foregroundStyle(.white)
 
-                Text(nowPlaying?.artist ?? station.description)
+                Text(shownNowPlaying?.artist ?? shownStation.description)
                     .font(.title3)
                     .foregroundStyle(.white.opacity(0.75))
                     .lineLimit(1)
 
-                Text(station.name.uppercased())
+                Text(shownStation.name.uppercased())
                     .font(.caption.weight(.semibold))
                     .tracking(1.4)
                     .foregroundStyle(.white.opacity(0.45))
                     .padding(.top, 6)
             }
-            .padding(.horizontal, 32)
+            .padding(.horizontal, 22)
             .padding(.top, 32)
 
             Spacer(minLength: 0)
@@ -138,20 +155,34 @@ struct NowPlayingDisplayView: View {
     }
 
     private var controls: some View {
-        // The play button is centred in a ZStack rather than balanced inside an
-        // HStack. Flexible side slots only centre it when both are occupied,
-        // and the heart is absent whenever nobody is signed in.
+        // Skip / play / skip is symmetric, so the play button stays on the
+        // centre line without any balancing. The heart and route sit at the
+        // edges, where their presence can't shift it.
         ZStack {
-            StationPlayButton(station: station, size: .largeTitle)
-                .foregroundStyle(.white)
-                .frame(width: 68, height: 68)
-                // .tint must NOT be overridden here: the circle takes its fill
-                // from the ambient tint, so forcing it white first produced a
-                // white circle behind a white glyph.
-                .background(.tint, in: Circle())
+            HStack(spacing: 26) {
+                if canSkip {
+                    skipButton("backward.end.fill", label: "Previous station") {
+                        player.previousStation()
+                    }
+                }
+
+                StationPlayButton(station: shownStation, size: .largeTitle)
+                    .foregroundStyle(.white)
+                    .frame(width: 68, height: 68)
+                    // .tint must NOT be overridden here: the circle takes its
+                    // fill from the ambient tint, so forcing it white first
+                    // produced a white circle behind a white glyph.
+                    .background(.tint, in: Circle())
+
+                if canSkip {
+                    skipButton("forward.end.fill", label: "Next station") {
+                        player.nextStation()
+                    }
+                }
+            }
 
             HStack {
-                if isTuned, let hearted = nowPlaying?.hearted {
+                if following, let hearted = shownNowPlaying?.hearted {
                     Button {
                         player.toggleHeart()
                         scheduleHide()
@@ -172,9 +203,33 @@ struct NowPlayingDisplayView: View {
                     .frame(width: 44, height: 44)
                     .accessibilityLabel("Choose audio output")
             }
-            .padding(.horizontal, 46)
+            .padding(.horizontal, 22)
         }
         .frame(height: 68)
+    }
+
+    /// Only offered while following the player: these move between stations,
+    /// and doing that from a station you aren't listening to would be a
+    /// surprise rather than a skip.
+    private var canSkip: Bool {
+        following && player.canSkipStations
+    }
+
+    private func skipButton(
+        _ systemName: String, label: String, action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            action()
+            scheduleHide()
+        } label: {
+            Image(systemName: systemName)
+                .font(.system(size: 24, weight: .medium))
+                .foregroundStyle(.white.opacity(0.85))
+                .frame(width: 48, height: 48)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
     // MARK: - Behaviour

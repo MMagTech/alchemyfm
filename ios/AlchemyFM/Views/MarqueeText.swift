@@ -57,9 +57,26 @@ struct MarqueeText: View {
             )
             .onPreferenceChange(MarqueeBoxKey.self) { boxWidth = $0 }
             .clipped()
+            // Softens the clip into a fade, but only when the text actually
+            // overflows — masking a short title would dim its own first and
+            // last letters for no reason.
+            .mask(overflow > 0 ? AnyView(edgeFade) : AnyView(Rectangle()))
             .onChange(of: text) { _, _ in restart() }
             .onChange(of: overflow) { _, _ in restart() }
             .onAppear { restart() }
+    }
+
+    private var edgeFade: some View {
+        LinearGradient(
+            stops: [
+                .init(color: .clear, location: 0),
+                .init(color: .black, location: 0.04),
+                .init(color: .black, location: 0.94),
+                .init(color: .clear, location: 1),
+            ],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
     }
 
     private func restart() {
