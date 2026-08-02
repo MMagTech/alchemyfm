@@ -130,16 +130,10 @@ struct StationListView: View {
             if groups.favorites.isEmpty {
                 ForEach(store.stations) { row($0) }
             } else {
-                Section {
-                    ForEach(groups.favorites) { row($0) }
-                } header: {
-                    sectionHeader("Favorites")
-                }
-                Section {
-                    ForEach(groups.others) { row($0) }
-                } header: {
-                    sectionHeader("All stations")
-                }
+                sectionHeader("Favorites")
+                ForEach(groups.favorites) { row($0) }
+                sectionHeader("All stations")
+                ForEach(groups.others) { row($0) }
             }
         }
         .listStyle(.plain)
@@ -149,21 +143,23 @@ struct StationListView: View {
         }
     }
 
-    /// Plain-style list headers pin to the top while rows scroll beneath them,
-    /// so a header with no background lets both draw in the same place at once
-    /// — the title reads as garbage over whatever row is passing under it.
-    /// This one is opaque and spans the full width, so rows disappear behind it.
+    /// An ordinary row, not a `Section` header.
+    ///
+    /// Plain-style section headers pin to the top of the viewport while rows
+    /// scroll underneath, and the row wins the z-order — so the header text and
+    /// whatever row is passing behind it draw in the same pixels. Giving the
+    /// header an opaque background didn't fix that. Scrolling with the content
+    /// removes the overlap rather than trying to paint over it, and for a list
+    /// this short there's nothing to be gained from sticky headers anyway.
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.secondary)
-            .textCase(nil)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 20)
-            .padding(.top, 14)
-            .padding(.bottom, 7)
-            .background(Color(.systemBackground))
-            .listRowInsets(EdgeInsets())
+            .padding(.top, 18)
+            .padding(.bottom, 2)
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
     }
 
     /// Favouriting lives on a swipe and a long-press rather than a third button
