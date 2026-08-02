@@ -87,26 +87,12 @@ struct StationDetailView: View {
                     }
                     .padding(.top, 8)
 
-                // Deliberately uneven spacing: title and artist belong
-                // together, the transport is its own thing, and the status line
-                // annotates the transport rather than dividing the metadata.
-                titleBlock
-                    .padding(.top, 24)
-
-                transport
-                    .padding(.top, 24)
-
-                statusLine
-                    .padding(.top, 14)
-
-                if hasQueue {
-                    Divider()
-                        .padding(.top, 26)
-                }
+                nowPlayingCard
+                    .padding(.top, 18)
 
                 if let upNext = detail?.upNext, !upNext.isEmpty {
                     section("Up next") { trackList(upNext) }
-                        .padding(.top, 20)
+                        .padding(.top, 26)
                 }
 
                 if let recent = detail?.recentlyPlayed, !recent.isEmpty {
@@ -174,8 +160,30 @@ struct StationDetailView: View {
         }
     }
 
-    private var hasQueue: Bool {
-        !(detail?.upNext.isEmpty ?? true) || !(detail?.recentlyPlayed.isEmpty ?? true)
+    /// The now-playing block as one bounded object.
+    ///
+    /// Whitespace and a hairline weren't enough separation to read as a
+    /// grouping — an actual edge is what says "these belong together, the
+    /// queue below does not".
+    private var nowPlayingCard: some View {
+        VStack(spacing: 0) {
+            titleBlock
+            transport
+                .padding(.top, 20)
+            statusLine
+                .padding(.top, 12)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+        .padding(.horizontal, 16)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        )
     }
 
     private var titleBlock: some View {
