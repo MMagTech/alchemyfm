@@ -21,7 +21,16 @@ struct MarqueeText: View {
     @State private var boxWidth: CGFloat = 0
     @State private var shifted = false
 
-    private var overflow: CGFloat { max(0, textWidth - boxWidth) }
+    /// Zero until both measurements have arrived for the *current* text.
+    ///
+    /// They land in separate passes, so a title change briefly pairs the new
+    /// box width with the previous title's text width. Without this guard a
+    /// short title following a long one sees a phantom overflow and starts
+    /// scrolling with room to spare.
+    private var overflow: CGFloat {
+        guard textWidth > 0, boxWidth > 0 else { return 0 }
+        return max(0, textWidth - boxWidth)
+    }
 
     private var resolvedFont: Font {
         weight.map { font.weight($0) } ?? font
@@ -61,7 +70,11 @@ struct MarqueeText: View {
             // overflows — masking a short title would dim its own first and
             // last letters for no reason.
             .mask(overflow > 0 ? AnyView(edgeFade) : AnyView(Rectangle()))
-            .onChange(of: text) { _, _ in restart() }
+            .onChange(of: text) { _, _ in
+                withAnimation(.none) { shifted = false }
+                textWidth = 0
+                boxWidth = 0
+            }
             .onChange(of: overflow) { _, _ in restart() }
             .onAppear { restart() }
     }
