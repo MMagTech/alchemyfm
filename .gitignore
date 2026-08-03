@@ -9,3 +9,6 @@ venv/
 alchemyfm-backup/
 cookies.txt
 login_out.txt
+
+# Google Cast SDK — 141 MB, fetched by ios/Vendor/fetch-cast-sdk.sh
+ios/Vendor/GoogleCast.xcframework/
